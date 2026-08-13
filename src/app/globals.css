@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f7f9;
+  --foreground: #0e3a5e;
+
+  /* Fatec Ivaiporã institutional palette (extracted from fatecivaipora.com.br) */
+  --color-fatec-navy-950: #071d30;
+  --color-fatec-navy-900: #0a2c47;
+  --color-fatec-navy-800: #0e3a5e;
+  --color-fatec-navy-700: #164a72;
+  --color-fatec-navy-100: #dbe7ef;
+  --color-fatec-navy-50: #f0f5f8;
+
+  --color-fatec-orange-600: #da6d1a;
+  --color-fatec-orange-500: #ea741c;
+  --color-fatec-orange-400: #f2934f;
+  --color-fatec-orange-100: #fce4d1;
+
+  --color-fatec-sky-600: #2376b9;
+  --color-fatec-sky-100: #d9edfb;
+
+  --color-fatec-ink: #142433;
+  --color-fatec-muted: #5b6b78;
+  --color-fatec-line: #e2e8ee;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-poppins);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-fatec-navy-950: var(--color-fatec-navy-950);
+  --color-fatec-navy-900: var(--color-fatec-navy-900);
+  --color-fatec-navy-800: var(--color-fatec-navy-800);
+  --color-fatec-navy-700: var(--color-fatec-navy-700);
+  --color-fatec-navy-100: var(--color-fatec-navy-100);
+  --color-fatec-navy-50: var(--color-fatec-navy-50);
+  --color-fatec-orange-600: var(--color-fatec-orange-600);
+  --color-fatec-orange-500: var(--color-fatec-orange-500);
+  --color-fatec-orange-400: var(--color-fatec-orange-400);
+  --color-fatec-orange-100: var(--color-fatec-orange-100);
+  --color-fatec-sky-600: var(--color-fatec-sky-600);
+  --color-fatec-sky-100: var(--color-fatec-sky-100);
+  --color-fatec-ink: var(--color-fatec-ink);
+  --color-fatec-muted: var(--color-fatec-muted);
+  --color-fatec-line: var(--color-fatec-line);
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-fatec-ink);
+  font-family: var(--font-poppins), sans-serif;
+}
+
+::selection {
+  background: var(--color-fatec-orange-500);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-fatec-navy-50);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-fatec-navy-100);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fatec-sky-600);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-fatec-orange-500);
+  outline-offset: 2px;
 }
