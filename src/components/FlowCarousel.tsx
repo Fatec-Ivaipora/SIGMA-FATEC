@@ -22,30 +22,30 @@ const SLIDES: Slide[] = [
   {
     icon: UserPlus,
     step: "1",
-    title: "Cadastre-se",
+    title: "Crie sua conta",
     description:
-      "Aluno cria conta em poucos minutos, com confirmação por e-mail.",
+      "Cadastro rápido com seu e-mail — leva menos de dois minutos e já te dá acesso a todos os eventos abertos.",
   },
   {
     icon: FileText,
     step: "2",
-    title: "Submeta seu trabalho",
+    title: "Inscreva seu trabalho",
     description:
-      "Informe título, palavras-chave, resumo, o nome do seu orientador e participantes, vinculado ao evento — MAC, MOPI ou outro cadastrado.",
+      "Escolha o evento (MAC, MOPI ou outro em aberto), conte um pouco sobre o seu trabalho e pronto — sua inscrição já está registrada.",
   },
   {
     icon: ClipboardCheck,
     step: "3",
-    title: "Avaliação",
+    title: "Acompanhe a avaliação",
     description:
-      "A organização seleciona os trabalhos e os envia para um avaliador, que atribui uma nota de 1 a 5.",
+      "Um professor avaliador analisa seu trabalho. Se pedir algum ajuste, você recebe o retorno na hora e pode corrigir e reenviar direto por aqui.",
   },
   {
     icon: Award,
     step: "4",
-    title: "Aceite e certificação",
+    title: "Receba seu certificado",
     description:
-      "A organização confirma o aceite final e emite a carta de aceite e os certificados em PDF.",
+      "Trabalho aceito? Seu certificado em PDF fica disponível pra download assim que a organização confirma o resultado.",
   },
 ];
 

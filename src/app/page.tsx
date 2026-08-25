@@ -2,11 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CalendarDays, Mail, MapPin, Phone } from "lucide-react";
+import { InstagramIcon } from "@/components/icons/InstagramIcon";
 import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { Logo } from "@/components/Logo";
 import { LogoLockup } from "@/components/LogoLockup";
 import { FlowCarousel } from "@/components/FlowCarousel";
+
+const CONTATOS = {
+  instagram: "https://www.instagram.com/fatec.ivaipora/",
+  instagramLabel: "@fatec.ivaipora",
+  email: "secretariageral@fatecivaipora.com.br",
+  telefoneSecretaria: { label: "(43) 99848-0053", href: "tel:+5543998480053", nota: "Secretaria" },
+  telefoneVestibular: { label: "(43) 99660-0220", href: "tel:+5543996600220", nota: "Vestibular" },
+};
 
 const ENDERECO_FATEC =
   "FATEC IVAIPORÃ, 86870-000, AVENIDA BRASIL, CENTRO, Ivaiporã, Paraná";
@@ -99,50 +109,65 @@ export default function HomePage() {
 
       {/* RF-29 / RN-11: evento em destaque, marcado manualmente pela organização.
           Some inteiramente da tela quando nenhum evento está marcado como destaque.
-          Puxado para cima com margem negativa sobre o hero para ganhar evidência. */}
+          Seção própria, com respiro simétrico acima e abaixo do card — sem
+          sobrepor o hero. */}
       {eventoDestaque && (
-        <section className="relative bg-white px-6 pb-16 pt-0 md:px-12 md:pb-20">
-          <div className="mx-auto -mt-10 max-w-4xl md:-mt-14">
-            <div className="relative overflow-hidden rounded-3xl shadow-[0_30px_60px_-30px_rgba(14,58,94,0.4)]">
-              {eventoDestaque.imagemDestaqueUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={eventoDestaque.imagemDestaqueUrl}
-                  alt={eventoDestaque.nome}
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-              ) : (
+        <section
+          id="evento-destaque"
+          className="relative bg-white px-6 py-16 md:px-12 md:py-24"
+        >
+          <div className="group relative mx-auto max-w-5xl overflow-hidden rounded-3xl shadow-[0_30px_60px_-30px_rgba(14,58,94,0.4)] transition-transform duration-300 hover:-translate-y-1.5">
+            {eventoDestaque.imagemDestaqueUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={eventoDestaque.imagemDestaqueUrl}
+                alt={eventoDestaque.nome}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
+              >
                 <div
                   aria-hidden
-                  className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-600"
-                >
-                  <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-                  <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
-                </div>
+                  className="absolute inset-0 opacity-[0.08]"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(circle, white 1px, transparent 1px)",
+                    backgroundSize: "24px 24px",
+                  }}
+                />
+                <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
+                <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
+              </div>
+            )}
+
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+            <div className="relative flex min-h-[320px] flex-col items-start justify-end gap-3 p-6 md:min-h-[420px] md:p-14">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[-0.01em] text-white">
+                Evento em destaque
+              </span>
+              <h2 className="max-w-2xl text-3xl font-bold leading-tight text-white md:text-5xl">
+                {eventoDestaque.nome}
+              </h2>
+              {eventoDestaque.periodoSubmissao && (
+                <p className="flex items-center gap-1.5 text-sm text-white/85 md:text-base">
+                  <CalendarDays className="h-4 w-4 flex-none" strokeWidth={2} />
+                  Inscrições: {eventoDestaque.periodoSubmissao}
+                </p>
               )}
-
-              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-
-              <div className="relative flex min-h-[280px] flex-col items-start justify-end gap-3 p-6 md:min-h-[340px] md:p-10">
-                <h2 className="max-w-xl text-2xl font-bold leading-tight text-white md:text-3xl">
-                  {eventoDestaque.nome} está com inscrições abertas
-                </h2>
-                {eventoDestaque.periodoSubmissao && (
-                  <p className="max-w-xl text-sm text-white/85 md:text-base">
-                    Inscrições: {eventoDestaque.periodoSubmissao}
-                  </p>
-                )}
-                <Link
-                  href="/login"
-                  className="group mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
-                >
-                    Inscreva-se
-                    <ArrowRight
-                      className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
-                      strokeWidth={2}
-                    />
-                  </Link>
-                </div>
+              <Link
+                href="/login"
+                className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 shadow-lg shadow-black/10 transition-transform hover:-translate-y-0.5"
+              >
+                Inscreva-se
+                <ArrowRight
+                  className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
+                  strokeWidth={2}
+                />
+              </Link>
             </div>
           </div>
         </section>
@@ -168,7 +193,7 @@ export default function HomePage() {
       </section>
 
       <section className="bg-white px-6 py-16 md:px-12 md:py-20">
-        <div className="mx-auto grid max-w-4xl grid-cols-1 gap-10 md:grid-cols-2 md:divide-x md:divide-fatec-line md:gap-0">
+        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-10 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-0 md:divide-x md:divide-fatec-line">
           <div className="flex flex-col gap-3 md:pr-10">
             <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
               Local
@@ -176,7 +201,8 @@ export default function HomePage() {
             <h2 className="text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900">
               Fatec Ivaiporã
             </h2>
-            <p className="text-sm leading-relaxed text-fatec-muted">
+            <p className="flex items-start gap-2 text-sm leading-relaxed text-fatec-muted">
+              <MapPin className="mt-0.5 h-4 w-4 flex-none text-fatec-navy-800" strokeWidth={1.75} />
               {ENDERECO_FATEC}
             </p>
           </div>
@@ -186,23 +212,83 @@ export default function HomePage() {
               title="Mapa até a Fatec Ivaiporã"
               src={MAPA_EMBED_SRC}
               loading="lazy"
-              className="h-64 w-full rounded-2xl border border-fatec-line md:h-full"
+              className="h-80 w-full rounded-2xl border border-fatec-line md:h-[420px]"
             />
           </div>
         </div>
       </section>
 
-      <footer className="border-t border-fatec-line bg-white px-6 py-8 md:px-12">
-        <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 text-sm text-fatec-muted md:flex-row">
-          <p>© {new Date().getFullYear()} SIGMA Fatec · Fatec Ivaiporã</p>
-          <a
-            href="https://fatecivaipora.com.br/"
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-fatec-navy-800 hover:text-fatec-sky-600"
-          >
-            fatecivaipora.com.br
-          </a>
+      <footer className="border-t border-fatec-line bg-fatec-navy-900 px-6 py-14 md:px-12 md:py-16">
+        <div className="mx-auto max-w-5xl">
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-3">
+            <div className="flex flex-col gap-3">
+              <Logo className="h-10 w-auto" />
+              <p className="max-w-xs text-sm leading-relaxed text-fatec-navy-50/70">
+                Faculdade de Tecnologia do Vale do Ivaí — cursos superiores de
+                tecnologia gratuitos e presenciais em Ivaiporã.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <h3 className="text-xs font-semibold uppercase tracking-[-0.01em] text-fatec-navy-50/50">
+                Contato
+              </h3>
+              <a
+                href={`mailto:${CONTATOS.email}`}
+                className="flex items-center gap-2 text-sm text-fatec-navy-50/80 transition-colors hover:text-white"
+              >
+                <Mail className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                {CONTATOS.email}
+              </a>
+              <a
+                href={CONTATOS.telefoneSecretaria.href}
+                className="flex items-center gap-2 text-sm text-fatec-navy-50/80 transition-colors hover:text-white"
+              >
+                <Phone className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                {CONTATOS.telefoneSecretaria.label}
+                <span className="text-fatec-navy-50/50">
+                  · {CONTATOS.telefoneSecretaria.nota}
+                </span>
+              </a>
+              <a
+                href={CONTATOS.telefoneVestibular.href}
+                className="flex items-center gap-2 text-sm text-fatec-navy-50/80 transition-colors hover:text-white"
+              >
+                <Phone className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                {CONTATOS.telefoneVestibular.label}
+                <span className="text-fatec-navy-50/50">
+                  · {CONTATOS.telefoneVestibular.nota}
+                </span>
+              </a>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <h3 className="text-xs font-semibold uppercase tracking-[-0.01em] text-fatec-navy-50/50">
+                Acompanhe
+              </h3>
+              <a
+                href={CONTATOS.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 text-sm text-fatec-navy-50/80 transition-colors hover:text-white"
+              >
+                <InstagramIcon className="h-4 w-4 flex-none" />
+                {CONTATOS.instagramLabel}
+              </a>
+              <a
+                href="https://fatecivaipora.com.br/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-fatec-navy-50/80 transition-colors hover:text-white"
+              >
+                fatecivaipora.com.br
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-fatec-navy-50/50">
+            © {new Date().getFullYear()} SIGMA Fatec · Fatec Ivaiporã
+          </div>
         </div>
       </footer>
     </main>
