@@ -1,29 +1,30 @@
-import { LayoutGrid, FileStack, Award, Download } from "lucide-react";
+"use client";
+
+import { Award } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-
-const NAV_ALUNO = [
-  { label: "Painel", href: "/aluno", icon: LayoutGrid },
-  { label: "Trabalhos", href: "/aluno/trabalhos", icon: FileStack },
-  { label: "Certificações", href: "/aluno/certificacoes", icon: Award },
-];
-
-const CERTIFICADOS = [
-  {
-    titulo: "Aplicativo de apoio à agricultura familiar",
-    evento: "MAC 2025",
-    emitidoEm: "18 de novembro de 2025",
-  },
-];
+import { navAlunoPara } from "@/lib/navAluno";
+import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useEventosPublicos } from "@/lib/data/eventos";
+import { useTrabalhos } from "@/lib/data/trabalhos";
 
 export default function AlunoCertificacoesPage() {
+  const { user, perfil, carregando } = useRequireAuth(["aluno"]);
+  const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  const { eventos } = useEventosPublicos();
+
+  const aceitos = trabalhos.filter((t) => t.status === "aceito");
+
+  if (carregando || !perfil) return null;
+
   return (
-    <main className="flex flex-1">
+    <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_ALUNO}
+        navItems={navAlunoPara(perfil.vinculoFatec)}
         activeHref="/aluno/certificacoes"
-        userName="Beatriz Nogueira"
+        userName={perfil.nome}
         userRoleLabel="Aluno"
-        userInitials="BN"
+        userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
+        showAjuda
       />
 
       <div className="flex flex-1 flex-col overflow-x-hidden">
@@ -37,7 +38,7 @@ export default function AlunoCertificacoesPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          {CERTIFICADOS.length === 0 ? (
+          {aceitos.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-16 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
                 <Award className="h-6 w-6" strokeWidth={1.75} />
@@ -52,9 +53,9 @@ export default function AlunoCertificacoesPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {CERTIFICADOS.map((c) => (
+              {aceitos.map((t) => (
                 <div
-                  key={c.titulo}
+                  key={t.id}
                   className="flex items-center gap-4 rounded-2xl border border-fatec-line bg-white p-5"
                 >
                   <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
@@ -62,16 +63,15 @@ export default function AlunoCertificacoesPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-fatec-navy-900">
-                      {c.titulo}
+                      {t.titulo}
                     </p>
                     <p className="text-sm text-fatec-muted">
-                      {c.evento} · emitido em {c.emitidoEm}
+                      {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
                     </p>
                   </div>
-                  <button className="flex flex-none items-center gap-2 rounded-lg border border-fatec-line px-4 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50">
-                    <Download className="h-4 w-4" strokeWidth={1.75} />
-                    PDF
-                  </button>
+                  <span className="flex-none text-xs font-medium text-fatec-muted">
+                    Certificado em preparação
+                  </span>
                 </div>
               ))}
             </div>

@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function meuPapel() {
+      return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.papel;
+    }
+
+    function souAdmin() {
+      return logado() && meuPapel() == "admin";
+    }
+
+    // Espelha usuarios/{uid}.eventosPermitidos (ver firestore.rules) — usado
+    // pra restringir o upload de banner de organizacao aos seus próprios eventos.
+    function meusEventos() {
+      return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.eventosPermitidos;
+    }
+
+    // eventos/{eventoId}/banner — imagem de destaque do evento (RF-29), lida
+    // pela home pública sem login. Escrita só de quem administra o evento:
+    // admin sempre, organizacao só nos eventos em que foi cadastrada (RN-15).
+    match /eventos/{eventoId}/{arquivo} {
+      allow read: if true;
+      allow write: if souAdmin() || (logado() && meuPapel() == "organizacao" && eventoId in meusEventos());
+    }
+  }
+}

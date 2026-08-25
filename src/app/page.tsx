@@ -1,17 +1,46 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { LogoLockup } from "@/components/LogoLockup";
 import { FlowCarousel } from "@/components/FlowCarousel";
 
-const EVENTO_DESTAQUE = {
-  nome: "MAC 2026",
-  titulo: "MAC 2026 está com inscrições abertas",
-  descricao:
-    "Envie seu trabalho até 20 de outubro e participe da Mostra Acadêmica Científica da Fatec Ivaiporã.",
-  imagemUrl: null as string | null,
+const ENDERECO_FATEC =
+  "FATEC IVAIPORÃ, 86870-000, AVENIDA BRASIL, CENTRO, Ivaiporã, Paraná";
+const MAPA_EMBED_SRC = `https://maps.google.com/maps?q=${encodeURIComponent(
+  ENDERECO_FATEC,
+)}&z=16&output=embed`;
+
+type EventoDestaque = {
+  id: string;
+  nome: string;
+  periodoSubmissao?: string;
+  imagemDestaqueUrl?: string | null;
 };
 
 export default function HomePage() {
+  const [eventoDestaque, setEventoDestaque] = useState<EventoDestaque | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "eventos"),
+      where("destaque", "==", true),
+      limit(1),
+    );
+    return onSnapshot(q, (snap) => {
+      setEventoDestaque(
+        snap.empty
+          ? null
+          : ({ id: snap.docs[0].id, ...snap.docs[0].data() } as EventoDestaque),
+      );
+    });
+  }, []);
+
   return (
     <main className="flex flex-1 flex-col">
       <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 py-6 md:px-12">
@@ -27,7 +56,7 @@ export default function HomePage() {
         </Link>
       </header>
 
-      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-24 pt-32 md:px-12 md:pb-32 md:pt-40">
+      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-28 md:px-12 md:pb-24 md:pt-32">
         <div
           aria-hidden
           className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
@@ -37,15 +66,14 @@ export default function HomePage() {
           className="pointer-events-none absolute -bottom-32 left-0 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
         />
 
-        <div className="relative mx-auto flex max-w-4xl flex-col items-start gap-8">
-          <h1 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.02em] text-white md:text-6xl">
-            Submeta, avalie e certifique trabalhos acadêmicos em um só lugar.
+        <div className="relative mx-auto flex max-w-3xl flex-col items-start gap-6">
+          <h1 className="text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white md:text-5xl">
+            Cadastre seu trabalho acadêmico
           </h1>
 
-          <p className="max-w-2xl text-lg leading-relaxed text-fatec-navy-50/90 md:text-xl">
-            O sistema oficial da Fatec Ivaiporã para submissão de trabalhos:
-            cadastro, aprovação do orientador, avaliação, correção com prazo e
-            certificação — tudo rastreável, do início ao fim.
+          <p className="max-w-xl text-base leading-relaxed text-fatec-navy-50/90 md:text-lg">
+            Envie, acompanhe a avaliação e receba o certificado do seu
+            trabalho na Fatec Ivaiporã.
           </p>
 
           <div className="flex flex-wrap items-center gap-4">
@@ -66,51 +94,21 @@ export default function HomePage() {
               Ver como funciona
             </a>
           </div>
-
-          <dl className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div className="flex items-start gap-3">
-              <CalendarDays
-                className="mt-0.5 h-5 w-5 flex-none text-fatec-orange-400"
-                strokeWidth={1.75}
-              />
-              <div>
-                <dt className="text-sm font-semibold text-white">
-                  Múltiplos eventos
-                </dt>
-                <dd className="text-sm text-fatec-navy-50/80">
-                  Cada evento com seu próprio período de submissão e prazos.
-                </dd>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <ShieldCheck
-                className="mt-0.5 h-5 w-5 flex-none text-fatec-orange-400"
-                strokeWidth={1.75}
-              />
-              <div>
-                <dt className="text-sm font-semibold text-white">
-                  Fluxo com dois níveis de aprovação
-                </dt>
-                <dd className="text-sm text-fatec-navy-50/80">
-                  Orientador e avaliador validam antes do aceite final.
-                </dd>
-              </div>
-            </div>
-          </dl>
         </div>
       </section>
 
       {/* RF-29 / RN-11: evento em destaque, marcado manualmente pela organização.
-          Some inteiramente da tela quando nenhum evento está marcado como destaque. */}
-      {EVENTO_DESTAQUE && (
-        <section className="bg-white px-6 py-16 md:px-12 md:py-20">
-          <div className="mx-auto max-w-4xl">
+          Some inteiramente da tela quando nenhum evento está marcado como destaque.
+          Puxado para cima com margem negativa sobre o hero para ganhar evidência. */}
+      {eventoDestaque && (
+        <section className="relative bg-white px-6 pb-16 pt-0 md:px-12 md:pb-20">
+          <div className="mx-auto -mt-10 max-w-4xl md:-mt-14">
             <div className="relative overflow-hidden rounded-3xl shadow-[0_30px_60px_-30px_rgba(14,58,94,0.4)]">
-              {EVENTO_DESTAQUE.imagemUrl ? (
+              {eventoDestaque.imagemDestaqueUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={EVENTO_DESTAQUE.imagemUrl}
-                  alt={EVENTO_DESTAQUE.nome}
+                  src={eventoDestaque.imagemDestaqueUrl}
+                  alt={eventoDestaque.nome}
                   className="absolute inset-0 h-full w-full object-cover"
                 />
               ) : (
@@ -127,11 +125,13 @@ export default function HomePage() {
 
               <div className="relative flex min-h-[280px] flex-col items-start justify-end gap-3 p-6 md:min-h-[340px] md:p-10">
                 <h2 className="max-w-xl text-2xl font-bold leading-tight text-white md:text-3xl">
-                  {EVENTO_DESTAQUE.titulo}
+                  {eventoDestaque.nome} está com inscrições abertas
                 </h2>
-                <p className="max-w-xl text-sm text-white/85 md:text-base">
-                  {EVENTO_DESTAQUE.descricao}
-                </p>
+                {eventoDestaque.periodoSubmissao && (
+                  <p className="max-w-xl text-sm text-white/85 md:text-base">
+                    Inscrições: {eventoDestaque.periodoSubmissao}
+                  </p>
+                )}
                 <Link
                   href="/login"
                   className="group mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
@@ -159,7 +159,7 @@ export default function HomePage() {
               Como funciona
             </span>
             <h2 className="mt-2 text-3xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-4xl">
-              Da inscrição à certificação, em cinco etapas.
+              Da inscrição à certificação, em quatro etapas.
             </h2>
           </div>
 
@@ -167,9 +167,34 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="bg-white px-6 py-16 md:px-12 md:py-20">
+        <div className="mx-auto grid max-w-4xl grid-cols-1 gap-10 md:grid-cols-2 md:divide-x md:divide-fatec-line md:gap-0">
+          <div className="flex flex-col gap-3 md:pr-10">
+            <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
+              Local
+            </span>
+            <h2 className="text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900">
+              Fatec Ivaiporã
+            </h2>
+            <p className="text-sm leading-relaxed text-fatec-muted">
+              {ENDERECO_FATEC}
+            </p>
+          </div>
+
+          <div className="md:pl-10">
+            <iframe
+              title="Mapa até a Fatec Ivaiporã"
+              src={MAPA_EMBED_SRC}
+              loading="lazy"
+              className="h-64 w-full rounded-2xl border border-fatec-line md:h-full"
+            />
+          </div>
+        </div>
+      </section>
+
       <footer className="border-t border-fatec-line bg-white px-6 py-8 md:px-12">
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 text-sm text-fatec-muted md:flex-row">
-          <p>© {new Date().getFullYear()} FatecLab · Fatec Ivaiporã</p>
+          <p>© {new Date().getFullYear()} SIGMA Fatec · Fatec Ivaiporã</p>
           <a
             href="https://fatecivaipora.com.br/"
             target="_blank"

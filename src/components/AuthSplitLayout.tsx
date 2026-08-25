@@ -36,7 +36,7 @@ export function AuthSplitLayout({
         </div>
 
         <p className="relative text-sm text-fatec-navy-50/70">
-          FatecLab · Sistema oficial de submissão da Fatec Ivaiporã
+          SIGMA Fatec · Sistema oficial de submissão da Fatec Ivaiporã
         </p>
       </section>
 

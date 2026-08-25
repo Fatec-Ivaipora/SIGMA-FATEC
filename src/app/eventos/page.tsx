@@ -1,81 +1,143 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import {
   CalendarDays,
   Plus,
   Star,
-  Users,
   FileStack,
+  Tag,
   Image as ImageIcon,
+  Globe,
 } from "lucide-react";
+import { addDoc, collection, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
+import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useEventos } from "@/lib/data/eventos";
+import { useTrabalhos } from "@/lib/data/trabalhos";
 
-type Evento = {
-  id: string;
-  nome: string;
-  periodoSubmissao: string;
-  periodoAvaliacao: string;
-  prazoCorrecaoDias: number;
-  destaque: boolean;
-  avaliadoresInscritos: number;
-  trabalhos: number;
-};
-
-const EVENTOS_INICIAL: Evento[] = [
-  {
-    id: "mac-2026",
-    nome: "MAC 2026",
-    periodoSubmissao: "1 de agosto — 20 de outubro de 2026",
-    periodoAvaliacao: "até 15 de novembro de 2026",
-    prazoCorrecaoDias: 7,
-    destaque: true,
-    avaliadoresInscritos: 12,
-    trabalhos: 68,
-  },
-  {
-    id: "mopi-2026",
-    nome: "MOPI 2026",
-    periodoSubmissao: "1 de setembro — 5 de novembro de 2026",
-    periodoAvaliacao: "até 30 de novembro de 2026",
-    prazoCorrecaoDias: 5,
-    destaque: false,
-    avaliadoresInscritos: 6,
-    trabalhos: 24,
-  },
-  {
-    id: "mac-2025",
-    nome: "MAC 2025",
-    periodoSubmissao: "encerrado em 20 de outubro de 2025",
-    periodoAvaliacao: "encerrado em 18 de novembro de 2025",
-    prazoCorrecaoDias: 7,
-    destaque: false,
-    avaliadoresInscritos: 9,
-    trabalhos: 54,
-  },
-];
+function formatarData(iso: string): string {
+  if (!iso) return "";
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 export default function EventosPage() {
-  const [eventos, setEventos] = useState(EVENTOS_INICIAL);
-  const [modalCriar, setModalCriar] = useState(false);
-  const [destaqueNoForm, setDestaqueNoForm] = useState(false);
+  const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
+  const { eventos } = useEventos(perfil);
+  const { trabalhos } = useTrabalhos(perfil, user?.uid);
 
-  function marcarDestaque(id: string) {
-    setEventos((prev) =>
-      prev.map((e) => ({ ...e, destaque: e.id === id })),
-    );
+  const [modalCriar, setModalCriar] = useState(false);
+  const [nome, setNome] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [banner, setBanner] = useState<File | null>(null);
+  const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null);
+  const [inicioInscricoes, setInicioInscricoes] = useState("");
+  const [fimInscricoes, setFimInscricoes] = useState("");
+  const [inicioAvaliacao, setInicioAvaliacao] = useState("");
+  const [fimAvaliacao, setFimAvaliacao] = useState("");
+  const [destaqueNoForm, setDestaqueNoForm] = useState(false);
+  const [aceitaExternosNoForm, setAceitaExternosNoForm] = useState(false);
+  const [criando, setCriando] = useState(false);
+
+  const trabalhosPorEvento = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const t of trabalhos) mapa.set(t.eventoId, (mapa.get(t.eventoId) ?? 0) + 1);
+    return mapa;
+  }, [trabalhos]);
+
+  function fecharCriar() {
+    setModalCriar(false);
+    setNome("");
+    setDescricao("");
+    setBanner(null);
+    setBannerPreviewUrl(null);
+    setInicioInscricoes("");
+    setFimInscricoes("");
+    setInicioAvaliacao("");
+    setFimAvaliacao("");
+    setDestaqueNoForm(false);
+    setAceitaExternosNoForm(false);
   }
 
+  function selecionarBanner(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setBanner(file);
+    if (!file) {
+      setBannerPreviewUrl(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setBannerPreviewUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function marcarDestaque(eventoId: string) {
+    const batch = writeBatch(db);
+    for (const e of eventos) {
+      if (e.destaque && e.id !== eventoId) {
+        batch.update(doc(db, "eventos", e.id), { destaque: false });
+      }
+    }
+    batch.update(doc(db, "eventos", eventoId), { destaque: true });
+    await batch.commit();
+  }
+
+  async function alternarAceitaExternos(eventoId: string, atual: boolean) {
+    await updateDoc(doc(db, "eventos", eventoId), { aceitaExternos: !atual });
+  }
+
+  async function criarEvento() {
+    if (!nome.trim()) return;
+    setCriando(true);
+    try {
+      const eventoRef = await addDoc(collection(db, "eventos"), {
+        nome: nome.trim(),
+        descricao: descricao.trim(),
+        periodoSubmissao:
+          inicioInscricoes && fimInscricoes
+            ? `${formatarData(inicioInscricoes)} — ${formatarData(fimInscricoes)}`
+            : "",
+        periodoAvaliacao:
+          inicioAvaliacao && fimAvaliacao
+            ? `${formatarData(inicioAvaliacao)} — ${formatarData(fimAvaliacao)}`
+            : "",
+        destaque: destaqueNoForm,
+        aceitaExternos: aceitaExternosNoForm,
+        areasTematicas: [],
+      });
+
+      if (banner) {
+        const bannerRef = storageRef(storage, `eventos/${eventoRef.id}/banner`);
+        await uploadBytes(bannerRef, banner);
+        const imagemDestaqueUrl = await getDownloadURL(bannerRef);
+        await updateDoc(eventoRef, { imagemDestaqueUrl });
+      }
+
+      fecharCriar();
+    } finally {
+      setCriando(false);
+    }
+  }
+
+  if (carregando || !perfil) return null;
+
   return (
-    <main className="flex flex-1">
+    <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
         navItems={NAV_ADMIN}
         activeHref="/eventos"
-        userName="Ana Carolina"
-        userRoleLabel="Organização"
-        userInitials="AC"
+        userName={perfil.nome}
+        userRoleLabel={perfil.papel === "admin" ? "Admin" : "Organização"}
+        userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
       />
 
       <div className="flex flex-1 flex-col overflow-x-hidden">
@@ -89,14 +151,16 @@ export default function EventosPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setModalCriar(true)}
-            className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2} />
-            Criar evento
-          </button>
+          {perfil.papel === "admin" && (
+            <button
+              type="button"
+              onClick={() => setModalCriar(true)}
+              className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2} />
+              Criar evento
+            </button>
+          )}
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
@@ -121,28 +185,37 @@ export default function EventosPage() {
                           Destaque
                         </span>
                       )}
+                      {evento.aceitaExternos && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-fatec-sky-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-sky-600">
+                          <Globe className="h-3 w-3" strokeWidth={2} />
+                          Aceita externos
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-fatec-muted">
-                      Inscrições: {evento.periodoSubmissao}
-                    </p>
-                    <p className="text-sm text-fatec-muted">
-                      Avaliação: {evento.periodoAvaliacao} · correção em até{" "}
-                      {evento.prazoCorrecaoDias} dias
-                    </p>
+                    {evento.periodoSubmissao && (
+                      <p className="text-sm text-fatec-muted">
+                        Inscrições: {evento.periodoSubmissao}
+                      </p>
+                    )}
+                    {evento.periodoAvaliacao && (
+                      <p className="text-sm text-fatec-muted">
+                        Avaliação: {evento.periodoAvaliacao}
+                      </p>
+                    )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fatec-muted">
                       <span className="inline-flex items-center gap-1.5">
                         <FileStack className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        {evento.trabalhos} trabalhos
+                        {trabalhosPorEvento.get(evento.id) ?? 0} trabalhos
                       </span>
                       <span className="inline-flex items-center gap-1.5">
-                        <Users className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        {evento.avaliadoresInscritos} avaliadores inscritos
+                        <Tag className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        {(evento.areasTematicas ?? []).length} áreas temáticas
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-none items-center gap-2">
+                <div className="flex flex-none flex-wrap items-center gap-2">
                   {!evento.destaque && (
                     <button
                       type="button"
@@ -154,22 +227,35 @@ export default function EventosPage() {
                   )}
                   <button
                     type="button"
+                    onClick={() =>
+                      alternarAceitaExternos(evento.id, !!evento.aceitaExternos)
+                    }
                     className="rounded-lg border border-fatec-line px-3.5 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                   >
-                    Editar
+                    {evento.aceitaExternos
+                      ? "Não aceitar externos"
+                      : "Aceitar externos"}
                   </button>
+                  <Link
+                    href="/areas-tematicas"
+                    className="rounded-lg border border-fatec-line px-3.5 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    Áreas temáticas
+                  </Link>
                 </div>
               </div>
             ))}
+
+            {eventos.length === 0 && (
+              <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+                Nenhum evento cadastrado ainda.
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      <Modal
-        open={modalCriar}
-        onClose={() => setModalCriar(false)}
-        title="Criar evento"
-      >
+      <Modal open={modalCriar} onClose={fecharCriar} title="Criar evento">
         <form className="flex flex-col gap-5">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
@@ -177,18 +263,77 @@ export default function EventosPage() {
             </span>
             <input
               type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
               placeholder="Ex.: MAC 2027"
               className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Descrição do evento
+            </span>
+            <textarea
+              rows={3}
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              placeholder="Do que se trata o evento, pra quem é, etc."
+              className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Banner do evento
+            </span>
+            {bannerPreviewUrl ? (
+              <div className="relative overflow-hidden rounded-xl border border-fatec-line">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={bannerPreviewUrl}
+                  alt=""
+                  className="h-32 w-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBanner(null);
+                    setBannerPreviewUrl(null);
+                  }}
+                  className="absolute right-2 top-2 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-black/80"
+                >
+                  Remover
+                </button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-fatec-line bg-fatec-navy-50 px-4 py-4 transition-colors hover:border-fatec-sky-600">
+                <ImageIcon
+                  className="h-5 w-5 flex-none text-fatec-muted"
+                  strokeWidth={1.75}
+                />
+                <span className="text-sm text-fatec-muted">
+                  Escolher imagem (usada no banner de destaque da home)
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={selecionarBanner}
+                  className="hidden"
+                />
+              </label>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
                 Início das inscrições
               </span>
               <input
                 type="date"
+                value={inicioInscricoes}
+                onChange={(e) => setInicioInscricoes(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
@@ -198,32 +343,37 @@ export default function EventosPage() {
               </span>
               <input
                 type="date"
+                value={fimInscricoes}
+                onChange={(e) => setFimInscricoes(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
           </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-fatec-navy-900">
-              Fim do período de avaliação
-            </span>
-            <input
-              type="date"
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-fatec-navy-900">
-              Prazo padrão de correção (dias)
-            </span>
-            <input
-              type="number"
-              min={1}
-              placeholder="Ex.: 7"
-              className="w-32 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-            />
-          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Início das avaliações
+              </span>
+              <input
+                type="date"
+                value={inicioAvaliacao}
+                onChange={(e) => setInicioAvaliacao(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Fim das avaliações
+              </span>
+              <input
+                type="date"
+                value={fimAvaliacao}
+                onChange={(e) => setFimAvaliacao(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+          </div>
 
           <label className="flex items-center gap-2.5">
             <input
@@ -237,30 +387,25 @@ export default function EventosPage() {
             </span>
           </label>
 
-          {destaqueNoForm && (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-fatec-navy-900">
-                Imagem de destaque
-              </span>
-              <div className="flex items-center gap-3 rounded-xl border border-dashed border-fatec-line bg-fatec-navy-50 px-4 py-4">
-                <ImageIcon
-                  className="h-5 w-5 flex-none text-fatec-muted"
-                  strokeWidth={1.75}
-                />
-                <span className="text-sm text-fatec-muted">
-                  Clique para enviar uma imagem (JPG ou PNG)
-                </span>
-                <input type="file" accept="image/*" className="hidden" />
-              </div>
-            </label>
-          )}
+          <label className="flex items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={aceitaExternosNoForm}
+              onChange={(e) => setAceitaExternosNoForm(e.target.checked)}
+              className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+            />
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Aceitar inscrição de participantes externos (não alunos da Fatec)
+            </span>
+          </label>
 
           <button
             type="button"
-            onClick={() => setModalCriar(false)}
-            className="mt-1 w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+            onClick={criarEvento}
+            disabled={!nome.trim() || criando}
+            className="mt-1 w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
           >
-            Criar evento
+            {criando ? "Criando..." : "Criar evento"}
           </button>
         </form>
       </Modal>

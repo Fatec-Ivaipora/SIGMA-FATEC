@@ -1,0 +1,17 @@
+export const CURSOS_FATEC = [
+  "Agronomia",
+  "Agronegócio",
+  "Arquitetura e Urbanismo",
+  "Biomedicina",
+  "Ciências Contábeis",
+  "Direito",
+  "Engenharia Civil",
+  "Enfermagem",
+  "Gestão Financeira",
+  "Gestão Comercial",
+  "Gestão de Recursos Humanos",
+  "Medicina Veterinária",
+  "Pedagogia",
+  "Psicologia",
+  "Fisioterapia",
+] as const;

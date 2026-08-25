@@ -14,7 +14,7 @@ export function LogoLockup({
       <span
         className={`font-bold tracking-[-0.01em] text-white ${wordmarkClassName}`}
       >
-        FatecLab
+        SIGMA Fatec
       </span>
     </div>
   );

@@ -1,4 +1,4 @@
-export type Papel = "aluno" | "avaliador" | "organizacao" | "admin";
+export type Papel = "aluno" | "avaliador" | "organizacao" | "admin" | "orientador";
 
 const PAPEL_META: Record<Papel, { label: string; text: string; bg: string }> = {
   aluno: {
@@ -10,6 +10,11 @@ const PAPEL_META: Record<Papel, { label: string; text: string; bg: string }> = {
     label: "Avaliador",
     text: "text-fatec-navy-800",
     bg: "bg-fatec-navy-100",
+  },
+  orientador: {
+    label: "Orientador",
+    text: "text-purple-700",
+    bg: "bg-purple-50",
   },
   organizacao: {
     label: "Organização",

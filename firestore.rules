@@ -1,0 +1,165 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function meuPapel() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.papel;
+    }
+
+    function souAdmin() {
+      return logado() && meuPapel() == "admin";
+    }
+
+    // A linguagem de regras não tem .map()/.filter() — por isso usuarios/{uid}
+    // guarda também eventosPermitidos: [eventoId, ...] (lista simples de string),
+    // mantido em sincronia pelo app sempre que atribuicoesEventos é editado.
+    function meusEventos() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        .data.eventosPermitidos;
+    }
+
+    // Só relevante para papel "aluno". Contas antigas não têm o campo
+    // vinculoFatec — tratadas como aluno da Fatec (comportamento anterior a
+    // essa feature), por isso o default é true quando o campo está ausente.
+    function meuVinculoFatec() {
+      let dados = get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return !("vinculoFatec" in dados) || dados.vinculoFatec == true;
+    }
+
+    function eventoAceitaExternos(eventoId) {
+      return get(/databases/$(database)/documents/eventos/$(eventoId)).data.aceitaExternos == true;
+    }
+
+    // usuarios/{uid} — RF-26/RF-27/RF-28: qualquer um lê o próprio perfil (para
+    // saber seu papel no login); organizacao/admin listam todos. Escrita é do
+    // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
+    // cadastrado (RF-01: autocadastro), sempre com papel "aluno" fixo.
+    match /usuarios/{uid} {
+      // Aluno também pode ler outras contas de aluno (nunca avaliador/organizacao/
+      // admin) — usado na busca de colegas ao submeter um trabalho (RF-08).
+      // Orientador também lê contas de aluno — busca pra convidar pra turma
+      // do Projeto Integrador (RF-53, 2026-08-25).
+      allow read: if logado() && (request.auth.uid == uid || meuPapel() in ["organizacao", "admin"] || (meuPapel() in ["aluno", "orientador"] && resource.data.papel == "aluno"));
+      allow create: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.papel == "aluno");
+      // Autoatendimento (Configurações, 2026-08-25): qualquer usuário logado
+      // pode alterar o PRÓPRIO nome — nenhum outro campo (papel, atribuicoesEventos,
+      // eventosPermitidos, etc.), pra não abrir brecha de escalonamento de privilégio.
+      allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome"]));
+      allow delete: if souAdmin();
+    }
+
+    // eventos/{eventoId} — RN-15: admin vê tudo; organizacao só os seus eventos
+    // (RF-48); avaliador/aluno só leem (nunca escrevem). RF-29/RN-11: eventos
+    // com destaque=true são públicos (home sem login mostra o banner).
+    // Criar evento é só do Admin (RF-48 diz que é o Admin quem atribui eventos
+    // a uma organização — sem isso, uma organizacao criando um evento novo
+    // não teria como se auto-atribuir a ele, já que usuarios/{uid} só admin escreve).
+    match /eventos/{eventoId} {
+      // Aluno não é escopado por RN-15 (só organizacao/avaliador são) — precisa
+      // ver todos os eventos pra poder se inscrever em qualquer um deles.
+      allow read: if resource.data.destaque == true || (logado() && (souAdmin() || meuPapel() == "aluno" || eventoId in meusEventos()));
+      allow create: if souAdmin();
+      allow update: if souAdmin() || (logado() && meuPapel() == "organizacao" && eventoId in meusEventos());
+      allow delete: if souAdmin();
+    }
+
+    // trabalhos/{trabalhoId} — RN-15: escopado por evento para organizacao;
+    // avaliador só lê/escreve os que têm avaliadorUid == seu uid (RF-14);
+    // aluno lê os que ele mesmo submeteu OU em que foi adicionado como colega
+    // (participantesUids, RF-08) — mas só escreve/reenvia os que ele mesmo
+    // submeteu (ver allow update).
+    match /trabalhos/{trabalhoId} {
+      allow read: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        // Orientador pode ser alocado como avaliador de um evento (2026-08-25,
+        // reaproveita o mesmo avaliadorUid — ver RF-46).
+        (meuPapel() in ["avaliador", "orientador"] && resource.data.avaliadorUid == request.auth.uid) ||
+        (meuPapel() == "aluno" && (
+          resource.data.alunoUid == request.auth.uid ||
+          request.auth.uid in resource.data.get("participantesUids", [])
+        ))
+      );
+      // RN-17: participante externo (vinculoFatec == false) só pode submeter
+      // em eventos com aceitaExternos == true; aluno da Fatec não tem essa
+      // restrição — validado no servidor, não só escondendo o evento na UI.
+      allow create: if logado() && meuPapel() == "aluno" && request.resource.data.alunoUid == request.auth.uid &&
+        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId));
+      allow update: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        (meuPapel() in ["avaliador", "orientador"] && resource.data.avaliadorUid == request.auth.uid) ||
+        (meuPapel() == "aluno" && resource.data.alunoUid == request.auth.uid) ||
+        // Colega convidado (RF-52) responde o próprio convite — só pode
+        // mexer em convitesPendentes/participantesUids/participantesNomes,
+        // nunca em status/nota/resumo/etc. Exige estar em convitesPendentes
+        // no estado ANTES da escrita, pra não reabrir um convite já respondido.
+        (meuPapel() == "aluno" &&
+          request.auth.uid in resource.data.get("convitesPendentes", []) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["convitesPendentes", "participantesUids", "participantesNomes"]))
+      );
+      allow delete: if souAdmin();
+    }
+
+    // turmas/{turmaId} — Projeto Integrador (2026-08-25, RF-53/RF-54): um
+    // orientador cria e administra suas turmas; aluno lê a própria turma
+    // (aceita ou convite ainda pendente, mesmo padrão de convitesPendentes
+    // de trabalhos.participantesUids).
+    match /turmas/{turmaId} {
+      allow read: if logado() && (
+        souAdmin() ||
+        resource.data.orientadorUid == request.auth.uid ||
+        request.auth.uid in resource.data.get("alunosUids", [])
+      );
+      allow create: if logado() && meuPapel() == "orientador" &&
+        request.resource.data.orientadorUid == request.auth.uid;
+      allow update: if logado() && (
+        souAdmin() ||
+        resource.data.orientadorUid == request.auth.uid ||
+        // Aluno convidado responde o próprio convite — só mexe nessas 4
+        // listas, nunca em nome/disciplina/mensagens/orientadorUid etc.
+        (request.auth.uid in resource.data.get("convitesPendentesUids", []) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["convitesPendentesUids", "convitesPendentesNomes", "alunosUids", "alunosNomes"]))
+      );
+      allow delete: if souAdmin();
+    }
+
+    // turmaTrabalhos/{id} — trabalho de um aluno dentro de uma turma (Projeto
+    // Integrador). Pipeline próprio (aguardando_avaliacao → revisao →
+    // aprovado), separado do trabalhos/{trabalhoId} do evento — só vira uma
+    // submissão de evento de verdade quando o aluno decide inscrever o
+    // trabalho aprovado (fora desta coleção, ver src/app/aluno/projeto-integrador).
+    match /turmaTrabalhos/{turmaTrabalhoId} {
+      allow read: if logado() && (
+        souAdmin() ||
+        resource.data.alunoUid == request.auth.uid ||
+        (meuPapel() == "orientador" &&
+          get(/databases/$(database)/documents/turmas/$(resource.data.turmaId)).data.orientadorUid == request.auth.uid)
+      );
+      // Só quem já está em alunosUids da turma pode criar um trabalho nela.
+      allow create: if logado() && meuPapel() == "aluno" &&
+        request.resource.data.alunoUid == request.auth.uid &&
+        request.auth.uid in get(/databases/$(database)/documents/turmas/$(request.resource.data.turmaId)).data.alunosUids;
+      allow update: if logado() && (
+        souAdmin() ||
+        resource.data.alunoUid == request.auth.uid ||
+        (meuPapel() == "orientador" &&
+          get(/databases/$(database)/documents/turmas/$(resource.data.turmaId)).data.orientadorUid == request.auth.uid)
+      );
+      allow delete: if souAdmin();
+    }
+
+    // mail/{autoId} — só a extensão Trigger Email (via Admin SDK) escreve;
+    // ninguém no client lê ou escreve diretamente.
+    match /mail/{autoId} {
+      allow read, write: if false;
+    }
+  }
+}

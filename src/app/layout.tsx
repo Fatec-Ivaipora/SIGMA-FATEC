@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
+import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -9,7 +10,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "FatecLab · Fatec Ivaiporã",
+  title: "SIGMA Fatec · Fatec Ivaiporã",
   description:
     "Submissão, avaliação e certificação de trabalhos acadêmicos da Fatec Ivaiporã.",
 };
@@ -21,7 +22,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${poppins.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-[var(--background)]">
+      <body
+        className="min-h-full flex flex-col bg-[var(--background)]"
+        suppressHydrationWarning
+      >
         {/*
           THESIS: Institutional infrastructure, not a generic SaaS admin template —
           Fatec's own navy/orange identity at full strength, never diluted to pastel.
@@ -40,7 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           FINISH: unreviewed and undocumented is unfinished; this build ends with
           the finish review, the verdict, and DESIGN.md
         */}
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

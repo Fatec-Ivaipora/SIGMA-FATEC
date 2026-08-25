@@ -1,8 +1,8 @@
 export type TrabalhoStatus =
-  | "aguardando_orientador"
+  | "submissao"
   | "aguardando_avaliacao"
+  | "revisao"
   | "avaliado"
-  | "aceito_com_correcao"
   | "aceito"
   | "nao_aceito";
 
@@ -10,8 +10,8 @@ const STATUS_META: Record<
   TrabalhoStatus,
   { label: string; dot: string; text: string; bg: string }
 > = {
-  aguardando_orientador: {
-    label: "Aguardando orientador",
+  submissao: {
+    label: "Em submissão",
     dot: "bg-fatec-sky-600",
     text: "text-fatec-sky-600",
     bg: "bg-fatec-sky-100",
@@ -22,17 +22,17 @@ const STATUS_META: Record<
     text: "text-fatec-navy-800",
     bg: "bg-fatec-navy-100",
   },
+  revisao: {
+    label: "Revisão solicitada",
+    dot: "bg-fatec-orange-500",
+    text: "text-fatec-orange-600",
+    bg: "bg-fatec-orange-100",
+  },
   avaliado: {
     label: "Avaliado",
     dot: "bg-emerald-500",
     text: "text-emerald-700",
     bg: "bg-emerald-50",
-  },
-  aceito_com_correcao: {
-    label: "Correção solicitada",
-    dot: "bg-fatec-orange-500",
-    text: "text-fatec-orange-600",
-    bg: "bg-fatec-orange-100",
   },
   aceito: {
     label: "Aceito",

@@ -5,7 +5,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   UserPlus,
   FileText,
-  UserCheck,
   ClipboardCheck,
   Award,
   ChevronLeft,
@@ -25,32 +24,25 @@ const SLIDES: Slide[] = [
     step: "1",
     title: "Cadastre-se",
     description:
-      "Aluno, orientador ou avaliador criam sua conta em poucos minutos, com confirmação por e-mail.",
+      "Aluno cria conta em poucos minutos, com confirmação por e-mail.",
   },
   {
     icon: FileText,
     step: "2",
     title: "Submeta seu trabalho",
     description:
-      "Informe título, resumo, orientador e participantes, vinculado ao evento — MAC, MOPI ou outro cadastrado.",
-  },
-  {
-    icon: UserCheck,
-    step: "3",
-    title: "Aprovação do orientador",
-    description:
-      "Seu orientador valida o trabalho antes de ele seguir para avaliação do professor avaliador.",
+      "Informe título, palavras-chave, resumo, o nome do seu orientador e participantes, vinculado ao evento — MAC, MOPI ou outro cadastrado.",
   },
   {
     icon: ClipboardCheck,
-    step: "4",
+    step: "3",
     title: "Avaliação",
     description:
-      "Um avaliador designado decide: aceito, aceito com correção ou não aceito — com prazo definido pelo evento.",
+      "A organização seleciona os trabalhos e os envia para um avaliador, que atribui uma nota de 1 a 5.",
   },
   {
     icon: Award,
-    step: "5",
+    step: "4",
     title: "Aceite e certificação",
     description:
       "A organização confirma o aceite final e emite a carta de aceite e os certificados em PDF.",
