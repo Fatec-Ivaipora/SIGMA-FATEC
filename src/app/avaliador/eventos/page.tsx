@@ -2,12 +2,12 @@
 
 import { CalendarDays, Tag } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-import { NAV_AVALIADOR } from "@/lib/navAvaliador";
+import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 
 export default function AvaliadorEventosPage() {
-  const { perfil, carregando } = useRequireAuth(["avaliador"]);
+  const { perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
   const { eventos } = useEventos(perfil);
 
   if (carregando || !perfil) return null;
@@ -17,7 +17,7 @@ export default function AvaliadorEventosPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_AVALIADOR}
+        navItems={navParaPerfil(perfil)}
         activeHref="/avaliador/eventos"
         userName={perfil.nome}
         userRoleLabel="Avaliador"

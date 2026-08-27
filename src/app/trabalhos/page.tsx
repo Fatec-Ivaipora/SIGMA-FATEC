@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, ChevronDown, Send, Minus, Plus } from "lucide-react";
-import { serverTimestamp, writeBatch, doc } from "firebase/firestore";
+import { Search, ChevronDown, Send, Minus, Plus, Check, X } from "lucide-react";
+import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
@@ -11,22 +11,40 @@ import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos, type TrabalhoStatus } from "@/lib/data/trabalhos";
-import { useUsuarios } from "@/lib/data/usuarios";
+import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
 
-type Etapa = "submissao" | "avaliacao" | "revisao" | "resultado";
+type Etapa =
+  | "submissao"
+  | "avaliacao"
+  | "revisao"
+  | "resultado"
+  | "apresentacao"
+  | "resultado_final";
 
 const ETAPAS: { key: Etapa; label: string }[] = [
   { key: "submissao", label: "Submissão" },
   { key: "avaliacao", label: "Avaliação" },
   { key: "revisao", label: "Revisão" },
   { key: "resultado", label: "Resultado" },
+  { key: "apresentacao", label: "Apresentação" },
+  { key: "resultado_final", label: "Resultado Final" },
 ];
 
 const STATUS_POR_ETAPA: Record<Etapa, TrabalhoStatus[]> = {
   submissao: ["submissao"],
   avaliacao: ["aguardando_avaliacao"],
   revisao: ["revisao"],
-  resultado: ["avaliado", "aceito", "nao_aceito"],
+  resultado: ["avaliado"],
+  apresentacao: ["aguardando_apresentacao"],
+  resultado_final: ["apresentado", "aceito", "nao_aceito"],
+};
+
+// Etapas em que a organização seleciona trabalhos e distribui entre pessoas
+// (avaliadores na Submissão, moderadores no Resultado) — mesma mecânica nos
+// dois casos, só troca o papel-alvo (2026-08-26).
+const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> = {
+  submissao: "avaliador",
+  resultado: "moderador",
 };
 
 function formatarData(valor: unknown): string {
@@ -40,17 +58,26 @@ export default function TrabalhosAdminPage() {
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { usuarios } = useUsuarios();
 
-  const [etapa, setEtapa] = useState<Etapa>("submissao");
+  const [etapa, setEtapaBruta] = useState<Etapa>("submissao");
   const [busca, setBusca] = useState("");
   const [eventoId, setEventoId] = useState("todos");
   const [areaFiltro, setAreaFiltro] = useState("Todas as áreas");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [modalEnviar, setModalEnviar] = useState(false);
+  const [papelAlvoEnvio, setPapelAlvoEnvio] = useState<"avaliador" | "moderador">("avaliador");
   const [avaliadorEscolhido, setAvaliadorEscolhido] = useState("");
   const [distribuicao, setDistribuicao] = useState<
     { uid: string; nome: string; quantidade: number }[]
   >([]);
   const [modoManual, setModoManual] = useState(false);
+
+  // Seleção não sobrevive troca de etapa (2026-08-25 -> agora tem 2 etapas
+  // selecionáveis, Submissão e Resultado, então isso passa a importar de
+  // verdade).
+  function setEtapa(nova: Etapa) {
+    setEtapaBruta(nova);
+    setSelecionados(new Set());
+  }
 
   const todosLabel =
     perfil?.papel === "admin" ? "Todos os eventos" : "Todos os meus eventos";
@@ -85,6 +112,16 @@ export default function TrabalhosAdminPage() {
     [usuarios],
   );
 
+  // Moderadores (2026-08-26) — papel primário "moderador" ou combinado via
+  // papeisAvaliacao (ex.: orientador que também modera apresentações).
+  const moderadoresDisponiveis = useMemo(
+    () => usuarios.filter((u) => u.papel === "moderador" || u.papeisAvaliacao?.includes("moderador")),
+    [usuarios],
+  );
+
+  const pessoasDisponiveis: UsuarioRegistro[] =
+    papelAlvoEnvio === "avaliador" ? avaliadoresDisponiveis : moderadoresDisponiveis;
+
   // Trabalhos selecionados na etapa Submissão, na mesma ordem da tabela —
   // usada tanto pra descobrir se compartilham evento/área quanto pra fatiar
   // a divisão entre avaliadores em ordem estável.
@@ -109,29 +146,30 @@ export default function TrabalhosAdminPage() {
       : null;
   }, [trabalhosSelecionadosObjs]);
 
-  // Avaliadores designados pra essa área nesse evento (ver areasTematicas em
-  // AtribuicaoEvento) — só existe divisão automática quando isso não é vazio.
-  const avaliadoresDaArea = useMemo(() => {
+  // Pessoas (avaliador ou moderador, conforme papelAlvoEnvio) designadas pra
+  // essa área nesse evento (ver areasTematicas em AtribuicaoEvento) — só
+  // existe divisão automática quando isso não é vazio.
+  const pessoasDaArea = useMemo(() => {
     if (!eventoComumSelecionado || !areaComumSelecionada) return [];
-    return avaliadoresDisponiveis.filter((a) =>
+    return pessoasDisponiveis.filter((a) =>
       (a.atribuicoesEventos ?? []).some(
         (at) =>
           at.eventoId === eventoComumSelecionado &&
           (at.areasTematicas ?? []).includes(areaComumSelecionada),
       ),
     );
-  }, [avaliadoresDisponiveis, eventoComumSelecionado, areaComumSelecionada]);
+  }, [pessoasDisponiveis, eventoComumSelecionado, areaComumSelecionada]);
 
-  // Fallback do modo manual: avaliadores do evento em comum, se algum;
-  // senão, todos os avaliadores cadastrados (seleção mistura eventos, ou
+  // Fallback do modo manual: pessoas do evento em comum, se alguma; senão,
+  // todo mundo cadastrado com esse papel (seleção mistura eventos, ou
   // ninguém foi designado ainda pro evento).
-  const avaliadoresParaManual = useMemo(() => {
-    if (!eventoComumSelecionado) return avaliadoresDisponiveis;
-    const doEvento = avaliadoresDisponiveis.filter((a) =>
+  const pessoasParaManual = useMemo(() => {
+    if (!eventoComumSelecionado) return pessoasDisponiveis;
+    const doEvento = pessoasDisponiveis.filter((a) =>
       (a.atribuicoesEventos ?? []).some((at) => at.eventoId === eventoComumSelecionado),
     );
-    return doEvento.length > 0 ? doEvento : avaliadoresDisponiveis;
-  }, [avaliadoresDisponiveis, eventoComumSelecionado]);
+    return doEvento.length > 0 ? doEvento : pessoasDisponiveis;
+  }, [pessoasDisponiveis, eventoComumSelecionado]);
 
   function distribuicaoPadrao(
     lista: { uid: string; nome: string }[],
@@ -142,19 +180,43 @@ export default function TrabalhosAdminPage() {
     return lista.map((a, i) => ({ ...a, quantidade: base + (i < resto ? 1 : 0) }));
   }
 
-  function abrirModalEnviar() {
-    setModoManual(avaliadoresDaArea.length === 0);
-    if (avaliadoresDaArea.length > 0) {
-      setDistribuicao(
-        distribuicaoPadrao(
-          avaliadoresDaArea.map((a) => ({ uid: a.uid, nome: a.nome })),
-          selecionados.size,
-        ),
-      );
-    } else {
-      setDistribuicao([]);
-    }
-    setAvaliadorEscolhido(avaliadoresParaManual[0]?.uid ?? "");
+  function abrirModalEnviar(papel: "avaliador" | "moderador") {
+    setPapelAlvoEnvio(papel);
+    // Recalcula na hora em vez de reaproveitar pessoasDaArea/pessoasParaManual
+    // memoizados: setPapelAlvoEnvio só reflete no próximo render, então esses
+    // memos ainda estariam com o alvo antigo neste exato ponto do código. A
+    // modal em si (JSX abaixo) já usa os memoizados normalmente, porque aí
+    // o estado já assentou.
+    const disponiveis = papel === "avaliador" ? avaliadoresDisponiveis : moderadoresDisponiveis;
+    const daArea = !eventoComumSelecionado || !areaComumSelecionada
+      ? []
+      : disponiveis.filter((a) =>
+          (a.atribuicoesEventos ?? []).some(
+            (at) =>
+              at.eventoId === eventoComumSelecionado &&
+              (at.areasTematicas ?? []).includes(areaComumSelecionada),
+          ),
+        );
+    const paraManual =
+      !eventoComumSelecionado
+        ? disponiveis
+        : (() => {
+            const doEvento = disponiveis.filter((a) =>
+              (a.atribuicoesEventos ?? []).some((at) => at.eventoId === eventoComumSelecionado),
+            );
+            return doEvento.length > 0 ? doEvento : disponiveis;
+          })();
+
+    setModoManual(daArea.length === 0);
+    setDistribuicao(
+      daArea.length > 0
+        ? distribuicaoPadrao(
+            daArea.map((a) => ({ uid: a.uid, nome: a.nome })),
+            selecionados.size,
+          )
+        : [],
+    );
+    setAvaliadorEscolhido(paraManual[0]?.uid ?? "");
     setModalEnviar(true);
   }
 
@@ -182,16 +244,21 @@ export default function TrabalhosAdminPage() {
     });
   }
 
+  // Campos e status gravados mudam conforme o alvo do envio (2026-08-26).
+  function camposEnvio(uid: string, nome: string) {
+    return papelAlvoEnvio === "avaliador"
+      ? { status: "aguardando_avaliacao" as const, avaliadorUid: uid, avaliadorNome: nome }
+      : { status: "aguardando_apresentacao" as const, moderadorUid: uid, moderadorNome: nome };
+  }
+
   async function confirmarEnvio() {
-    const avaliador = avaliadoresParaManual.find((a) => a.uid === avaliadorEscolhido);
-    if (!avaliador) return;
+    const pessoa = pessoasParaManual.find((a) => a.uid === avaliadorEscolhido);
+    if (!pessoa) return;
 
     const batch = writeBatch(db);
     for (const id of selecionados) {
       batch.update(doc(db, "trabalhos", id), {
-        status: "aguardando_avaliacao",
-        avaliadorUid: avaliador.uid,
-        avaliadorNome: avaliador.nome,
+        ...camposEnvio(pessoa.uid, pessoa.nome),
         atualizadoEm: serverTimestamp(),
       });
     }
@@ -211,9 +278,7 @@ export default function TrabalhosAdminPage() {
       cursor += linha.quantidade;
       for (const id of fatia) {
         batch.update(doc(db, "trabalhos", id), {
-          status: "aguardando_avaliacao",
-          avaliadorUid: linha.uid,
-          avaliadorNome: linha.nome,
+          ...camposEnvio(linha.uid, linha.nome),
           atualizadoEm: serverTimestamp(),
         });
       }
@@ -221,6 +286,15 @@ export default function TrabalhosAdminPage() {
     await batch.commit();
     setSelecionados(new Set());
     setModalEnviar(false);
+  }
+
+  /** Etapa Resultado Final (2026-08-26) — organização confirma aceite,
+   * fecha a pendência 8.2 (RF-19). */
+  async function decidirResultado(id: string, aceitar: boolean) {
+    await updateDoc(doc(db, "trabalhos", id), {
+      status: aceitar ? "aceito" : "nao_aceito",
+      atualizadoEm: serverTimestamp(),
+    });
   }
 
   if (carregando || !perfil) return null;
@@ -242,7 +316,7 @@ export default function TrabalhosAdminPage() {
               Trabalhos
             </h1>
             <p className="text-sm text-fatec-muted">
-              Da submissão ao resultado, em quatro etapas.
+              Da submissão ao resultado final, em seis etapas.
             </p>
           </div>
 
@@ -341,15 +415,17 @@ export default function TrabalhosAdminPage() {
               </div>
             </div>
 
-            {etapa === "submissao" && (
+            {ETAPA_PARA_PAPEL_ALVO[etapa] && (
               <button
                 type="button"
                 disabled={selecionados.size === 0}
-                onClick={abrirModalEnviar}
+                onClick={() => abrirModalEnviar(ETAPA_PARA_PAPEL_ALVO[etapa]!)}
                 className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
               >
                 <Send className="h-4 w-4" strokeWidth={1.75} />
-                Enviar para avaliação
+                {ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
+                  ? "Enviar para avaliação"
+                  : "Enviar para apresentação"}
                 {selecionados.size > 0 && ` (${selecionados.size})`}
               </button>
             )}
@@ -360,7 +436,7 @@ export default function TrabalhosAdminPage() {
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-fatec-line text-xs uppercase tracking-[-0.01em] text-fatec-muted">
-                    {etapa === "submissao" && (
+                    {!!ETAPA_PARA_PAPEL_ALVO[etapa] && (
                       <th className="w-10 px-6 py-3">
                         <span className="sr-only">Selecionar</span>
                       </th>
@@ -371,11 +447,22 @@ export default function TrabalhosAdminPage() {
                     {etapa !== "submissao" && (
                       <th className="px-6 py-3 font-semibold">Avaliador</th>
                     )}
+                    {(etapa === "apresentacao" || etapa === "resultado_final") && (
+                      <th className="px-6 py-3 font-semibold">Moderador</th>
+                    )}
                     <th className="px-6 py-3 font-semibold">Status</th>
                     {etapa === "resultado" && (
-                      <th className="px-6 py-3 font-semibold">Nota (/25)</th>
+                      <th className="px-6 py-3 font-semibold">Nota avaliador (/25)</th>
+                    )}
+                    {etapa === "resultado_final" && (
+                      <th className="px-6 py-3 font-semibold">Nota final (/50)</th>
                     )}
                     <th className="px-6 py-3 font-semibold">Atualizado</th>
+                    {etapa === "resultado_final" && (
+                      <th className="px-6 py-3 font-semibold">
+                        <span className="sr-only">Ações</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -384,7 +471,7 @@ export default function TrabalhosAdminPage() {
                       key={t.id}
                       className="border-b border-fatec-line last:border-0 hover:bg-fatec-navy-50/60"
                     >
-                      {etapa === "submissao" && (
+                      {!!ETAPA_PARA_PAPEL_ALVO[etapa] && (
                         <td className="px-6 py-4 align-top">
                           <input
                             type="checkbox"
@@ -413,6 +500,11 @@ export default function TrabalhosAdminPage() {
                           {t.avaliadorNome ?? "—"}
                         </td>
                       )}
+                      {(etapa === "apresentacao" || etapa === "resultado_final") && (
+                        <td className="px-6 py-4 align-top text-fatec-ink">
+                          {t.moderadorNome ?? "—"}
+                        </td>
+                      )}
                       <td className="px-6 py-4 align-top">
                         <StatusBadge status={t.status} />
                       </td>
@@ -421,9 +513,40 @@ export default function TrabalhosAdminPage() {
                           {t.notaAvaliador ?? "—"}
                         </td>
                       )}
+                      {etapa === "resultado_final" && (
+                        <td className="px-6 py-4 align-top font-semibold text-fatec-navy-900">
+                          {typeof t.notaAvaliador === "number" && typeof t.notaModerador === "number"
+                            ? t.notaAvaliador + t.notaModerador
+                            : "—"}
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-6 py-4 align-top text-fatec-muted">
                         {formatarData(t.atualizadoEm)}
                       </td>
+                      {etapa === "resultado_final" && (
+                        <td className="px-6 py-4 align-top">
+                          {t.status === "apresentado" && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                aria-label="Aceitar"
+                                onClick={() => decidirResultado(t.id, true)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-emerald-50"
+                              >
+                                <Check className="h-4 w-4" strokeWidth={2} />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Recusar"
+                                onClick={() => decidirResultado(t.id, false)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition-colors hover:bg-rose-50"
+                              >
+                                <X className="h-4 w-4" strokeWidth={2} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
 
@@ -447,18 +570,20 @@ export default function TrabalhosAdminPage() {
       <Modal
         open={modalEnviar}
         onClose={() => setModalEnviar(false)}
-        title="Enviar para avaliação"
+        title={papelAlvoEnvio === "avaliador" ? "Enviar para avaliação" : "Enviar para apresentação"}
       >
         <p className="text-sm text-fatec-ink">
           Enviar <span className="font-semibold">{selecionados.size}</span>{" "}
-          trabalho(s) selecionado(s) para avaliação.
+          trabalho(s) selecionado(s) para{" "}
+          {papelAlvoEnvio === "avaliador" ? "avaliação" : "apresentação"}.
         </p>
 
-        {!modoManual && avaliadoresDaArea.length > 0 ? (
+        {!modoManual && pessoasDaArea.length > 0 ? (
           <div className="mt-5 flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Dividir entre os avaliadores de {areaComumSelecionada}
+                Dividir entre os {papelAlvoEnvio === "avaliador" ? "avaliadores" : "moderadores"} de{" "}
+                {areaComumSelecionada}
               </span>
               <button
                 type="button"
@@ -518,16 +643,16 @@ export default function TrabalhosAdminPage() {
           </div>
         ) : (
           <>
-            {areaComumSelecionada && avaliadoresDaArea.length === 0 && (
+            {areaComumSelecionada && pessoasDaArea.length === 0 && (
               <p className="mt-4 text-sm text-fatec-muted">
-                Nenhum avaliador cadastrado para {areaComumSelecionada} neste
-                evento — escolha manualmente.
+                Nenhum {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"} cadastrado
+                para {areaComumSelecionada} neste evento — escolha manualmente.
               </p>
             )}
 
             <label className="mt-4 flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Selecione o avaliador
+                Selecione o {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"}
               </span>
               <div className="relative">
                 <select
@@ -535,10 +660,12 @@ export default function TrabalhosAdminPage() {
                   onChange={(e) => setAvaliadorEscolhido(e.target.value)}
                   className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
                 >
-                  {avaliadoresParaManual.length === 0 && (
-                    <option value="">Nenhum avaliador cadastrado</option>
+                  {pessoasParaManual.length === 0 && (
+                    <option value="">
+                      Nenhum {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"} cadastrado
+                    </option>
                   )}
-                  {avaliadoresParaManual.map((a) => (
+                  {pessoasParaManual.map((a) => (
                     <option key={a.uid} value={a.uid}>
                       {a.nome}
                     </option>
@@ -551,7 +678,7 @@ export default function TrabalhosAdminPage() {
               </div>
             </label>
 
-            {avaliadoresDaArea.length > 0 && (
+            {pessoasDaArea.length > 0 && (
               <button
                 type="button"
                 onClick={() => setModoManual(false)}
@@ -574,12 +701,12 @@ export default function TrabalhosAdminPage() {
           <button
             type="button"
             onClick={
-              !modoManual && avaliadoresDaArea.length > 0
+              !modoManual && pessoasDaArea.length > 0
                 ? confirmarEnvioDistribuido
                 : confirmarEnvio
             }
             disabled={
-              !modoManual && avaliadoresDaArea.length > 0
+              !modoManual && pessoasDaArea.length > 0
                 ? somaDistribuicao !== selecionados.size
                 : !avaliadorEscolhido
             }

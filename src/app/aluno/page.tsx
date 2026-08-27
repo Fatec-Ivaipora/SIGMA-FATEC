@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   CalendarDays,
@@ -24,6 +25,7 @@ export default function AlunoPainelPage() {
   const { eventos: todosEventos } = useEventosPublicos();
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const [modalAberto, setModalAberto] = useState(false);
+  const [avisoTaxaEventoId, setAvisoTaxaEventoId] = useState<string | null>(null);
 
   // Participante externo (sem vínculo com a Fatec) só pode ver/inscrever nos
   // eventos marcados como aceitaExternos; aluno da Fatec vê todos.
@@ -206,10 +208,27 @@ export default function AlunoPainelPage() {
                       <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
                       Inscrição feita
                     </span>
+                  ) : avisoTaxaEventoId === destaque.id ? (
+                    <div className="mt-2 flex flex-col items-start gap-2 rounded-xl bg-white/10 px-4 py-3">
+                      <p className="text-sm text-white/90">
+                        Este evento tem taxa de inscrição — pague na aba
+                        Eventos pra participar.
+                      </p>
+                      <Link
+                        href="/aluno/eventos"
+                        className="text-sm font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white"
+                      >
+                        Ir para Eventos →
+                      </Link>
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setModalAberto(true)}
+                      onClick={() =>
+                        destaque.valorInscricao
+                          ? setAvisoTaxaEventoId(destaque.id)
+                          : setModalAberto(true)
+                      }
                       className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
                     >
                       Inscrever trabalho
@@ -248,6 +267,8 @@ export default function AlunoPainelPage() {
       {destaque && (
         <SubmeterTrabalhoModal
           open={modalAberto}
+          eventoId={destaque.id}
+          temTaxa={!!destaque.valorInscricao}
           eventoNome={destaque.nome}
           areasDisponiveis={destaque.areasTematicas ?? []}
           meuUid={user?.uid}

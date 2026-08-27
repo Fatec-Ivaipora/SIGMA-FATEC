@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { AtribuicaoEvento, Papel } from "@/lib/auth";
+import type { AtribuicaoEvento, Papel, PapelAvaliacao } from "@/lib/auth";
 
 export type UsuarioRegistro = {
   uid: string;
@@ -15,6 +15,7 @@ export type UsuarioRegistro = {
   vinculoFatec?: boolean;
   ra?: string;
   curso?: string;
+  papeisAvaliacao?: PapelAvaliacao[];
 };
 
 /** Lista todos os usuários cadastrados (RF-26: organizacao/admin podem ver). */
@@ -44,10 +45,17 @@ export type AlunoParaBusca = { uid: string; nome: string; email: string };
  * avaliador/organizacao/admin/orientador. */
 export function useAlunosParaBusca(
   meuUid: string | null | undefined,
-  opcoes?: { apenasFatec?: boolean },
+  opcoes?: {
+    apenasFatec?: boolean;
+    // Taxa de inscrição (2026-08-26): quando definido, só alunos com uid
+    // presente no Set aparecem na busca — usado pra restringir convite de
+    // colega aos que já completaram a Etapa 1 (pagamento) do evento.
+    restringirA?: Set<string>;
+  },
 ) {
   const [alunos, setAlunos] = useState<AlunoParaBusca[]>([]);
   const apenasFatec = opcoes?.apenasFatec ?? false;
+  const restringirA = opcoes?.restringirA;
 
   useEffect(() => {
     const q = query(collection(db, "usuarios"), where("papel", "==", "aluno"));
@@ -56,10 +64,11 @@ export function useAlunosParaBusca(
         snap.docs
           .filter((d) => d.id !== meuUid)
           .filter((d) => !apenasFatec || d.data().vinculoFatec !== false)
+          .filter((d) => !restringirA || restringirA.has(d.id))
           .map((d) => ({ uid: d.id, nome: d.data().nome, email: d.data().email })),
       );
     });
-  }, [meuUid, apenasFatec]);
+  }, [meuUid, apenasFatec, restringirA]);
 
   return alunos;
 }
@@ -71,6 +80,23 @@ export function atualizarAtribuicoesUsuario(
   return updateDoc(doc(db, "usuarios", uid), {
     atribuicoesEventos,
     eventosPermitidos: atribuicoesEventos.map((a) => a.eventoId),
+  });
+}
+
+/** Papéis combináveis (2026-08-26) — admin adiciona/retira avaliador/
+ * orientador/moderador de um usuário. Sempre inclui o papel primário na
+ * lista, pra ficar consistente com o que temPapel()/firestore.rules esperam. */
+export function atualizarPapeisAvaliacaoUsuario(
+  uid: string,
+  papel: Papel,
+  papeisAvaliacao: PapelAvaliacao[],
+) {
+  const conjunto = new Set<PapelAvaliacao>(papeisAvaliacao);
+  if (["avaliador", "orientador", "moderador"].includes(papel)) {
+    conjunto.add(papel as PapelAvaliacao);
+  }
+  return updateDoc(doc(db, "usuarios", uid), {
+    papeisAvaliacao: Array.from(conjunto),
   });
 }
 

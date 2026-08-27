@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, ROTA_POR_PAPEL, type Papel } from "@/lib/auth";
+import { useAuth, ROTA_POR_PAPEL, temPapel, type Papel } from "@/lib/auth";
 
 export function useRequireAuth(papeisPermitidos?: Papel[]) {
   const { user, perfil, carregando } = useAuth();
@@ -18,7 +18,7 @@ export function useRequireAuth(papeisPermitidos?: Papel[]) {
 
     if (!perfil) return;
 
-    if (papeisPermitidos && !papeisPermitidos.includes(perfil.papel)) {
+    if (papeisPermitidos && !papeisPermitidos.some((p) => temPapel(perfil, p))) {
       router.replace(ROTA_POR_PAPEL[perfil.papel]);
     }
   }, [user, perfil, carregando, papeisPermitidos, router]);

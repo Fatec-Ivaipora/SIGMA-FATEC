@@ -21,8 +21,10 @@ export function VLibrasWidget() {
         src="https://vlibras.gov.br/app/vlibras-plugin.js"
         strategy="afterInteractive"
         onLoad={() => {
-          const w = window as unknown as { VLibras?: new (url: string) => unknown };
-          if (w.VLibras) new w.VLibras("https://vlibras.gov.br/app");
+          const w = window as unknown as {
+            VLibras?: { Widget: new (url: string) => unknown };
+          };
+          if (w.VLibras) new w.VLibras.Widget("https://vlibras.gov.br/app");
         }}
       />
     </>

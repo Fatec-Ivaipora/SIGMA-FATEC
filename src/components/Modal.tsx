@@ -3,15 +3,22 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 
+const TAMANHOS = {
+  md: "max-w-2xl",
+  lg: "max-w-4xl",
+};
+
 export function Modal({
   open,
   onClose,
   title,
+  size = "md",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  size?: keyof typeof TAMANHOS;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -37,7 +44,7 @@ export function Modal({
         onClick={onClose}
         className="absolute inset-0 bg-fatec-navy-950/60 backdrop-blur-sm"
       />
-      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className={`relative flex max-h-[90vh] w-full ${TAMANHOS[size]} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl`}>
         <div className="flex items-center justify-between border-b border-fatec-line px-6 py-4">
           <h2 className="text-base font-semibold text-fatec-navy-900">
             {title}

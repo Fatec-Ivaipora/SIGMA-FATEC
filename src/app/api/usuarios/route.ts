@@ -7,8 +7,10 @@ type AtribuicaoEvento = { eventoId: string; areasTematicas?: string[] };
 type CriarUsuarioBody = {
   nome: string;
   email: string;
-  papel: "aluno" | "avaliador" | "organizacao" | "admin" | "orientador";
+  papel: "aluno" | "avaliador" | "organizacao" | "admin" | "orientador" | "moderador";
   atribuicoesEventos?: AtribuicaoEvento[];
+  // Papéis combináveis (2026-08-26) — ver PAPEIS_AVALIACAO em src/lib/auth.tsx.
+  papeisAvaliacao?: ("avaliador" | "orientador" | "moderador")[];
 };
 
 function senhaTemporaria(): string {
@@ -74,6 +76,9 @@ export async function POST(request: Request) {
             atribuicoesEventos: body.atribuicoesEventos,
             eventosPermitidos: body.atribuicoesEventos.map((a) => a.eventoId),
           }
+        : {}),
+      ...(body.papeisAvaliacao && body.papeisAvaliacao.length > 0
+        ? { papeisAvaliacao: body.papeisAvaliacao }
         : {}),
     });
 

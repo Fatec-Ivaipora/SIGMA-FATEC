@@ -1,10 +1,4 @@
-export type TrabalhoStatus =
-  | "submissao"
-  | "aguardando_avaliacao"
-  | "revisao"
-  | "avaliado"
-  | "aceito"
-  | "nao_aceito";
+import type { TrabalhoStatus } from "@/lib/data/trabalhos";
 
 const STATUS_META: Record<
   TrabalhoStatus,
@@ -33,6 +27,18 @@ const STATUS_META: Record<
     dot: "bg-emerald-500",
     text: "text-emerald-700",
     bg: "bg-emerald-50",
+  },
+  aguardando_apresentacao: {
+    label: "Aguardando apresentação",
+    dot: "bg-purple-600",
+    text: "text-purple-700",
+    bg: "bg-purple-50",
+  },
+  apresentado: {
+    label: "Apresentado",
+    dot: "bg-amber-500",
+    text: "text-amber-700",
+    bg: "bg-amber-50",
   },
   aceito: {
     label: "Aceito",

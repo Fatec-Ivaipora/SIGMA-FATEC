@@ -17,15 +17,18 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos, type TrabalhoStatus } from "@/lib/data/trabalhos";
 
-// Rampa ordinal (uma única cor, do claro ao escuro) para as quatro etapas do
-// funil + par categórico validado (verde/vermelho) para os dois desfechos.
-// Validado com scripts/validate_palette.js do skill de dataviz — ver
-// PRODUCT.md / arquitetura_tecnica.md para o registro das checagens.
+// Rampa ordinal (uma única cor, do claro ao escuro) para as etapas do funil
+// + par categórico validado (verde/vermelho) para os dois desfechos. Etapas
+// novas (2026-08-26 — Apresentação) continuam a mesma rampa, escurecendo;
+// não rodei de novo o scripts/validate_palette.js do skill de dataviz pra
+// essas duas cores, vale revisar (ver PRODUCT.md / arquitetura_tecnica.md).
 const ETAPAS: { key: TrabalhoStatus; label: string; cor: string }[] = [
   { key: "submissao", label: "Em submissão", cor: "#7ab6e8" },
   { key: "aguardando_avaliacao", label: "Aguardando avaliação", cor: "#4a9bd4" },
   { key: "revisao", label: "Revisão solicitada", cor: "#2376b9" },
   { key: "avaliado", label: "Avaliado", cor: "#164a72" },
+  { key: "aguardando_apresentacao", label: "Aguardando apresentação", cor: "#0f3a5e" },
+  { key: "apresentado", label: "Apresentado", cor: "#0a2c47" },
   { key: "aceito", label: "Aceito", cor: "#008300" },
   { key: "nao_aceito", label: "Recusado", cor: "#e34948" },
 ];

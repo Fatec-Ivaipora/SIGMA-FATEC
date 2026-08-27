@@ -2,18 +2,18 @@
 
 import { Award } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-import { NAV_AVALIADOR } from "@/lib/navAvaliador";
+import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function AvaliadorCertificacoesPage() {
-  const { perfil, carregando } = useRequireAuth(["avaliador"]);
+  const { perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
 
   if (carregando || !perfil) return null;
 
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_AVALIADOR}
+        navItems={navParaPerfil(perfil)}
         activeHref="/avaliador/certificacoes"
         userName={perfil.nome}
         userRoleLabel="Avaliador"

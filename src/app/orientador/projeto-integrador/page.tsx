@@ -5,7 +5,7 @@ import Link from "next/link";
 import { GraduationCap, Plus, Users } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
-import { NAV_ORIENTADOR } from "@/lib/navOrientador";
+import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { criarTurma, useTurmasDoOrientador } from "@/lib/data/turmas";
 
@@ -45,7 +45,7 @@ export default function ProjetoIntegradorOrientadorPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_ORIENTADOR}
+        navItems={navParaPerfil(perfil)}
         activeHref="/orientador/projeto-integrador"
         userName={perfil.nome}
         userRoleLabel="Orientador"

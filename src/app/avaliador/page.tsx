@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, FileClock, BadgeCheck, ArrowRight } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-import { NAV_AVALIADOR } from "@/lib/navAvaliador";
+import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
@@ -12,7 +12,7 @@ import { useTrabalhos } from "@/lib/data/trabalhos";
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 
 export default function AvaliadorPainelPage() {
-  const { user, perfil, carregando } = useRequireAuth(["avaliador"]);
+  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const [eventoId, setEventoId] = useState(TODOS_MEUS_EVENTOS);
@@ -40,7 +40,7 @@ export default function AvaliadorPainelPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_AVALIADOR}
+        navItems={navParaPerfil(perfil)}
         activeHref="/avaliador"
         userName={perfil.nome}
         userRoleLabel="Avaliador"

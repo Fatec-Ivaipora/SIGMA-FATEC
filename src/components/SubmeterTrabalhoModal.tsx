@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useAlunosParaBusca, type AlunoParaBusca } from "@/lib/data/usuarios";
+import { useInscritosPagosUids } from "@/lib/data/inscricoes";
 
 const RESUMO_MAX = 2000;
 
@@ -18,6 +19,8 @@ export type DadosSubmissao = {
 
 export function SubmeterTrabalhoModal({
   open,
+  eventoId,
+  temTaxa,
   eventoNome,
   areasDisponiveis,
   meuUid,
@@ -26,6 +29,10 @@ export function SubmeterTrabalhoModal({
   onSubmit,
 }: {
   open: boolean;
+  // Taxa de inscrição (2026-08-26): usado pra restringir a busca de colega
+  // aos que já pagaram a Etapa 1 do evento — só se aplica quando temTaxa.
+  eventoId: string;
+  temTaxa?: boolean;
   eventoNome: string;
   areasDisponiveis: string[];
   meuUid: string | undefined;
@@ -42,7 +49,10 @@ export function SubmeterTrabalhoModal({
   const [buscaColega, setBuscaColega] = useState("");
   const [participantes, setParticipantes] = useState<AlunoParaBusca[]>([]);
 
-  const alunos = useAlunosParaBusca(meuUid);
+  const inscritosPagos = useInscritosPagosUids(temTaxa ? eventoId : undefined);
+  const alunos = useAlunosParaBusca(meuUid, {
+    restringirA: temTaxa ? inscritosPagos : undefined,
+  });
 
   const sugestoes = useMemo(() => {
     const termo = buscaColega.trim().toLowerCase();
@@ -214,6 +224,8 @@ export function SubmeterTrabalhoModal({
           <span className="text-xs text-fatec-muted">
             Opcional. Colegas adicionados também acompanham o status deste
             trabalho, mas só quem submeteu pode corrigir e reenviar.
+            {temTaxa &&
+              " Só aparecem colegas que já pagaram a inscrição deste evento."}
           </span>
         </div>
 

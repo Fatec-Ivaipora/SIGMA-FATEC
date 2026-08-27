@@ -18,6 +18,9 @@ export type Evento = {
   // Padrão (ausente) = só alunos da Fatec, mantendo o comportamento anterior
   // a essa opção para eventos já cadastrados.
   aceitaExternos?: boolean;
+  // Taxa de inscrição em reais (2026-08-26). Ausente/0 = evento gratuito,
+  // fluxo de uma etapa só (comportamento anterior a essa feature).
+  valorInscricao?: number;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */

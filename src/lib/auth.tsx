@@ -11,7 +11,13 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
-export type Papel = "aluno" | "avaliador" | "organizacao" | "admin" | "orientador";
+export type Papel = "aluno" | "avaliador" | "organizacao" | "admin" | "orientador" | "moderador";
+
+// Só esses três se combinam entre si num mesmo usuário (2026-08-26) — ex.:
+// avaliador+orientador, ou orientador+moderador. aluno/organizacao/admin
+// continuam sendo um papel só, sem se misturar com os demais.
+export const PAPEIS_AVALIACAO = ["avaliador", "orientador", "moderador"] as const;
+export type PapelAvaliacao = (typeof PAPEIS_AVALIACAO)[number];
 
 export type AtribuicaoEvento = {
   eventoId: string;
@@ -38,6 +44,15 @@ export type PerfilUsuario = {
   vinculoFatec?: boolean;
   ra?: string;
   curso?: string;
+  // Salvo pelo servidor (rota /api/asaas/cobranca) na primeira cobrança do
+  // usuário — reusado nas próximas pra não pedir CPF de novo (2026-08-26).
+  cpf?: string;
+  // Conjunto completo de capacidades "de avaliação" da pessoa (2026-08-26)
+  // — inclui o próprio `papel` primário quando ele já é um dos três de
+  // PAPEIS_AVALIACAO. Ausente = conta antiga, equivale a [papel] se `papel`
+  // for um desses três, senão []. Ver temPapel() abaixo — é ele que sabe ler
+  // isso, nunca comparar papeisAvaliacao direto.
+  papeisAvaliacao?: PapelAvaliacao[];
 };
 
 export const ROTA_POR_PAPEL: Record<Papel, string> = {
@@ -46,7 +61,18 @@ export const ROTA_POR_PAPEL: Record<Papel, string> = {
   organizacao: "/dashboard",
   admin: "/dashboard",
   orientador: "/orientador",
+  moderador: "/avaliador",
 };
+
+/** Único jeito correto de checar se alguém "tem" um papel — cobre tanto o
+ * papel primário quanto os extras de papeisAvaliacao (avaliador/orientador/
+ * moderador). Pra aluno/organizacao/admin é só a comparação direta mesmo. */
+export function temPapel(perfil: PerfilUsuario | null | undefined, papel: Papel): boolean {
+  if (!perfil) return false;
+  if (perfil.papel === papel) return true;
+  if (!PAPEIS_AVALIACAO.includes(papel as PapelAvaliacao)) return false;
+  return !!perfil.papeisAvaliacao?.includes(papel as PapelAvaliacao);
+}
 
 type AuthState = {
   user: User | null;

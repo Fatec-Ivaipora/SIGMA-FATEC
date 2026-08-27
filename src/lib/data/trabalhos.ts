@@ -12,13 +12,15 @@ import {
   type Query,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { PerfilUsuario } from "@/lib/auth";
+import { temPapel, type PerfilUsuario } from "@/lib/auth";
 
 export type TrabalhoStatus =
   | "submissao"
   | "aguardando_avaliacao"
   | "revisao"
   | "avaliado"
+  | "aguardando_apresentacao"
+  | "apresentado"
   | "aceito"
   | "nao_aceito";
 
@@ -31,6 +33,19 @@ export type NotasCriterios = {
   estruturaTexto: number;
   clarezaPrecisao: number;
   aplicabilidadeRelevancia: number;
+};
+
+// Critérios da etapa de Apresentação (2026-08-26), pontuados pelo moderador
+// — mesmo formato do avaliador (1 a 5 cada, soma 5-25). PROVISÓRIO: o
+// usuário ainda não passou a lista real de critérios do edital pra
+// apresentação; os nomes abaixo são placeholder (ver CRITERIOS_APRESENTACAO
+// em src/app/avaliador/trabalhos/page.tsx pra trocar quando ele mandar).
+export type NotasCriteriosApresentacao = {
+  dominioConteudo: number;
+  clarezaComunicacao: number;
+  usoDoTempo: number;
+  qualidadeMaterial: number;
+  posturaSeguranca: number;
 };
 
 export type Trabalho = {
@@ -58,6 +73,12 @@ export type Trabalho = {
   notaAvaliador?: number | null;
   notasCriterios?: NotasCriterios | null;
   comentarioRevisao?: string | null;
+  // Etapa Apresentação (2026-08-26) — moderador designado e sua nota, mesmo
+  // padrão de avaliadorUid/notaAvaliador acima.
+  moderadorUid?: string | null;
+  moderadorNome?: string | null;
+  notaModerador?: number | null;
+  notasCriteriosApresentacao?: NotasCriteriosApresentacao | null;
   atualizadoEm?: unknown;
 };
 
@@ -88,10 +109,16 @@ export function useTrabalhos(
         return;
       }
       q = query(ref, where("eventoId", "in", perfil.eventosPermitidos.slice(0, 30)));
-    } else if (perfil.papel === "avaliador" || perfil.papel === "orientador") {
-      // Orientador pode ser alocado como avaliador de um evento (2026-08-25,
-      // RF-46) — mesma query do avaliador quando isso acontece.
-      q = query(ref, where("avaliadorUid", "==", uid));
+    } else if (
+      temPapel(perfil, "avaliador") ||
+      temPapel(perfil, "orientador") ||
+      temPapel(perfil, "moderador")
+    ) {
+      // Papéis combináveis (2026-08-26, ver PAPEIS_AVALIACAO em auth.tsx) —
+      // uma pessoa pode ser avaliadorUid de uns trabalhos e moderadorUid de
+      // outros ao mesmo tempo; a tela em si separa por aba (ver
+      // src/app/avaliador/trabalhos/page.tsx).
+      q = query(ref, or(where("avaliadorUid", "==", uid), where("moderadorUid", "==", uid)));
     } else {
       // Dono do trabalho ou colega adicionado como participante (RF-08).
       q = query(

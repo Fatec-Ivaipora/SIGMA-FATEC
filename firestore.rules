@@ -15,6 +15,21 @@ service cloud.firestore {
       return logado() && meuPapel() == "admin";
     }
 
+    // Papéis combináveis (2026-08-26): avaliador/orientador/moderador podem
+    // se acumular num mesmo usuário (usuarios/{uid}.papeisAvaliacao) — só
+    // esses três, os demais continuam sendo um papel só. Contas sem o campo
+    // (antigas) equivalem a [meuPapel()] se ele for um desses três, senão [].
+    function meusPapeisAvaliacao() {
+      let dados = get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return "papeisAvaliacao" in dados
+        ? dados.papeisAvaliacao
+        : (dados.papel in ["avaliador", "orientador", "moderador"] ? [dados.papel] : []);
+    }
+
+    function souAvaliacao(p) {
+      return logado() && p in meusPapeisAvaliacao();
+    }
+
     // A linguagem de regras não tem .map()/.filter() — por isso usuarios/{uid}
     // guarda também eventosPermitidos: [eventoId, ...] (lista simples de string),
     // mantido em sincronia pelo app sempre que atribuicoesEventos é editado.
@@ -79,7 +94,10 @@ service cloud.firestore {
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
         // Orientador pode ser alocado como avaliador de um evento (2026-08-25,
         // reaproveita o mesmo avaliadorUid — ver RF-46).
-        (meuPapel() in ["avaliador", "orientador"] && resource.data.avaliadorUid == request.auth.uid) ||
+        ((souAvaliacao("avaliador") || souAvaliacao("orientador")) && resource.data.avaliadorUid == request.auth.uid) ||
+        // Moderador (2026-08-26) — etapa Apresentação, reaproveita o mesmo
+        // padrão do avaliador acima, só que com moderadorUid.
+        (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid) ||
         (meuPapel() == "aluno" && (
           resource.data.alunoUid == request.auth.uid ||
           request.auth.uid in resource.data.get("participantesUids", [])
@@ -88,12 +106,26 @@ service cloud.firestore {
       // RN-17: participante externo (vinculoFatec == false) só pode submeter
       // em eventos com aceitaExternos == true; aluno da Fatec não tem essa
       // restrição — validado no servidor, não só escondendo o evento na UI.
+      // Taxa de inscrição (2026-08-26): evento com valorInscricao só libera a
+      // Etapa 2 (enviar trabalho) depois da Etapa 1 (pagamento) confirmada —
+      // a UI já trava o botão, isso é defesa em profundidade contra escrita
+      // direta no Firestore sem ter pago.
       allow create: if logado() && meuPapel() == "aluno" && request.resource.data.alunoUid == request.auth.uid &&
-        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId));
+        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId)) &&
+        (
+          get(/databases/$(database)/documents/eventos/$(request.resource.data.eventoId)).data.get("valorInscricao", 0) <= 0 ||
+          get(/databases/$(database)/documents/inscricoesEvento/$(request.resource.data.eventoId + "::" + request.auth.uid)).data.status == "pago"
+        );
       allow update: if logado() && (
         souAdmin() ||
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
-        (meuPapel() in ["avaliador", "orientador"] && resource.data.avaliadorUid == request.auth.uid) ||
+        ((souAvaliacao("avaliador") || souAvaliacao("orientador")) && resource.data.avaliadorUid == request.auth.uid) ||
+        // Moderador só mexe nos campos da própria nota de apresentação —
+        // nunca em status de avaliação, resumo, etc (papel novo, mais
+        // restrito que o avaliador de propósito).
+        (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "atualizadoEm"])) ||
         (meuPapel() == "aluno" && resource.data.alunoUid == request.auth.uid) ||
         // Colega convidado (RF-52) responde o próprio convite — só pode
         // mexer em convitesPendentes/participantesUids/participantesNomes,
@@ -154,6 +186,25 @@ service cloud.firestore {
           get(/databases/$(database)/documents/turmas/$(resource.data.turmaId)).data.orientadorUid == request.auth.uid)
       );
       allow delete: if souAdmin();
+    }
+
+    // inscricoesEvento/{eventoId}::{uid} — Etapa 1 (pagamento) da taxa de
+    // inscrição (2026-08-26). Escrita é 100% via Admin SDK (rotas /api/asaas/*),
+    // que já lê o valor confiável do evento e confirma o pagamento com o Asaas —
+    // o client nunca escreve aqui direto, só lê o próprio status/dos eventos
+    // que administra.
+    match /inscricoesEvento/{id} {
+      // resource == null primeiro: pra um aluno que ainda não clicou em
+      // Participar, o doc nem existe — sem esse curto-circuito,
+      // resource.data.uid quebra em cima de resource nulo e a leitura vira
+      // permission-denied (o card fica "carregando" pra sempre).
+      allow read: if logado() && (
+        resource == null ||
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        resource.data.uid == request.auth.uid
+      );
+      allow write: if false;
     }
 
     // mail/{autoId} — só a extensão Trigger Email (via Admin SDK) escreve;

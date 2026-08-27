@@ -294,6 +294,8 @@ export default function TurmaAlunoPage() {
       {eventoEscolhido && (
         <SubmeterTrabalhoModal
           open={modalInscricao}
+          eventoId={eventoEscolhido.id}
+          temTaxa={!!eventoEscolhido.valorInscricao}
           eventoNome={eventoEscolhido.nome}
           areasDisponiveis={eventoEscolhido.areasTematicas ?? []}
           meuUid={user?.uid}

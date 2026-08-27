@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { ArrowRight, FileClock, GraduationCap, Users } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-import { NAV_ORIENTADOR } from "@/lib/navOrientador";
+import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useTurmasDoOrientador, useTurmaTrabalhosDasTurmas } from "@/lib/data/turmas";
 
@@ -26,7 +26,7 @@ export default function OrientadorPainelPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={NAV_ORIENTADOR}
+        navItems={navParaPerfil(perfil)}
         activeHref="/orientador"
         userName={perfil.nome}
         userRoleLabel="Orientador"

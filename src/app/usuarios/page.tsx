@@ -9,11 +9,14 @@ import { Modal } from "@/components/Modal";
 import { PapelBadge } from "@/components/PapelBadge";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import type { AtribuicaoEvento, Papel } from "@/lib/auth";
+import type { AtribuicaoEvento, Papel, PapelAvaliacao } from "@/lib/auth";
+import { PAPEIS_AVALIACAO } from "@/lib/auth";
+import { PAPEL_META } from "@/components/PapelBadge";
 import { useEventos } from "@/lib/data/eventos";
 import {
   useUsuarios,
   atualizarAtribuicoesUsuario,
+  atualizarPapeisAvaliacaoUsuario,
   type UsuarioRegistro,
 } from "@/lib/data/usuarios";
 
@@ -22,13 +25,15 @@ const FILTROS: { label: string; papel: Papel | "todos" }[] = [
   { label: "Aluno", papel: "aluno" },
   { label: "Avaliador", papel: "avaliador" },
   { label: "Orientador", papel: "orientador" },
+  { label: "Moderador", papel: "moderador" },
   { label: "Organização", papel: "organizacao" },
   { label: "Admin", papel: "admin" },
 ];
 
-// Avaliador e Orientador têm o mesmo formulário de evento+áreas temáticas —
-// um orientador pode ser alocado como avaliador de um evento (2026-08-25).
-const PAPEIS_COM_AREA: Papel[] = ["avaliador", "orientador"];
+// Avaliador, Orientador e Moderador têm o mesmo formulário de evento+áreas
+// temáticas, e são os três papéis que se combinam entre si (2026-08-26) — um
+// orientador pode ser alocado como avaliador ou moderador de um evento.
+const PAPEIS_COM_AREA: Papel[] = [...PAPEIS_AVALIACAO];
 
 export default function UsuariosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
@@ -42,6 +47,7 @@ export default function UsuariosPage() {
   const [criarNome, setCriarNome] = useState("");
   const [criarEmail, setCriarEmail] = useState("");
   const [criarPapel, setCriarPapel] = useState<Papel>("aluno");
+  const [criarPapeisExtras, setCriarPapeisExtras] = useState<PapelAvaliacao[]>([]);
   const [criarEvento, setCriarEvento] = useState("");
   const [criarAreas, setCriarAreas] = useState<string[]>([]);
   const [criando, setCriando] = useState(false);
@@ -101,6 +107,7 @@ export default function UsuariosPage() {
     setCriarNome("");
     setCriarEmail("");
     setCriarPapel("aluno");
+    setCriarPapeisExtras([]);
     setCriarEvento("");
     setCriarAreas([]);
     setErroCriar(null);
@@ -110,6 +117,12 @@ export default function UsuariosPage() {
   function alternarCriarArea(area: string) {
     setCriarAreas((prev) =>
       prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area],
+    );
+  }
+
+  function alternarCriarPapelExtra(papel: PapelAvaliacao) {
+    setCriarPapeisExtras((prev) =>
+      prev.includes(papel) ? prev.filter((p) => p !== papel) : [...prev, papel],
     );
   }
 
@@ -125,6 +138,12 @@ export default function UsuariosPage() {
           ? [{ eventoId: criarEvento }]
           : [];
 
+    // Papéis combináveis (2026-08-26) — só faz sentido quando o papel
+    // primário já é um dos três (avaliador/orientador/moderador).
+    const papeisAvaliacao = PAPEIS_COM_AREA.includes(criarPapel)
+      ? Array.from(new Set([criarPapel as PapelAvaliacao, ...criarPapeisExtras]))
+      : undefined;
+
     try {
       const idToken = await user.getIdToken();
       const resposta = await fetch("/api/usuarios", {
@@ -135,6 +154,7 @@ export default function UsuariosPage() {
           email: criarEmail,
           papel: criarPapel,
           atribuicoesEventos,
+          papeisAvaliacao,
         }),
       });
       const dados = await resposta.json();
@@ -274,7 +294,7 @@ export default function UsuariosPage() {
                       <td className="px-6 py-4 font-medium text-fatec-navy-900">{u.nome}</td>
                       <td className="px-6 py-4 text-fatec-muted">{u.email}</td>
                       <td className="px-6 py-4">
-                        <PapelBadge papel={u.papel} />
+                        <PapelBadge papel={u.papel} papeisAvaliacao={u.papeisAvaliacao} />
                         {u.papel === "aluno" && (
                           <p className="mt-1 text-xs text-fatec-muted">
                             {u.vinculoFatec === false
@@ -288,9 +308,7 @@ export default function UsuariosPage() {
                       {souAdmin && (
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-1">
-                            {(u.papel === "avaliador" ||
-                              u.papel === "orientador" ||
-                              u.papel === "organizacao") && (
+                            {(PAPEIS_COM_AREA.includes(u.papel) || u.papel === "organizacao") && (
                               <button
                                 type="button"
                                 aria-label={`Editar eventos de ${u.nome}`}
@@ -386,6 +404,7 @@ export default function UsuariosPage() {
                 value={criarPapel}
                 onChange={(e) => {
                   setCriarPapel(e.target.value as Papel);
+                  setCriarPapeisExtras([]);
                   setCriarEvento("");
                   setCriarAreas([]);
                 }}
@@ -394,10 +413,36 @@ export default function UsuariosPage() {
                 <option value="aluno">Aluno</option>
                 <option value="avaliador">Avaliador</option>
                 <option value="orientador">Orientador</option>
+                <option value="moderador">Moderador</option>
                 <option value="organizacao">Organização</option>
                 <option value="admin">Admin</option>
               </select>
             </label>
+
+            {PAPEIS_COM_AREA.includes(criarPapel) && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fatec-navy-900">
+                  Também atua como
+                </span>
+                <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
+                  {PAPEIS_AVALIACAO.filter((p) => p !== criarPapel).map((p) => (
+                    <label key={p} className="flex items-center gap-2.5 text-sm text-fatec-ink">
+                      <input
+                        type="checkbox"
+                        checked={criarPapeisExtras.includes(p)}
+                        onChange={() => alternarCriarPapelExtra(p)}
+                        className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                      />
+                      {PAPEL_META[p].label}
+                    </label>
+                  ))}
+                </div>
+                <span className="text-xs text-fatec-muted">
+                  Opcional — combina papéis de avaliação num usuário só (ex.:
+                  orientador que também modera apresentações).
+                </span>
+              </div>
+            )}
 
             {(PAPEIS_COM_AREA.includes(criarPapel) || criarPapel === "organizacao") && (
               <label className="flex flex-col gap-1.5">
@@ -553,6 +598,32 @@ export default function UsuariosPage() {
             ? "Eventos em que esta pessoa avalia trabalhos, e as áreas temáticas designadas em cada um."
             : "Eventos que esta organização enxerga — trabalhos, relatórios e áreas temáticas de outros eventos ficam ocultos para ela."}
         </p>
+
+        {editando && PAPEIS_COM_AREA.includes(editando.papel) && (
+          <div className="mb-5 flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">Também atua como</span>
+            <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
+              {PAPEIS_AVALIACAO.filter((p) => p !== editando.papel).map((p) => (
+                <label key={p} className="flex items-center gap-2.5 text-sm text-fatec-ink">
+                  <input
+                    type="checkbox"
+                    checked={!!editando.papeisAvaliacao?.includes(p)}
+                    onChange={() => {
+                      const atuais = editando.papeisAvaliacao ?? [editando.papel as PapelAvaliacao];
+                      const novos = atuais.includes(p)
+                        ? atuais.filter((x) => x !== p)
+                        : [...atuais, p];
+                      atualizarPapeisAvaliacaoUsuario(editando.uid, editando.papel, novos);
+                      setEditando({ ...editando, papeisAvaliacao: novos });
+                    }}
+                    className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  {PAPEL_META[p].label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col gap-2">
           {(editando?.atribuicoesEventos ?? []).map((a) => (
