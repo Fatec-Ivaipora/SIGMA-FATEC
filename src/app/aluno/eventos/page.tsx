@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays } from "lucide-react";
+import { AlertTriangle, CalendarDays } from "lucide-react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -13,35 +13,6 @@ import { useEventosPublicos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 import type { User } from "firebase/auth";
-
-const ETAPAS_TRILHA = [
-  { label: "Sem inscrição", barra: "bg-red-500", texto: "text-red-700" },
-  { label: "Pago", barra: "bg-amber-500", texto: "text-amber-700" },
-  { label: "Enviado", barra: "bg-emerald-500", texto: "text-emerald-700" },
-] as const;
-
-/** Trilha de progresso da inscrição (2026-08-26): o trajeto já percorrido
- * fica cinza neutro (concluído, sem chamar atenção); só a etapa atual — a
- * próxima ação — acende na cor que representa o status. */
-function TrilhaInscricao({ passo }: { passo: 0 | 1 | 2 }) {
-  return (
-    <div className="flex w-full flex-col gap-1.5">
-      <div className="flex items-center gap-1">
-        {ETAPAS_TRILHA.map((etapa, i) => (
-          <span
-            key={etapa.label}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              i === passo ? etapa.barra : i < passo ? "bg-fatec-navy-200" : "bg-fatec-navy-100"
-            }`}
-          />
-        ))}
-      </div>
-      <span className={`text-xs font-semibold ${ETAPAS_TRILHA[passo].texto}`}>
-        {ETAPAS_TRILHA[passo].label}
-      </span>
-    </div>
-  );
-}
 
 function CardEvento({
   evento,
@@ -59,10 +30,11 @@ function CardEvento({
   const temTaxa = !!evento.valorInscricao;
   // Chamado pra TODO evento, não só os com taxa — é a existência desse
   // registro (mesmo que só "interesse") que decide se o card já mostra o
-  // fluxo (trilha / inscrever trabalho) ou ainda só o botão Participar.
+  // fluxo (inscrever trabalho) ou ainda só o botão Inscreva-se. Pagamento
+  // não bloqueia mais nada aqui (2026-08-31, pedido da diretoria) — vira só
+  // um lembrete separado quando pendente, ver abaixo.
   const { inscricao, carregando } = useMinhaInscricao(evento.id, user?.uid);
   const pago = inscricao?.status === "pago";
-  const passo: 0 | 1 | 2 = inscrito ? 2 : pago ? 1 : 0;
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -114,35 +86,47 @@ function CardEvento({
               disabled={participando}
               className="w-fit rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
             >
-              {participando ? "Registrando..." : "Participar"}
+              {participando ? "Registrando..." : "Inscreva-se"}
             </button>
             {erro && <p className="text-xs text-red-600">{erro}</p>}
           </>
-        ) : !temTaxa ? (
-          inscrito ? (
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Trabalho enviado
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onAbrirTrabalho(evento.id)}
-              className="w-fit rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-            >
-              Inscrever trabalho
-            </button>
-          )
+        ) : inscrito && temTaxa && !pago ? (
+          // Trabalho já enviado, mas pagamento ainda pendente — vira o único
+          // botão da linha (2026-08-31): mais importante que o "enviado"
+          // estático, porque ainda tem uma ação pendente de verdade.
+          <button
+            type="button"
+            onClick={() => onAbrirInscricao(evento.id)}
+            className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+            Pagamento pendente — pagar agora
+          </button>
         ) : (
           <>
-            <TrilhaInscricao passo={passo} />
-            {!inscrito && (
+            {inscrito ? (
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Trabalho enviado
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onAbrirTrabalho(evento.id)}
+                className="w-fit rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+              >
+                Inscrever trabalho
+              </button>
+            )}
+
+            {temTaxa && !pago && (
               <button
                 type="button"
                 onClick={() => onAbrirInscricao(evento.id)}
-                className="w-full rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
               >
-                {pago ? "Continuar" : "Inscrever-se"}
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                Pagamento pendente — pagar agora
               </button>
             )}
           </>
@@ -171,9 +155,6 @@ export default function AlunoEventosPage() {
 
   const eventoModal = eventos.find((e) => e.id === modalEventoId);
   const eventoInscricao = eventos.find((e) => e.id === inscricaoEventoId);
-  const inscricaoTrabalhoEnviado = eventoInscricao
-    ? trabalhos.some((t) => t.eventoId === eventoInscricao.id)
-    : false;
 
   async function enviarTrabalho(dados: DadosSubmissao) {
     if (!modalEventoId || !user || !perfil) return;
@@ -243,6 +224,7 @@ export default function AlunoEventosPage() {
           temTaxa={!!eventoModal.valorInscricao}
           eventoNome={eventoModal.nome}
           areasDisponiveis={eventoModal.areasTematicas ?? []}
+          areasComplexas={eventoModal.areasTematicasComplexas ?? []}
           meuUid={user?.uid}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTrabalho}
@@ -256,10 +238,9 @@ export default function AlunoEventosPage() {
           eventoNome={eventoInscricao.nome}
           valor={eventoInscricao.valorInscricao ?? 0}
           temCpf={!!perfil.cpf}
-          trabalhoEnviado={inscricaoTrabalhoEnviado}
+          permiteSimulacao={!!eventoInscricao.permiteSimulacaoPagamento}
           user={user}
           onClose={() => setInscricaoEventoId(null)}
-          onIrParaFormulario={() => setModalEventoId(eventoInscricao.id)}
         />
       )}
     </main>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 
 export type InscricaoEvento = {
   id: string;
@@ -49,7 +49,10 @@ export function useMinhaInscricao(eventoId: string | undefined, uid: string | un
   return { inscricao, carregando };
 }
 
-/** Inscritos pagos de um evento (organizador/admin) — RF: modal "Inscritos". */
+/** Todos os inscritos de um evento, qualquer status (organizador/admin) — RF:
+ * modal "Inscritos". Pagamento não bloqueia mais inscrição/trabalho
+ * (2026-08-31, pedido da diretoria) — por isso não filtra mais por "pago";
+ * quem chama decide o que fazer com o status de cada um. */
 export function useInscritosDoEvento(eventoId: string | undefined) {
   const [inscritos, setInscritos] = useState<InscricaoEvento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -62,11 +65,7 @@ export function useInscritosDoEvento(eventoId: string | undefined) {
       });
       return;
     }
-    const q = query(
-      collection(db, "inscricoesEvento"),
-      where("eventoId", "==", eventoId),
-      where("status", "==", "pago"),
-    );
+    const q = query(collection(db, "inscricoesEvento"), where("eventoId", "==", eventoId));
     return onSnapshot(q, (snap) => {
       setInscritos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InscricaoEvento));
       setCarregando(false);
@@ -76,9 +75,37 @@ export function useInscritosDoEvento(eventoId: string | undefined) {
   return { inscritos, carregando };
 }
 
-/** Só os uids pagos de um evento — usado pra restringir a busca de colega
- * (SubmeterTrabalhoModal) aos que já completaram a Etapa 1. */
-export function useInscritosPagosUids(eventoId: string | undefined): Set<string> {
-  const { inscritos } = useInscritosDoEvento(eventoId);
-  return useMemo(() => new Set(inscritos.map((i) => i.uid)), [inscritos]);
+/** Uids de todo mundo inscrito num evento, qualquer status — usado pra
+ * restringir a busca de colega (SubmeterTrabalhoModal) a quem já pelo menos
+ * demonstrou interesse no evento (pagamento não é mais pré-requisito).
+ * Busca via /api/inscricoes/uids (Admin SDK) em vez de query direta no
+ * Firestore: um aluno comum só pode LER a própria inscrição pelas Security
+ * Rules — listar a coleção inteira só por eventoId (sem uid) é negado pra
+ * quem não é admin/organização (2026-08-31, ver rota da API). */
+export function useInscritosUids(eventoId: string | undefined): Set<string> {
+  const [uids, setUids] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!eventoId) {
+      Promise.resolve().then(() => setUids(new Set()));
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+      const res = await fetch(
+        `/api/inscricoes/uids?eventoId=${encodeURIComponent(eventoId)}`,
+        { headers: { Authorization: `Bearer ${idToken}` } },
+      );
+      if (!res.ok || cancelado) return;
+      const corpo = (await res.json()) as { uids?: string[] };
+      setUids(new Set(corpo.uids ?? []));
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [eventoId]);
+
+  return uids;
 }

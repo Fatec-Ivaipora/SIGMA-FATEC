@@ -8,6 +8,7 @@ import {
   type AuthError,
 } from "firebase/auth";
 import { doc, updateDoc } from "firebase/firestore";
+import { ChevronDown, Pencil } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
 import { Modal } from "@/components/Modal";
@@ -29,15 +30,28 @@ function mensagemErroSenha(erro: AuthError): string {
 function ConfiguracoesForm({
   uid,
   nomeAtual,
+  email,
+  papel,
+  vinculoFatec,
+  ra,
+  curso,
 }: {
   uid: string | undefined;
   nomeAtual: string;
+  email: string;
+  papel: string | undefined;
+  vinculoFatec: boolean | undefined;
+  ra: string | undefined;
+  curso: string | undefined;
 }) {
+  const ehAlunoFatec = papel === "aluno" && vinculoFatec !== false;
+
+  const [editandoNome, setEditandoNome] = useState(false);
   const [novoNome, setNovoNome] = useState(nomeAtual);
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [erroNome, setErroNome] = useState<string | null>(null);
-  const [nomeSalvo, setNomeSalvo] = useState(false);
 
+  const [senhaExpandida, setSenhaExpandida] = useState(false);
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmarNovaSenha, setConfirmarNovaSenha] = useState("");
@@ -45,16 +59,21 @@ function ConfiguracoesForm({
   const [erroSenha, setErroSenha] = useState<string | null>(null);
   const [senhaAlterada, setSenhaAlterada] = useState(false);
 
+  function abrirEdicaoNome() {
+    setNovoNome(nomeAtual);
+    setErroNome(null);
+    setEditandoNome(true);
+  }
+
   async function salvarNome() {
     setErroNome(null);
-    setNomeSalvo(false);
     const nome = novoNome.trim();
     if (!uid || !nome) return;
 
     setSalvandoNome(true);
     try {
       await updateDoc(doc(db, "usuarios", uid), { nome });
-      setNomeSalvo(true);
+      setEditandoNome(false);
     } catch {
       setErroNome("Não foi possível salvar o nome. Tente novamente.");
     } finally {
@@ -89,114 +108,179 @@ function ConfiguracoesForm({
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-4">
-        <h3 className="text-sm font-semibold text-fatec-navy-900">Nome</h3>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-fatec-navy-900">
-            Nome de exibição
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-4 rounded-2xl border border-fatec-line bg-white p-5">
+        <h3 className="text-sm font-semibold text-fatec-navy-900">Seus dados</h3>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+            Nome
           </span>
-          <input
-            type="text"
-            value={novoNome}
-            onChange={(e) => {
-              setNovoNome(e.target.value);
-              setNomeSalvo(false);
-            }}
-            placeholder="Seu nome"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-          />
-        </label>
+          {editandoNome ? (
+            <div className="flex flex-col gap-3">
+              <input
+                type="text"
+                autoFocus
+                value={novoNome}
+                onChange={(e) => setNovoNome(e.target.value)}
+                placeholder="Seu nome"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+              {erroNome && (
+                <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+                  {erroNome}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={salvarNome}
+                  disabled={salvandoNome || !novoNome.trim()}
+                  className="rounded-xl bg-fatec-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+                >
+                  {salvandoNome ? "Salvando..." : "Salvar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoNome(false)}
+                  disabled={salvandoNome}
+                  className="rounded-xl px-5 py-2 text-sm font-semibold text-fatec-muted transition-colors hover:bg-fatec-navy-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                {nomeAtual}
+              </span>
+              <button
+                type="button"
+                onClick={abrirEdicaoNome}
+                className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-fatec-sky-600 transition-colors hover:bg-fatec-sky-100"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Alterar
+              </button>
+            </div>
+          )}
+        </div>
 
-        {erroNome && (
-          <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
-            {erroNome}
-          </p>
-        )}
-        {nomeSalvo && (
-          <p className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
-            Nome atualizado com sucesso.
-          </p>
-        )}
+        <div className="flex flex-col gap-1 border-t border-fatec-line pt-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+            E-mail
+          </span>
+          <span className="text-sm font-medium text-fatec-navy-900">
+            {email}
+          </span>
+        </div>
 
-        <button
-          type="button"
-          onClick={salvarNome}
-          disabled={
-            salvandoNome || !novoNome.trim() || novoNome.trim() === nomeAtual
-          }
-          className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
-        >
-          {salvandoNome ? "Salvando..." : "Salvar nome"}
-        </button>
+        {ehAlunoFatec && (
+          <div className="grid grid-cols-2 gap-4 border-t border-fatec-line pt-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+                RA
+              </span>
+              <span className="text-sm font-medium text-fatec-navy-900">
+                {ra || "—"}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+                Curso
+              </span>
+              <span className="text-sm font-medium text-fatec-navy-900">
+                {curso || "—"}
+              </span>
+            </div>
+          </div>
+        )}
       </section>
 
-      <section className="flex flex-col gap-4 border-t border-fatec-line pt-6">
-        <h3 className="text-sm font-semibold text-fatec-navy-900">Senha</h3>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-fatec-navy-900">
-            Senha atual
-          </span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={senhaAtual}
-            onChange={(e) => setSenhaAtual(e.target.value)}
-            placeholder="••••••••"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-fatec-navy-900">
-            Nova senha
-          </span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={novaSenha}
-            onChange={(e) => setNovaSenha(e.target.value)}
-            placeholder="••••••••"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-fatec-navy-900">
-            Confirmar nova senha
-          </span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={confirmarNovaSenha}
-            onChange={(e) => setConfirmarNovaSenha(e.target.value)}
-            placeholder="••••••••"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-          />
-        </label>
-
-        {erroSenha && (
-          <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
-            {erroSenha}
-          </p>
-        )}
-        {senhaAlterada && (
-          <p className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
-            Senha alterada com sucesso.
-          </p>
-        )}
-
+      <section className="rounded-2xl border border-fatec-line bg-white">
         <button
           type="button"
-          onClick={salvarSenha}
-          disabled={
-            enviandoSenha || !senhaAtual || !novaSenha || !confirmarNovaSenha
-          }
-          className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+          onClick={() => setSenhaExpandida((v) => !v)}
+          aria-expanded={senhaExpandida}
+          className="flex w-full items-center justify-between px-5 py-4 text-left"
         >
-          {enviandoSenha ? "Salvando..." : "Salvar nova senha"}
+          <span className="text-sm font-semibold text-fatec-navy-900">
+            Alterar senha
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-fatec-muted transition-transform ${senhaExpandida ? "rotate-180" : ""}`}
+            strokeWidth={1.75}
+          />
         </button>
+
+        {senhaExpandida && (
+          <div className="flex flex-col gap-4 border-t border-fatec-line px-5 py-5">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Senha atual
+              </span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                placeholder="••••••••"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Nova senha
+              </span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={novaSenha}
+                onChange={(e) => setNovaSenha(e.target.value)}
+                placeholder="••••••••"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Confirmar nova senha
+              </span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmarNovaSenha}
+                onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                placeholder="••••••••"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+
+            {erroSenha && (
+              <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+                {erroSenha}
+              </p>
+            )}
+            {senhaAlterada && (
+              <p className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+                Senha alterada com sucesso.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={salvarSenha}
+              disabled={
+                enviandoSenha || !senhaAtual || !novaSenha || !confirmarNovaSenha
+              }
+              className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+            >
+              {enviandoSenha ? "Salvando..." : "Salvar nova senha"}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -213,7 +297,15 @@ export function ConfiguracoesModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Configurações">
-      <ConfiguracoesForm uid={user?.uid} nomeAtual={perfil?.nome ?? ""} />
+      <ConfiguracoesForm
+        uid={user?.uid}
+        nomeAtual={perfil?.nome ?? ""}
+        email={perfil?.email ?? ""}
+        papel={perfil?.papel}
+        vinculoFatec={perfil?.vinculoFatec}
+        ra={perfil?.ra}
+        curso={perfil?.curso}
+      />
     </Modal>
   );
 }

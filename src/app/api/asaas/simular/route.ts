@@ -2,18 +2,12 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 
-/** Simulação da Etapa 1 (pagamento) enquanto a conta do Asaas não está
- * configurada (2026-08-26) — marca a inscrição como paga sem passar por
- * nenhum gateway real. Se desliga sozinha assim que ASAAS_API_KEY existir,
- * pra nunca sobreviver acidentalmente numa cobrança de verdade. */
+/** Simulação da Etapa 1 (pagamento) — marca a inscrição como paga sem passar
+ * por nenhum gateway real. Se desliga sozinha assim que ASAAS_API_KEY existir
+ * (pra nunca sobreviver acidentalmente numa cobrança de verdade), exceto pra
+ * eventos marcados como permiteSimulacaoPagamento (2026-08-28) — só usado no
+ * evento de demonstração, pra apresentação, onde não tem cobrança real. */
 export async function POST(request: Request) {
-  if (process.env.ASAAS_API_KEY) {
-    return NextResponse.json(
-      { erro: "Simulação desativada — o Asaas já está configurado." },
-      { status: 403 },
-    );
-  }
-
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!idToken) {
@@ -40,6 +34,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { erro: "Este evento não tem taxa de inscrição." },
       { status: 400 },
+    );
+  }
+
+  if (process.env.ASAAS_API_KEY && !evento.permiteSimulacaoPagamento) {
+    return NextResponse.json(
+      { erro: "Simulação desativada — o Asaas já está configurado." },
+      { status: 403 },
     );
   }
 

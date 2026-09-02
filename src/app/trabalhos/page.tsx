@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, ChevronDown, Send, Minus, Plus, Check, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, ChevronDown, Send, Minus, Plus, Check, X, Award, ListChecks } from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -9,9 +9,11 @@ import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventos } from "@/lib/data/eventos";
-import { useTrabalhos, type TrabalhoStatus } from "@/lib/data/trabalhos";
+import { useEventos, type Evento } from "@/lib/data/eventos";
+import { useTrabalhos, type TrabalhoStatus, type Trabalho } from "@/lib/data/trabalhos";
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
+import { useMinhaInscricao } from "@/lib/data/inscricoes";
+import { useMonitoresDoEvento } from "@/lib/data/monitores";
 
 type Etapa =
   | "submissao"
@@ -52,6 +54,36 @@ function formatarData(valor: unknown): string {
   return (valor as { toDate(): Date }).toDate().toLocaleDateString("pt-BR");
 }
 
+/** Situação do pagamento do dono do trabalho nesse evento (2026-08-31) —
+ * componente próprio só pra poder chamar useMinhaInscricao por linha da
+ * tabela. Evento sem taxa não tem pagamento pra checar. A leitura funciona
+ * aqui (admin/organização) mesmo sendo de outra pessoa — ver firestore.rules,
+ * inscricoesEvento permite admin/organização lerem qualquer inscrição. */
+function CelulaSituacaoPagamento({ trabalho, evento }: { trabalho: Trabalho; evento: Evento | undefined }) {
+  const temTaxa = !!evento?.valorInscricao;
+  const { inscricao, carregando } = useMinhaInscricao(
+    temTaxa ? trabalho.eventoId : undefined,
+    trabalho.alunoUid,
+  );
+
+  if (!temTaxa) {
+    return <span className="text-xs text-fatec-muted">Gratuito</span>;
+  }
+  if (carregando) {
+    return <span className="text-xs text-fatec-muted">…</span>;
+  }
+  const pago = inscricao?.status === "pago";
+  return (
+    <span
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+        pago ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+      }`}
+    >
+      {pago ? "Pago" : "Não pago"}
+    </span>
+  );
+}
+
 export default function TrabalhosAdminPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
@@ -62,6 +94,25 @@ export default function TrabalhosAdminPage() {
   const [busca, setBusca] = useState("");
   const [eventoId, setEventoId] = useState("todos");
   const [areaFiltro, setAreaFiltro] = useState("Todas as áreas");
+
+  // Pré-seleciona o evento em destaque assim que a lista carrega, só na
+  // primeira vez (2026-08-31) — evita ter que escolher toda vez o evento que
+  // já está em foco no momento; troca manual depois disso nunca é sobrescrita.
+  const preSelecaoFeita = useRef(false);
+  useEffect(() => {
+    if (preSelecaoFeita.current || eventos.length === 0) return;
+    preSelecaoFeita.current = true;
+    const destaque = eventos.find((e) => e.destaque);
+    if (destaque) Promise.resolve().then(() => setEventoId(destaque.id));
+  }, [eventos]);
+
+  // Monitores do evento selecionado — "Emitir certificados" libera junto
+  // com os trabalhos aceitos (2026-09-01). Só faz sentido com um evento
+  // específico escolhido (não em "todos", que mistura vários eventos).
+  const { monitores: monitoresDoEventoAtual } = useMonitoresDoEvento(
+    eventoId !== "todos" ? eventoId : undefined,
+  );
+
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [modalEnviar, setModalEnviar] = useState(false);
   const [papelAlvoEnvio, setPapelAlvoEnvio] = useState<"avaliador" | "moderador">("avaliador");
@@ -70,6 +121,7 @@ export default function TrabalhosAdminPage() {
     { uid: string; nome: string; quantidade: number }[]
   >([]);
   const [modoManual, setModoManual] = useState(false);
+  const [menuLoteAberto, setMenuLoteAberto] = useState(false);
 
   // Seleção não sobrevive troca de etapa (2026-08-25 -> agora tem 2 etapas
   // selecionáveis, Submissão e Resultado, então isso passa a importar de
@@ -235,11 +287,58 @@ export default function TrabalhosAdminPage() {
   const contagem = (e: Etapa) =>
     trabalhos.filter((t) => STATUS_POR_ETAPA[e].includes(t.status)).length;
 
+  // Botão/ação de liberar certificado é exclusivo do admin (pedido do
+  // usuário, 2026-08-28) — organização vê a aba Resultado Final normalmente,
+  // sem esse controle.
+  const podeLiberarCertificados = etapa === "resultado_final" && perfil?.papel === "admin";
+
+  // "Liberar certificados" age sobre tudo que está aceito e ainda não foi
+  // liberado, dentro dos filtros ativos — sem precisar selecionar nada.
+  const trabalhosPendentesDeLiberacao = useMemo(
+    () => trabalhosFiltrados.filter((t) => t.status === "aceito" && !t.certificadoLiberado),
+    [trabalhosFiltrados],
+  );
+
+  const monitoresPendentesDeLiberacao = useMemo(
+    () => monitoresDoEventoAtual.filter((m) => !m.certificadoLiberado),
+    [monitoresDoEventoAtual],
+  );
+
+  // Checkbox de seleção também aparece no Resultado Final (2026-08-31) —
+  // usado pelo "Aceitar todos selecionados" do menu de funções em lote.
+  const mostrarCheckbox = !!ETAPA_PARA_PAPEL_ALVO[etapa] || etapa === "resultado_final";
+
+  // Só os selecionados que ainda fazem sentido aceitar (já apresentados,
+  // aguardando decisão) — selecionar um já aceito/recusado não faz nada.
+  const selecionadosElegiveisParaAceite = useMemo(
+    () => trabalhosFiltrados.filter((t) => selecionados.has(t.id) && t.status === "apresentado"),
+    [trabalhosFiltrados, selecionados],
+  );
+
   function alternarSelecao(id: string) {
     setSelecionados((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  // Checkbox "selecionar todos" no cabeçalho (2026-08-31, igual serviço de
+  // e-mail) — seleciona/desseleciona só os trabalhos visíveis com o filtro
+  // atual (ex.: uma área temática), não a tabela inteira sem filtro.
+  const todosVisiveisSelecionados =
+    trabalhosFiltrados.length > 0 && trabalhosFiltrados.every((t) => selecionados.has(t.id));
+
+  function alternarSelecaoTodos() {
+    setSelecionados((prev) => {
+      if (todosVisiveisSelecionados) {
+        const next = new Set(prev);
+        for (const t of trabalhosFiltrados) next.delete(t.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const t of trabalhosFiltrados) next.add(t.id);
       return next;
     });
   }
@@ -297,6 +396,54 @@ export default function TrabalhosAdminPage() {
     });
   }
 
+  /** Libera o certificado/declaração pro aluno/avaliador/moderador verem na
+   * própria tela de Certificações — separado do aceite em si, pra decidir o
+   * momento (2026-08-28). Exclusivo do admin (pedido do usuário) — a
+   * organização vê a aba Resultado Final normalmente, mas não esse botão. */
+  async function liberarCertificado(id: string) {
+    await updateDoc(doc(db, "trabalhos", id), {
+      certificadoLiberado: true,
+      atualizadoEm: serverTimestamp(),
+    });
+  }
+
+  // Libera todo mundo que já está aceito na aba Resultado Final (respeitando
+  // os filtros de busca/área/evento ativos) — não precisa selecionar nada
+  // (pedido do usuário, 2026-08-28). Libera junto os monitores do evento
+  // selecionado (2026-09-01) — eles não têm trabalho nenhum, então entram
+  // por fora dessa lista.
+  async function liberarTodosCertificados() {
+    const batch = writeBatch(db);
+    for (const t of trabalhosPendentesDeLiberacao) {
+      batch.update(doc(db, "trabalhos", t.id), {
+        certificadoLiberado: true,
+        atualizadoEm: serverTimestamp(),
+      });
+    }
+    for (const m of monitoresPendentesDeLiberacao) {
+      batch.update(doc(db, "monitoresEvento", m.id), {
+        certificadoLiberado: true,
+      });
+    }
+    await batch.commit();
+  }
+
+  // Aceita em lote os selecionados que estão "apresentado" (2026-08-31,
+  // função em lote pra não precisar clicar ✓ um por um em eventos grandes —
+  // chegaram a ter 600+ trabalhos na MAC). Ignora silenciosamente quem foi
+  // selecionado mas já não está mais aguardando decisão.
+  async function aceitarTodosSelecionados() {
+    const batch = writeBatch(db);
+    for (const t of selecionadosElegiveisParaAceite) {
+      batch.update(doc(db, "trabalhos", t.id), {
+        status: "aceito",
+        atualizadoEm: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    setSelecionados(new Set());
+  }
+
   if (carregando || !perfil) return null;
 
   return (
@@ -344,7 +491,11 @@ export default function TrabalhosAdminPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          <div className="flex w-fit overflow-hidden rounded-xl border border-fatec-line">
+          {/* overflow-x-auto próprio (2026-08-31): sem isso, em telas
+              estreitas as abas ficavam cortadas pelo overflow-x-hidden do
+              container pai, sem jeito nenhum de alcançar as últimas. */}
+          <div className="overflow-x-auto pb-1">
+            <div className="flex w-fit overflow-hidden rounded-xl border border-fatec-line">
             {ETAPAS.map((e, i) => {
               const ativa = etapa === e.key;
               return (
@@ -378,9 +529,10 @@ export default function TrabalhosAdminPage() {
                 </button>
               );
             })}
+            </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex items-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 sm:w-64">
                 <Search
@@ -429,16 +581,79 @@ export default function TrabalhosAdminPage() {
                 {selecionados.size > 0 && ` (${selecionados.size})`}
               </button>
             )}
+
+            {podeLiberarCertificados && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuLoteAberto((v) => !v)}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                >
+                  <ListChecks className="h-4 w-4" strokeWidth={1.75} />
+                  Funções em lote
+                  <ChevronDown className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+
+                {menuLoteAberto && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setMenuLoteAberto(false)}
+                    />
+                    <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-fatec-line bg-white p-1.5 shadow-lg">
+                      <button
+                        type="button"
+                        disabled={selecionadosElegiveisParaAceite.length === 0}
+                        onClick={() => {
+                          aceitarTodosSelecionados();
+                          setMenuLoteAberto(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                      >
+                        <Check className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                        Aceitar todos selecionados
+                        {selecionadosElegiveisParaAceite.length > 0 &&
+                          ` (${selecionadosElegiveisParaAceite.length})`}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          trabalhosPendentesDeLiberacao.length === 0 &&
+                          monitoresPendentesDeLiberacao.length === 0
+                        }
+                        onClick={() => {
+                          liberarTodosCertificados();
+                          setMenuLoteAberto(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                      >
+                        <Award className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                        Emitir certificados
+                        {trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length >
+                          0 &&
+                          ` (${trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length})`}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[900px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-fatec-line text-xs uppercase tracking-[-0.01em] text-fatec-muted">
-                    {!!ETAPA_PARA_PAPEL_ALVO[etapa] && (
+                    {mostrarCheckbox && (
                       <th className="w-10 px-6 py-3">
-                        <span className="sr-only">Selecionar</span>
+                        <input
+                          type="checkbox"
+                          aria-label="Selecionar todos"
+                          checked={todosVisiveisSelecionados}
+                          onChange={alternarSelecaoTodos}
+                          className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                        />
                       </th>
                     )}
                     <th className="px-6 py-3 font-semibold">Trabalho</th>
@@ -458,6 +673,7 @@ export default function TrabalhosAdminPage() {
                       <th className="px-6 py-3 font-semibold">Nota final (/50)</th>
                     )}
                     <th className="px-6 py-3 font-semibold">Atualizado</th>
+                    <th className="px-6 py-3 font-semibold">Situação</th>
                     {etapa === "resultado_final" && (
                       <th className="px-6 py-3 font-semibold">
                         <span className="sr-only">Ações</span>
@@ -471,7 +687,7 @@ export default function TrabalhosAdminPage() {
                       key={t.id}
                       className="border-b border-fatec-line last:border-0 hover:bg-fatec-navy-50/60"
                     >
-                      {!!ETAPA_PARA_PAPEL_ALVO[etapa] && (
+                      {mostrarCheckbox && (
                         <td className="px-6 py-4 align-top">
                           <input
                             type="checkbox"
@@ -523,6 +739,12 @@ export default function TrabalhosAdminPage() {
                       <td className="whitespace-nowrap px-6 py-4 align-top text-fatec-muted">
                         {formatarData(t.atualizadoEm)}
                       </td>
+                      <td className="px-6 py-4 align-top">
+                        <CelulaSituacaoPagamento
+                          trabalho={t}
+                          evento={eventos.find((e) => e.id === t.eventoId)}
+                        />
+                      </td>
                       {etapa === "resultado_final" && (
                         <td className="px-6 py-4 align-top">
                           {t.status === "apresentado" && (
@@ -545,6 +767,23 @@ export default function TrabalhosAdminPage() {
                               </button>
                             </div>
                           )}
+                          {t.status === "aceito" && perfil?.papel === "admin" && (
+                            t.certificadoLiberado ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                                <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                Certificado liberado
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => liberarCertificado(t.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-fatec-line px-2.5 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                              >
+                                <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                Liberar certificado
+                              </button>
+                            )
+                          )}
                         </td>
                       )}
                     </tr>
@@ -553,7 +792,7 @@ export default function TrabalhosAdminPage() {
                   {trabalhosFiltrados.length === 0 && (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-6 py-10 text-center text-sm text-fatec-muted"
                       >
                         Nenhum trabalho nesta etapa.

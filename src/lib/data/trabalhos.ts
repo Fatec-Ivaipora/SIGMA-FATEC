@@ -55,6 +55,11 @@ export type Trabalho = {
   alunoNome: string;
   eventoId: string;
   areaTematica: string;
+  // Como o trabalho será apresentado (2026-09-01) — Oral (sala reservada,
+  // com slides, tempo de perguntas no final) ou Roda de Conversa (banner
+  // impresso, apresentador junto ao material, formato mais interativo).
+  // Escolhido pelo aluno na submissão.
+  modalidadeApresentacao?: "oral" | "roda_conversa";
   nomeOrientador?: string;
   resumo?: string;
   // Colegas adicionados na submissão (RF-08) — só leem o trabalho, não podem
@@ -79,6 +84,11 @@ export type Trabalho = {
   moderadorNome?: string | null;
   notaModerador?: number | null;
   notasCriteriosApresentacao?: NotasCriteriosApresentacao | null;
+  // Controla quando o certificado/declaração desse trabalho aparece pro
+  // aluno/avaliador/moderador (2026-08-28) — chegar em "aceito" não libera
+  // sozinho; a organização decide o momento clicando "Liberar certificado"
+  // na aba Resultado Final (ver trabalhos/page.tsx).
+  certificadoLiberado?: boolean;
   atualizadoEm?: unknown;
 };
 

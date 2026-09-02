@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Download,
@@ -50,6 +50,18 @@ function RelatoriosContent() {
   const todosLabel =
     perfil?.papel === "admin" ? "Todos os eventos" : "Todos os meus eventos";
   const [eventoId, setEventoId] = useState(searchParams.get("evento") ?? "todos");
+
+  // Pré-seleciona o evento em destaque assim que a lista carrega, só na
+  // primeira vez e só se não veio um evento explícito pela URL (2026-08-31)
+  // — evita ter que escolher toda vez o evento que já está em foco.
+  const preSelecaoFeita = useRef(false);
+  useEffect(() => {
+    if (preSelecaoFeita.current || eventos.length === 0) return;
+    preSelecaoFeita.current = true;
+    if (searchParams.get("evento")) return;
+    const destaque = eventos.find((e) => e.destaque);
+    if (destaque) Promise.resolve().then(() => setEventoId(destaque.id));
+  }, [eventos, searchParams]);
 
   const trabalhosDoEvento = useMemo(
     () =>

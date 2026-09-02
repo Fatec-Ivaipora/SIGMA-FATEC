@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import { VLibrasWidget } from "@/components/VLibrasWidget";
+import { SenhaTemporariaGate } from "@/components/SenhaTemporariaGate";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -45,7 +46,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           FINISH: unreviewed and undocumented is unfinished; this build ends with
           the finish review, the verdict, and DESIGN.md
         */}
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <SenhaTemporariaGate />
+        </AuthProvider>
         <VLibrasWidget />
       </body>
     </html>

@@ -80,6 +80,11 @@ export async function POST(request: Request) {
       ...(body.papeisAvaliacao && body.papeisAvaliacao.length > 0
         ? { papeisAvaliacao: body.papeisAvaliacao }
         : {}),
+      // Conta criada pelo admin com senha gerada na hora (nunca escolhida pela
+      // pessoa) — força trocar no primeiro login via SenhaTemporariaGate,
+      // senão a pessoa loga uma vez, nunca troca, e esquece a senha depois
+      // (nunca foi dela pra começo de conversa).
+      senhaTemporaria: true,
     });
 
   return NextResponse.json({ uid, senhaTemporaria: senha });

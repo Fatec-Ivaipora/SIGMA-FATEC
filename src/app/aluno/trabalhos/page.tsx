@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
-import { FileStack } from "lucide-react";
+import { Download, FileStack } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -99,6 +99,17 @@ export default function AlunoTrabalhosPage() {
                   </div>
 
                   <div className="flex flex-none items-center gap-3">
+                    {t.modalidadeApresentacao === "roda_conversa" && (
+                      <a
+                        href="/materiais/modelo-banner-mac.pdf"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                      >
+                        <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Modelo do banner
+                      </a>
+                    )}
                     <StatusBadge status={t.status} />
                     {t.status === "revisao" && t.alunoUid === user?.uid && (
                       <button

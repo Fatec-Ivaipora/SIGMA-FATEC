@@ -53,6 +53,10 @@ export type PerfilUsuario = {
   // for um desses três, senão []. Ver temPapel() abaixo — é ele que sabe ler
   // isso, nunca comparar papeisAvaliacao direto.
   papeisAvaliacao?: PapelAvaliacao[];
+  // true só em contas criadas pelo admin (senha gerada na hora, nunca
+  // escolhida pela pessoa) — força a troca no primeiro login, ver
+  // SenhaTemporariaGate. Ausente/false = login normal.
+  senhaTemporaria?: boolean;
 };
 
 export const ROTA_POR_PAPEL: Record<Papel, string> = {

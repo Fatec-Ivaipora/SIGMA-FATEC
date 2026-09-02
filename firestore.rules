@@ -64,7 +64,10 @@ service cloud.firestore {
       // Autoatendimento (Configurações, 2026-08-25): qualquer usuário logado
       // pode alterar o PRÓPRIO nome — nenhum outro campo (papel, atribuicoesEventos,
       // eventosPermitidos, etc.), pra não abrir brecha de escalonamento de privilégio.
-      allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome"]));
+      // senhaTemporaria (2026-08-27): SenhaTemporariaGate zera esse campo pra
+      // false depois que a pessoa troca a senha gerada pelo admin no primeiro
+      // login — mesma restrição de campo, só amplia a lista permitida.
+      allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome", "senhaTemporaria"]));
       allow delete: if souAdmin();
     }
 
@@ -106,16 +109,13 @@ service cloud.firestore {
       // RN-17: participante externo (vinculoFatec == false) só pode submeter
       // em eventos com aceitaExternos == true; aluno da Fatec não tem essa
       // restrição — validado no servidor, não só escondendo o evento na UI.
-      // Taxa de inscrição (2026-08-26): evento com valorInscricao só libera a
-      // Etapa 2 (enviar trabalho) depois da Etapa 1 (pagamento) confirmada —
-      // a UI já trava o botão, isso é defesa em profundidade contra escrita
-      // direta no Firestore sem ter pago.
+      // Pagamento NÃO bloqueia mais submissão (2026-08-31, pedido da
+      // diretoria) — antes exigia inscricoesEvento status=="pago" pra evento
+      // com taxa; isso foi removido daqui de propósito. O pagamento continua
+      // obrigatório, só que verificado depois, na hora de liberar o
+      // certificado (ver /api/certificados).
       allow create: if logado() && meuPapel() == "aluno" && request.resource.data.alunoUid == request.auth.uid &&
-        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId)) &&
-        (
-          get(/databases/$(database)/documents/eventos/$(request.resource.data.eventoId)).data.get("valorInscricao", 0) <= 0 ||
-          get(/databases/$(database)/documents/inscricoesEvento/$(request.resource.data.eventoId + "::" + request.auth.uid)).data.status == "pago"
-        );
+        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId));
       allow update: if logado() && (
         souAdmin() ||
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
@@ -205,6 +205,31 @@ service cloud.firestore {
         resource.data.uid == request.auth.uid
       );
       allow write: if false;
+    }
+
+    // monitoresEvento/{eventoId}::{uid} — cargo de monitor (2026-09-01):
+    // aluno que ajuda na operação do evento, atribuído por fora pela
+    // organização/admin (não é o próprio aluno quem se marca). Certificado
+    // segue o mesmo botão "Emitir certificados" — por isso create/delete
+    // (atribuir/remover o cargo) é da organização/admin, mas update
+    // (certificadoLiberado) é admin-only, igual o resto do fluxo de
+    // certificado.
+    match /monitoresEvento/{id} {
+      allow read: if logado() && (
+        resource == null ||
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        resource.data.uid == request.auth.uid
+      );
+      allow create: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && request.resource.data.eventoId in meusEventos())
+      );
+      allow delete: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
+      allow update: if souAdmin();
     }
 
     // mail/{autoId} — só a extensão Trigger Email (via Admin SDK) escreve;

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowRight,
   CalendarDays,
   Check,
@@ -11,21 +12,17 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
-import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos } from "@/lib/data/eventos";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
+import { useMinhaInscricao } from "@/lib/data/inscricoes";
 
 export default function AlunoPainelPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { eventos: todosEventos } = useEventosPublicos();
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [avisoTaxaEventoId, setAvisoTaxaEventoId] = useState<string | null>(null);
 
   // Participante externo (sem vínculo com a Fatec) só pode ver/inscrever nos
   // eventos marcados como aceitaExternos; aluno da Fatec vê todos.
@@ -45,6 +42,12 @@ export default function AlunoPainelPage() {
   );
 
   const jaInscrito = !!(destaque && trabalhos.some((t) => t.eventoId === destaque.id));
+  const temTaxaDestaque = !!destaque?.valorInscricao;
+  const { inscricao: inscricaoDestaque } = useMinhaInscricao(
+    temTaxaDestaque ? destaque?.id : undefined,
+    user?.uid,
+  );
+  const pagamentoPendente = temTaxaDestaque && inscricaoDestaque?.status !== "pago";
 
   const trabalhosRecentes = useMemo(() => [...trabalhos].slice(0, 5), [trabalhos]);
 
@@ -56,20 +59,6 @@ export default function AlunoPainelPage() {
   function responder(trabalho: (typeof trabalhos)[number], aceitar: boolean) {
     if (!user) return;
     responderConvite(trabalho, user.uid, aceitar);
-  }
-
-  async function enviarTrabalho(dados: DadosSubmissao) {
-    if (!destaque || !user || !perfil) return;
-    await addDoc(collection(db, "trabalhos"), {
-      ...dados,
-      eventoId: destaque.id,
-      alunoUid: user.uid,
-      alunoNome: perfil.nome,
-      status: "submissao",
-      convitesPendentes: dados.participantesUids,
-      atualizadoEm: serverTimestamp(),
-    });
-    setModalAberto(false);
   }
 
   if (carregando || !perfil) return null;
@@ -203,32 +192,26 @@ export default function AlunoPainelPage() {
                     {destaque.nome}
                   </h3>
 
-                  {jaInscrito ? (
+                  {pagamentoPendente ? (
+                    // Pagamento pendente vira o CTA principal (2026-08-31) —
+                    // mais urgente que "inscrição feita". Clicar sempre leva
+                    // pra Eventos, que é onde a inscrição/pagamento de
+                    // verdade acontece — esse banner é só uma vitrine.
+                    <Link
+                      href="/aluno/eventos"
+                      className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-amber-100 px-6 py-3 text-sm font-semibold text-amber-800 transition-transform hover:-translate-y-0.5"
+                    >
+                      <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+                      Pagamento pendente — pagar agora
+                    </Link>
+                  ) : jaInscrito ? (
                     <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50">
                       <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
                       Inscrição feita
                     </span>
-                  ) : avisoTaxaEventoId === destaque.id ? (
-                    <div className="mt-2 flex flex-col items-start gap-2 rounded-xl bg-white/10 px-4 py-3">
-                      <p className="text-sm text-white/90">
-                        Este evento tem taxa de inscrição — pague na aba
-                        Eventos pra participar.
-                      </p>
-                      <Link
-                        href="/aluno/eventos"
-                        className="text-sm font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white"
-                      >
-                        Ir para Eventos →
-                      </Link>
-                    </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        destaque.valorInscricao
-                          ? setAvisoTaxaEventoId(destaque.id)
-                          : setModalAberto(true)
-                      }
+                    <Link
+                      href="/aluno/eventos"
                       className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
                     >
                       Inscrever trabalho
@@ -236,7 +219,7 @@ export default function AlunoPainelPage() {
                         className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
                         strokeWidth={2}
                       />
-                    </button>
+                    </Link>
                   )}
                 </div>
               </div>
@@ -263,19 +246,6 @@ export default function AlunoPainelPage() {
           )}
         </div>
       </div>
-
-      {destaque && (
-        <SubmeterTrabalhoModal
-          open={modalAberto}
-          eventoId={destaque.id}
-          temTaxa={!!destaque.valorInscricao}
-          eventoNome={destaque.nome}
-          areasDisponiveis={destaque.areasTematicas ?? []}
-          meuUid={user?.uid}
-          onClose={() => setModalAberto(false)}
-          onSubmit={enviarTrabalho}
-        />
-      )}
     </main>
   );
 }

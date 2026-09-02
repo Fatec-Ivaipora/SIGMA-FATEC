@@ -2,75 +2,33 @@
 
 import { useState } from "react";
 import type { User } from "firebase/auth";
-import {
-  Check,
-  CheckCircle2,
-  ExternalLink,
-  FlaskConical,
-  Loader2,
-} from "lucide-react";
+import { CheckCircle2, ExternalLink, FlaskConical, Loader2 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 
-function StepBadge({
-  numero,
-  label,
-  ativo,
-  concluido,
-}: {
-  numero: number;
-  label: string;
-  ativo: boolean;
-  concluido: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <span
-        className={`flex h-9 w-9 flex-none items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-          concluido
-            ? "bg-emerald-500 text-white"
-            : ativo
-              ? "bg-fatec-orange-500 text-white"
-              : "bg-fatec-navy-100 text-fatec-muted"
-        }`}
-      >
-        {concluido ? <Check className="h-4 w-4" strokeWidth={2.5} /> : numero}
-      </span>
-      <span
-        className={`text-sm font-semibold ${
-          ativo || concluido ? "text-fatec-navy-900" : "text-fatec-muted"
-        }`}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
-/** Wizard de inscrição num evento com taxa (2026-08-26) — junta as duas
- * etapas (pagamento e trabalho) num modal só, com espaço de verdade, em vez
- * de espremer os dois estados dentro do card da listagem de eventos. O card
- * só mostra o status; toda a interação acontece aqui. */
+/** Modal de pagamento da inscrição num evento com taxa (2026-08-26, revisado
+ * 2026-08-31). Pagamento não bloqueia mais trabalho/convites — a diretoria
+ * não quis essa trava (ver src/app/aluno/eventos/page.tsx) — então esse modal
+ * cuida só do pagamento em si; o aluno pode abrir/fechar isso a qualquer
+ * momento, antes ou depois de já ter enviado o trabalho. */
 export function InscricaoEventoModal({
   open,
   eventoId,
   eventoNome,
   valor,
   temCpf,
-  trabalhoEnviado,
+  permiteSimulacao,
   user,
   onClose,
-  onIrParaFormulario,
 }: {
   open: boolean;
   eventoId: string;
   eventoNome: string;
   valor: number;
   temCpf: boolean;
-  trabalhoEnviado: boolean;
+  permiteSimulacao?: boolean;
   user: User | null | undefined;
   onClose: () => void;
-  onIrParaFormulario: () => void;
 }) {
   const { inscricao } = useMinhaInscricao(eventoId, user?.uid);
   const pago = inscricao?.status === "pago";
@@ -160,17 +118,6 @@ export function InscricaoEventoModal({
   return (
     <Modal open={open} onClose={fechar} title={`Inscrição — ${eventoNome}`}>
       <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-center gap-3">
-          <StepBadge numero={1} label="Pagamento" ativo={!pago} concluido={pago} />
-          <div className={`h-px w-10 flex-none ${pago ? "bg-emerald-300" : "bg-fatec-line"}`} />
-          <StepBadge
-            numero={2}
-            label="Trabalho"
-            ativo={pago && !trabalhoEnviado}
-            concluido={trabalhoEnviado}
-          />
-        </div>
-
         {!pago ? (
           <div className="flex flex-col gap-5">
             <div className="rounded-2xl bg-fatec-navy-50 px-5 py-4">
@@ -216,26 +163,27 @@ export function InscricaoEventoModal({
                   {gerando ? "Gerando cobrança..." : "Pagar agora"}
                 </button>
 
-                <div className="flex flex-col gap-2 rounded-xl border border-dashed border-fatec-line px-4 py-3">
-                  <p className="text-xs text-fatec-muted">
-                    Sem conta no Asaas ainda? Use isto pra testar o resto do
-                    fluxo — não gera cobrança nenhuma. Some sozinho quando o
-                    Asaas estiver configurado de verdade.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={simularPagamento}
-                    disabled={simulando}
-                    className="flex w-fit items-center gap-2 rounded-lg border border-fatec-line px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
-                  >
-                    {simulando ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-                    ) : (
-                      <FlaskConical className="h-3.5 w-3.5" strokeWidth={2} />
-                    )}
-                    {simulando ? "Simulando..." : "Simular pagamento (modo de teste)"}
-                  </button>
-                </div>
+                {permiteSimulacao && (
+                  <div className="flex flex-col gap-2 rounded-xl border border-dashed border-fatec-line px-4 py-3">
+                    <p className="text-xs text-fatec-muted">
+                      Evento de demonstração — use isto pra testar o resto do
+                      fluxo sem gerar cobrança nenhuma.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={simularPagamento}
+                      disabled={simulando}
+                      className="flex w-fit items-center gap-2 rounded-lg border border-fatec-line px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                    >
+                      {simulando ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+                      ) : (
+                        <FlaskConical className="h-3.5 w-3.5" strokeWidth={2} />
+                      )}
+                      {simulando ? "Simulando..." : "Simular pagamento (modo de teste)"}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -264,38 +212,15 @@ export function InscricaoEventoModal({
               </div>
             )}
           </div>
-        ) : !trabalhoEnviado ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl bg-emerald-50 px-6 py-10 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
-              <CheckCircle2 className="h-6 w-6" strokeWidth={2} />
-            </span>
-            <div>
-              <p className="font-semibold text-fatec-navy-900">Pagamento confirmado!</p>
-              <p className="mt-1 text-sm text-fatec-muted">
-                Agora é só preencher os dados do seu trabalho pra concluir a
-                inscrição.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                fechar();
-                onIrParaFormulario();
-              }}
-              className="rounded-xl bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
-            >
-              Preencher trabalho →
-            </button>
-          </div>
         ) : (
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-emerald-50 px-6 py-10 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
               <CheckCircle2 className="h-6 w-6" strokeWidth={2} />
             </span>
-            <p className="font-semibold text-fatec-navy-900">Inscrição completa</p>
+            <p className="font-semibold text-fatec-navy-900">Pagamento confirmado</p>
             <p className="text-sm text-fatec-muted">
-              Pagamento confirmado e trabalho enviado — é só acompanhar o
-              status em Trabalhos.
+              Sua inscrição nesse evento está paga. Pode fechar essa janela —
+              o envio do trabalho (se ainda não fez) fica na tela de Eventos.
             </p>
           </div>
         )}
