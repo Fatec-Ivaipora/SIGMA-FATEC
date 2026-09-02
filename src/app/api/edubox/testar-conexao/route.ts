@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(15000),
     });
     const corpo = await resposta.json();
-    return NextResponse.json(corpo, { status: resposta.ok ? 200 : 200 });
+    return NextResponse.json(corpo, { status: resposta.status });
   } catch (erro) {
     const msg = erro instanceof Error ? erro.message : String(erro);
     return NextResponse.json({
