@@ -67,7 +67,9 @@ service cloud.firestore {
       // senhaTemporaria (2026-08-27): SenhaTemporariaGate zera esse campo pra
       // false depois que a pessoa troca a senha gerada pelo admin no primeiro
       // login — mesma restrição de campo, só amplia a lista permitida.
-      allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome", "senhaTemporaria"]));
+      // cpf/dataNascimento (2026-09-03): idem — deixa quem já tinha conta
+      // antes dessa exigência existir preencher depois, sem precisar de admin.
+      allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome", "senhaTemporaria", "cpf", "dataNascimento"]));
       allow delete: if souAdmin();
     }
 

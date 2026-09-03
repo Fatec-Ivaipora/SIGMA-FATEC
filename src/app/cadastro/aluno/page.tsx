@@ -11,8 +11,10 @@ import { auth, db } from "@/lib/firebase";
 import { AuthSplitLayout } from "@/components/AuthSplitLayout";
 import { Modal } from "@/components/Modal";
 import { CURSOS_FATEC } from "@/lib/cursos";
+import { formatarCPF, validarCPF } from "@/lib/cpf";
 
 const DURACAO_MAXIMA_CURSO_ANOS = 5;
+const IDADE_MINIMA_ANOS = 12;
 
 function mensagemErro(erro: AuthError): string {
   switch (erro.code) {
@@ -40,10 +42,29 @@ function erroDoRA(ra: string): string | null {
   return null;
 }
 
+function erroDaDataNascimento(data: string): string | null {
+  if (!data) return "Informe sua data de nascimento.";
+  const nascimento = new Date(`${data}T00:00:00`);
+  if (Number.isNaN(nascimento.getTime())) return "Data inválida.";
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - nascimento.getFullYear();
+  const aniversarioJaPassou =
+    hoje.getMonth() > nascimento.getMonth() ||
+    (hoje.getMonth() === nascimento.getMonth() && hoje.getDate() >= nascimento.getDate());
+  if (!aniversarioJaPassou) idade -= 1;
+  if (nascimento > hoje) return "A data não pode ser no futuro.";
+  if (idade < IDADE_MINIMA_ANOS) {
+    return `Idade mínima de ${IDADE_MINIMA_ANOS} anos pra se cadastrar.`;
+  }
+  return null;
+}
+
 export default function CadastroAlunoPage() {
   const router = useRouter();
   const [vinculoFatec, setVinculoFatec] = useState(true);
   const [nome, setNome] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
   const [ra, setRa] = useState("");
   const [curso, setCurso] = useState("");
   const [email, setEmail] = useState("");
@@ -59,6 +80,17 @@ export default function CadastroAlunoPage() {
 
     if (senha !== confirmarSenha) {
       setErro("As senhas não coincidem.");
+      return;
+    }
+
+    if (!validarCPF(cpf)) {
+      setErro("Digite um CPF válido.");
+      return;
+    }
+
+    const erroNascimento = erroDaDataNascimento(dataNascimento);
+    if (erroNascimento) {
+      setErro(erroNascimento);
       return;
     }
 
@@ -82,6 +114,8 @@ export default function CadastroAlunoPage() {
         email: email.trim(),
         papel: "aluno",
         vinculoFatec,
+        cpf: cpf.replace(/\D/g, ""),
+        dataNascimento,
         ...(vinculoFatec ? { ra: ra.trim(), curso } : {}),
       });
       router.push("/aluno");
@@ -156,6 +190,39 @@ export default function CadastroAlunoPage() {
             className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
           />
         </label>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">CPF</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              name="cpf"
+              required
+              maxLength={14}
+              value={cpf}
+              onChange={(e) => setCpf(formatarCPF(e.target.value))}
+              placeholder="000.000.000-00"
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Data de nascimento
+            </span>
+            <input
+              type="date"
+              name="dataNascimento"
+              required
+              value={dataNascimento}
+              onChange={(e) => setDataNascimento(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+        </div>
+        <span className="-mt-3 text-xs text-fatec-muted">
+          Exigidos pra emitir seu certificado de participação nos eventos.
+        </span>
 
         {vinculoFatec && (
           <label className="flex flex-col gap-1.5">

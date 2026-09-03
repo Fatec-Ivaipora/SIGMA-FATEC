@@ -27,6 +27,7 @@ const MAPA_EMBED_SRC = `https://maps.google.com/maps?q=${encodeURIComponent(
 type EventoDestaque = {
   id: string;
   nome: string;
+  descricao?: string;
   periodoSubmissao?: string;
   imagemDestaqueUrl?: string | null;
 };
@@ -109,58 +110,70 @@ export default function HomePage() {
 
       {/* RF-29 / RN-11: evento em destaque, marcado manualmente pela organização.
           Some inteiramente da tela quando nenhum evento está marcado como destaque.
-          Seção própria, com respiro simétrico acima e abaixo do card — sem
-          sobrepor o hero. */}
+          Full-bleed (2026-09-03, antes era um card com margem/rounded) — a
+          foto ocupa a seção inteira, de ponta a ponta; a descrição sai de
+          cima da imagem e vira uma seção de texto própria logo abaixo. */}
       {eventoDestaque && (
-        <section
-          id="evento-destaque"
-          className="relative bg-white px-6 py-16 md:px-12 md:py-24"
-        >
-          <div className="group relative mx-auto max-w-5xl overflow-hidden rounded-3xl shadow-[0_30px_60px_-30px_rgba(14,58,94,0.4)] transition-transform duration-300 hover:-translate-y-1.5">
-            {eventoDestaque.imagemDestaqueUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={eventoDestaque.imagemDestaqueUrl}
-                alt={eventoDestaque.nome}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            ) : (
-              <div
-                aria-hidden
-                className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
-              >
+        <>
+          <section id="evento-destaque" className="relative">
+            <div className="group relative w-full overflow-hidden">
+              {eventoDestaque.imagemDestaqueUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={eventoDestaque.imagemDestaqueUrl}
+                  alt={eventoDestaque.nome}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
                 <div
                   aria-hidden
-                  className="absolute inset-0 opacity-[0.08]"
-                  style={{
-                    backgroundImage:
-                      "radial-gradient(circle, white 1px, transparent 1px)",
-                    backgroundSize: "24px 24px",
-                  }}
-                />
-                <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-                <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-              </div>
-            )}
+                  className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
+                >
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 opacity-[0.08]"
+                    style={{
+                      backgroundImage:
+                        "radial-gradient(circle, white 1px, transparent 1px)",
+                      backgroundSize: "24px 24px",
+                    }}
+                  />
+                  <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
+                  <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
+                </div>
+              )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              {/* Banner full-bleed puramente visual (2026-09-03) — sem nenhum
+                  texto/botão em cima da foto; nome/período/descrição/CTA
+                  ficam todos na seção "Sobre o evento" logo abaixo. Essa div
+                  só existe pra dar altura ao container (a imagem é
+                  absolute inset-0 por cima dela). */}
+              <div className="min-h-[320px] md:min-h-[440px]" />
+            </div>
+          </section>
 
-            <div className="relative flex min-h-[320px] flex-col items-start justify-end gap-3 p-6 md:min-h-[420px] md:p-14">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[-0.01em] text-white">
-                Evento em destaque
+          <section className="bg-white px-6 py-16 md:px-12 md:py-20">
+            <div className="mx-auto max-w-6xl">
+              <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
+                Sobre o evento
               </span>
-              <h2 className="max-w-2xl text-3xl font-bold leading-tight text-white md:text-5xl">
+              <h3 className="mt-2 text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
                 {eventoDestaque.nome}
-              </h2>
+              </h3>
               {eventoDestaque.periodoSubmissao && (
-                <p className="flex items-center gap-1.5 text-sm text-white/85 md:text-base">
+                <p className="mt-2 flex items-center gap-1.5 text-sm text-fatec-muted">
                   <CalendarDays className="h-4 w-4 flex-none" strokeWidth={2} />
                   Inscrições: {eventoDestaque.periodoSubmissao}
                 </p>
               )}
+              {eventoDestaque.descricao && (
+                <p className="mt-6 whitespace-pre-line text-sm leading-relaxed text-fatec-muted">
+                  {eventoDestaque.descricao}
+                </p>
+              )}
               <Link
                 href="/login"
-                className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 shadow-lg shadow-black/10 transition-transform hover:-translate-y-0.5"
+                className="group/btn mt-8 inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
               >
                 Inscreva-se
                 <ArrowRight
@@ -169,8 +182,8 @@ export default function HomePage() {
                 />
               </Link>
             </div>
-          </div>
-        </section>
+          </section>
+        </>
       )}
 
 

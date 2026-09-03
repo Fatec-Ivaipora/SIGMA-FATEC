@@ -44,9 +44,16 @@ export type PerfilUsuario = {
   vinculoFatec?: boolean;
   ra?: string;
   curso?: string;
-  // Salvo pelo servidor (rota /api/asaas/cobranca) na primeira cobrança do
-  // usuário — reusado nas próximas pra não pedir CPF de novo (2026-08-26).
+  // Coletado no cadastro desde 2026-09-03 (antes só existia pra quem pagou
+  // inscrição via Asaas, que grava aqui também — ver /api/asaas/cobranca).
+  // Precisa ser um CPF de verdade: é exigido pelo lançamento no Edubox
+  // (MEC), que valida por dígito verificador e imprime no certificado.
   cpf?: string;
+  // Idem — exigido pelo Edubox (trigger deles rejeita insert sem data de
+  // nascimento válida). Formato ISO "AAAA-MM-DD". Contas criadas antes de
+  // 2026-09-03 não têm isso preenchido; pedir pra completar em Configurações
+  // antes de tentar lançar a pessoa no Edubox.
+  dataNascimento?: string;
   // Conjunto completo de capacidades "de avaliação" da pessoa (2026-08-26)
   // — inclui o próprio `papel` primário quando ele já é um dos três de
   // PAPEIS_AVALIACAO. Ausente = conta antiga, equivale a [papel] se `papel`

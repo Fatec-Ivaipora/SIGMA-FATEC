@@ -12,6 +12,7 @@ import { ChevronDown, Pencil } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
 import { Modal } from "@/components/Modal";
+import { formatarCPF, validarCPF } from "@/lib/cpf";
 
 function mensagemErroSenha(erro: AuthError): string {
   switch (erro.code) {
@@ -35,6 +36,8 @@ function ConfiguracoesForm({
   vinculoFatec,
   ra,
   curso,
+  cpfAtual,
+  dataNascimentoAtual,
 }: {
   uid: string | undefined;
   nomeAtual: string;
@@ -43,13 +46,52 @@ function ConfiguracoesForm({
   vinculoFatec: boolean | undefined;
   ra: string | undefined;
   curso: string | undefined;
+  cpfAtual: string | undefined;
+  dataNascimentoAtual: string | undefined;
 }) {
   const ehAlunoFatec = papel === "aluno" && vinculoFatec !== false;
+  const ehAluno = papel === "aluno";
 
   const [editandoNome, setEditandoNome] = useState(false);
   const [novoNome, setNovoNome] = useState(nomeAtual);
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [erroNome, setErroNome] = useState<string | null>(null);
+
+  // CPF/data de nascimento (2026-09-03) — exigidos pelo lançamento no
+  // Edubox (MEC); contas criadas antes disso não têm preenchido, esse
+  // bloco existe justamente pra deixar completar depois. Sempre editável
+  // (sem toggle como o nome), já que é um dado que só falta uma vez.
+  const [cpf, setCpf] = useState(cpfAtual ? formatarCPF(cpfAtual) : "");
+  const [dataNascimento, setDataNascimento] = useState(dataNascimentoAtual ?? "");
+  const [salvandoDadosEdubox, setSalvandoDadosEdubox] = useState(false);
+  const [erroDadosEdubox, setErroDadosEdubox] = useState<string | null>(null);
+  const [dadosEduboxSalvos, setDadosEduboxSalvos] = useState(false);
+
+  async function salvarDadosEdubox() {
+    setErroDadosEdubox(null);
+    setDadosEduboxSalvos(false);
+    if (!uid) return;
+    if (!validarCPF(cpf)) {
+      setErroDadosEdubox("Digite um CPF válido.");
+      return;
+    }
+    if (!dataNascimento) {
+      setErroDadosEdubox("Informe sua data de nascimento.");
+      return;
+    }
+    setSalvandoDadosEdubox(true);
+    try {
+      await updateDoc(doc(db, "usuarios", uid), {
+        cpf: cpf.replace(/\D/g, ""),
+        dataNascimento,
+      });
+      setDadosEduboxSalvos(true);
+    } catch {
+      setErroDadosEdubox("Não foi possível salvar. Tente novamente.");
+    } finally {
+      setSalvandoDadosEdubox(false);
+    }
+  }
 
   const [senhaExpandida, setSenhaExpandida] = useState(false);
   const [senhaAtual, setSenhaAtual] = useState("");
@@ -198,6 +240,67 @@ function ConfiguracoesForm({
         )}
       </section>
 
+      {ehAluno && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-fatec-line bg-white p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-fatec-navy-900">
+              CPF e data de nascimento
+            </h3>
+            <p className="mt-0.5 text-xs text-fatec-muted">
+              Exigidos pra emitir seu certificado de participação nos eventos.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+                CPF
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={14}
+                value={cpf}
+                onChange={(e) => setCpf(formatarCPF(e.target.value))}
+                placeholder="000.000.000-00"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-fatec-muted">
+                Data de nascimento
+              </span>
+              <input
+                type="date"
+                value={dataNascimento}
+                onChange={(e) => setDataNascimento(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+          </div>
+
+          {erroDadosEdubox && (
+            <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+              {erroDadosEdubox}
+            </p>
+          )}
+          {dadosEduboxSalvos && (
+            <p className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+              Salvo com sucesso.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={salvarDadosEdubox}
+            disabled={salvandoDadosEdubox}
+            className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+          >
+            {salvandoDadosEdubox ? "Salvando..." : "Salvar"}
+          </button>
+        </section>
+      )}
+
       <section className="rounded-2xl border border-fatec-line bg-white">
         <button
           type="button"
@@ -305,6 +408,8 @@ export function ConfiguracoesModal({
         vinculoFatec={perfil?.vinculoFatec}
         ra={perfil?.ra}
         curso={perfil?.curso}
+        cpfAtual={perfil?.cpf}
+        dataNascimentoAtual={perfil?.dataNascimento}
       />
     </Modal>
   );

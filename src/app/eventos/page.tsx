@@ -44,6 +44,7 @@ import { InscritosEventoModal } from "@/components/InscritosEventoModal";
 import { InscricaoManualModal } from "@/components/InscricaoManualModal";
 import { MonitoresEventoModal } from "@/components/MonitoresEventoModal";
 import { AreaComplexaModal } from "@/components/AreaComplexaModal";
+import { BannerCropModal } from "@/components/BannerCropModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos, type Evento, type AreaTematicaComplexa } from "@/lib/data/eventos";
@@ -169,6 +170,7 @@ function CardEventoAdmin({
   onConfigurarCertificado,
   onAbrirEdubox,
   onAbrirMonitores,
+  onAbrirBanner,
 }: {
   evento: Evento;
   totalTrabalhos: number;
@@ -179,6 +181,7 @@ function CardEventoAdmin({
   onConfigurarCertificado: () => void;
   onAbrirEdubox?: () => void;
   onAbrirMonitores: () => void;
+  onAbrirBanner: () => void;
 }) {
   const temTaxa = !!evento.valorInscricao;
   const { inscritos } = useInscritosDoEvento(temTaxa ? evento.id : undefined);
@@ -262,6 +265,12 @@ function CardEventoAdmin({
         {temTaxa && (
           <AcaoEvento icone={Ticket} cor="navy" label="Inscrição extra" onClick={onInscricaoExtra} />
         )}
+        <AcaoEvento
+          icone={ImageIcon}
+          cor="navy"
+          label={evento.imagemDestaqueUrl ? "Trocar banner" : "Adicionar banner"}
+          onClick={onAbrirBanner}
+        />
         <AcaoEvento icone={Tag} cor="navy" label="Áreas temáticas" href="/areas-tematicas" />
         <AcaoEvento icone={UserCog} cor="navy" label="Monitores" onClick={onAbrirMonitores} />
         <AcaoEvento
@@ -293,10 +302,14 @@ export default function EventosPage() {
   const [modalInscritosId, setModalInscritosId] = useState<string | null>(null);
   const [modalInscricaoExtraId, setModalInscricaoExtraId] = useState<string | null>(null);
   const [modalMonitoresId, setModalMonitoresId] = useState<string | null>(null);
+  const [bannerEditEventoId, setBannerEditEventoId] = useState<string | null>(null);
+  const [bannerEditParaCortar, setBannerEditParaCortar] = useState<File | null>(null);
+  const [salvandoBannerEdit, setSalvandoBannerEdit] = useState(false);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [banner, setBanner] = useState<File | null>(null);
+  const [banner, setBanner] = useState<Blob | null>(null);
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null);
+  const [bannerParaCortar, setBannerParaCortar] = useState<File | null>(null);
   const [inicioInscricoes, setInicioInscricoes] = useState("");
   const [fimInscricoes, setFimInscricoes] = useState("");
   const [inicioAvaliacao, setInicioAvaliacao] = useState("");
@@ -374,7 +387,11 @@ export default function EventosPage() {
     setNome("");
     setDescricao("");
     setBanner(null);
-    setBannerPreviewUrl(null);
+    setBannerPreviewUrl((antigo) => {
+      if (antigo) URL.revokeObjectURL(antigo);
+      return null;
+    });
+    setBannerParaCortar(null);
     setInicioInscricoes("");
     setFimInscricoes("");
     setInicioAvaliacao("");
@@ -508,16 +525,40 @@ export default function EventosPage() {
     }
   }
 
+  function selecionarBannerEdit(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (file) setBannerEditParaCortar(file);
+  }
+
+  async function confirmarCorteBannerEdit(blob: Blob) {
+    if (!bannerEditEventoId) return;
+    setSalvandoBannerEdit(true);
+    try {
+      const bannerRef = storageRef(storage, `eventos/${bannerEditEventoId}/banner`);
+      await uploadBytes(bannerRef, blob);
+      const imagemDestaqueUrl = await getDownloadURL(bannerRef);
+      await updateDoc(doc(db, "eventos", bannerEditEventoId), { imagemDestaqueUrl });
+      setBannerEditParaCortar(null);
+      setBannerEditEventoId(null);
+    } finally {
+      setSalvandoBannerEdit(false);
+    }
+  }
+
   function selecionarBanner(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    setBanner(file);
-    if (!file) {
-      setBannerPreviewUrl(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setBannerPreviewUrl(reader.result as string);
-    reader.readAsDataURL(file);
+    e.target.value = "";
+    if (file) setBannerParaCortar(file);
+  }
+
+  function confirmarCorteBanner(blob: Blob) {
+    setBanner(blob);
+    setBannerPreviewUrl((antigo) => {
+      if (antigo) URL.revokeObjectURL(antigo);
+      return URL.createObjectURL(blob);
+    });
+    setBannerParaCortar(null);
   }
 
   async function marcarDestaque(eventoId: string) {
@@ -633,6 +674,7 @@ export default function EventosPage() {
                   perfil.papel === "admin" ? () => abrirModalEdubox(evento) : undefined
                 }
                 onAbrirMonitores={() => setModalMonitoresId(evento.id)}
+                onAbrirBanner={() => setBannerEditEventoId(evento.id)}
               />
             ))}
 
@@ -682,23 +724,37 @@ export default function EventosPage() {
               Banner do evento
             </span>
             {bannerPreviewUrl ? (
-              <div className="relative overflow-hidden rounded-xl border border-fatec-line">
+              <div className="relative aspect-[12/5] overflow-hidden rounded-xl border border-fatec-line">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={bannerPreviewUrl}
                   alt=""
-                  className="h-32 w-full object-cover"
+                  className="h-full w-full object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBanner(null);
-                    setBannerPreviewUrl(null);
-                  }}
-                  className="absolute right-2 top-2 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-black/80"
-                >
-                  Remover
-                </button>
+                <div className="absolute right-2 top-2 flex gap-1.5">
+                  <label className="cursor-pointer rounded-lg bg-black/60 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-black/80">
+                    Trocar
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={selecionarBanner}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBanner(null);
+                      setBannerPreviewUrl((antigo) => {
+                        if (antigo) URL.revokeObjectURL(antigo);
+                        return null;
+                      });
+                    }}
+                    className="rounded-lg bg-black/60 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-black/80"
+                  >
+                    Remover
+                  </button>
+                </div>
               </div>
             ) : (
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-fatec-line bg-fatec-navy-50 px-4 py-4 transition-colors hover:border-fatec-sky-600">
@@ -1027,6 +1083,56 @@ export default function EventosPage() {
           </div>
         </form>
       </Modal>
+
+      <BannerCropModal
+        open={!!bannerParaCortar}
+        arquivo={bannerParaCortar}
+        onCancel={() => setBannerParaCortar(null)}
+        onConfirmar={confirmarCorteBanner}
+      />
+
+      {bannerEditEventoId && !bannerEditParaCortar && (
+        <Modal
+          open
+          onClose={() => setBannerEditEventoId(null)}
+          title={
+            eventos.find((e) => e.id === bannerEditEventoId)?.imagemDestaqueUrl
+              ? "Trocar banner do evento"
+              : "Adicionar banner do evento"
+          }
+        >
+          <div className="flex flex-col gap-4">
+            {eventos.find((e) => e.id === bannerEditEventoId)?.imagemDestaqueUrl && (
+              <div className="aspect-[12/5] overflow-hidden rounded-xl border border-fatec-line">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={eventos.find((e) => e.id === bannerEditEventoId)!.imagemDestaqueUrl!}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-fatec-line bg-fatec-navy-50 px-4 py-4 transition-colors hover:border-fatec-sky-600">
+              <ImageIcon className="h-5 w-5 flex-none text-fatec-muted" strokeWidth={1.75} />
+              <span className="text-sm text-fatec-muted">Escolher nova imagem</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={selecionarBannerEdit}
+                className="hidden"
+              />
+            </label>
+          </div>
+        </Modal>
+      )}
+
+      <BannerCropModal
+        open={!!bannerEditParaCortar}
+        arquivo={bannerEditParaCortar}
+        salvando={salvandoBannerEdit}
+        onCancel={() => setBannerEditParaCortar(null)}
+        onConfirmar={confirmarCorteBannerEdit}
+      />
 
       <AreaComplexaModal
         open={modalAreaComplexa.aberto}

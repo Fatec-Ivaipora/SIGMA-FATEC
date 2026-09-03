@@ -172,25 +172,41 @@ export default function AlunoPainelPage() {
               </h2>
 
               <div className="group relative mx-auto max-w-2xl overflow-hidden rounded-3xl shadow-[0_20px_45px_-25px_rgba(14,58,94,0.45)] transition-transform duration-200 hover:-translate-y-1">
-                <div
-                  aria-hidden
-                  className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-600"
-                >
-                  <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-                  <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                {destaque.imagemDestaqueUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={destaque.imagemDestaqueUrl}
+                    alt={destaque.nome}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-600"
+                  >
+                    <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
+                    <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
 
-                <div className="relative flex min-h-[220px] flex-col items-start justify-end gap-3 p-6 md:min-h-[260px] md:p-8">
+                <div className="relative flex min-h-[280px] flex-col justify-end p-6 md:min-h-[340px] md:p-8">
+                  <div className="rounded-2xl bg-black/40 p-5 backdrop-blur-md">
                   {destaque.periodoSubmissao && (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white">
                       <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
                       Inscrições: {destaque.periodoSubmissao}
                     </span>
                   )}
-                  <h3 className="text-2xl font-bold leading-tight text-white">
+                  <h3 className="mt-2 text-2xl font-bold leading-tight text-white">
                     {destaque.nome}
                   </h3>
+                  {destaque.descricao && (
+                    <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/90">
+                      {destaque.descricao}
+                    </p>
+                  )}
 
                   {pagamentoPendente ? (
                     // Pagamento pendente vira o CTA principal (2026-08-31) —
@@ -221,6 +237,7 @@ export default function AlunoPainelPage() {
                       />
                     </Link>
                   )}
+                  </div>
                 </div>
               </div>
 
