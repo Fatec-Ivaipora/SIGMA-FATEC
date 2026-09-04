@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { User } from "firebase/auth";
-import { CheckCircle2, ExternalLink, FlaskConical, Loader2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 
@@ -17,7 +17,6 @@ export function InscricaoEventoModal({
   eventoNome,
   valor,
   temCpf,
-  permiteSimulacao,
   user,
   onClose,
 }: {
@@ -26,7 +25,6 @@ export function InscricaoEventoModal({
   eventoNome: string;
   valor: number;
   temCpf: boolean;
-  permiteSimulacao?: boolean;
   user: User | null | undefined;
   onClose: () => void;
 }) {
@@ -37,7 +35,6 @@ export function InscricaoEventoModal({
   const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
   const [verificando, setVerificando] = useState(false);
-  const [simulando, setSimulando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   function fechar() {
@@ -92,26 +89,6 @@ export function InscricaoEventoModal({
     }
   }
 
-  async function simularPagamento() {
-    if (!user) return;
-    setErro(null);
-    setSimulando(true);
-    try {
-      const idToken = await user.getIdToken();
-      const resposta = await fetch("/api/asaas/simular", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ eventoId }),
-      });
-      const corpo = await resposta.json();
-      if (!resposta.ok) throw new Error(corpo.erro ?? "Não foi possível simular o pagamento.");
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setSimulando(false);
-    }
-  }
-
   const cpfValido = cpf.replace(/\D/g, "").length === 11;
   const podeGerar = temCpf || cpfValido;
 
@@ -162,28 +139,6 @@ export function InscricaoEventoModal({
                   {gerando && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
                   {gerando ? "Gerando cobrança..." : "Pagar agora"}
                 </button>
-
-                {permiteSimulacao && (
-                  <div className="flex flex-col gap-2 rounded-xl border border-dashed border-fatec-line px-4 py-3">
-                    <p className="text-xs text-fatec-muted">
-                      Evento de demonstração — use isto pra testar o resto do
-                      fluxo sem gerar cobrança nenhuma.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={simularPagamento}
-                      disabled={simulando}
-                      className="flex w-fit items-center gap-2 rounded-lg border border-fatec-line px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
-                    >
-                      {simulando ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-                      ) : (
-                        <FlaskConical className="h-3.5 w-3.5" strokeWidth={2} />
-                      )}
-                      {simulando ? "Simulando..." : "Simular pagamento (modo de teste)"}
-                    </button>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex flex-col gap-3">

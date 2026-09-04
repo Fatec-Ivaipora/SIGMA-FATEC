@@ -73,11 +73,6 @@ export type Evento = {
   // pelo admin por enquanto: a busca automática desse código no banco do
   // Edubox depende do relay de IP fixo, ver /api/edubox/testar-conexao.
   codigoEdubox?: string;
-  // Libera o botão "Simular pagamento" (ver /api/asaas/simular) mesmo com o
-  // Asaas de produção configurado (2026-08-28) — só pra eventos de
-  // demonstração, onde não faz sentido cobrar de verdade. Em qualquer outro
-  // evento, a simulação continua bloqueada assim que ASAAS_API_KEY existir.
-  permiteSimulacaoPagamento?: boolean;
   // Prazo de edição do trabalho pelo aluno (2026-09-04) — 23:55 do dia de
   // fim das inscrições (fimInscricoes na criação do evento), gravado como
   // Timestamp real pra dar pra comparar com "agora" tanto no client quanto
