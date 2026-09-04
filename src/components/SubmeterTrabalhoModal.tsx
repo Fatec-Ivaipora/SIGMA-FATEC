@@ -81,6 +81,24 @@ export type DadosSubmissao = {
   participantesNomes: string[];
 };
 
+/** Dado um valor de área temática já "achatado" (ex.: "Projetos
+ * Integradores – Ciências da Saúde"), separa de volta em (grupo, sub-área)
+ * quando ele bate com uma área complexa — usado só pra pré-preencher o
+ * formulário no modo edição, onde o trabalho já tem esse valor salvo. */
+function separarAreaInicial(
+  areaTematica: string | undefined,
+  areasComplexas: AreaTematicaComplexa[],
+): { areaNivel1: string; subArea: string } {
+  if (!areaTematica) return { areaNivel1: "", subArea: "" };
+  for (const g of areasComplexas) {
+    const prefixo = `${g.nomeGrupo} – `;
+    if (areaTematica.startsWith(prefixo)) {
+      return { areaNivel1: g.nomeGrupo, subArea: areaTematica.slice(prefixo.length) };
+    }
+  }
+  return { areaNivel1: areaTematica, subArea: "" };
+}
+
 export function SubmeterTrabalhoModal({
   open,
   eventoId,
@@ -90,6 +108,8 @@ export function SubmeterTrabalhoModal({
   areasComplexas = [],
   meuUid,
   valoresIniciais,
+  modoEdicao = false,
+  comentarioRevisao,
   onClose,
   onSubmit,
 }: {
@@ -108,23 +128,45 @@ export function SubmeterTrabalhoModal({
   // selecionar o grupo abre um segundo campo com as sub-áreas.
   areasComplexas?: AreaTematicaComplexa[];
   meuUid: string | undefined;
-  // Pré-preenche título/resumo — usado ao inscrever num evento um trabalho já
-  // aprovado pelo orientador numa turma do Projeto Integrador (2026-08-25).
-  valoresIniciais?: { titulo?: string; resumo?: string };
+  // Pré-preenche o formulário — usado tanto ao inscrever num evento um
+  // trabalho já aprovado pelo orientador numa turma do Projeto Integrador
+  // (2026-08-25, só titulo/resumo) quanto no modo edição (2026-09-04, todos
+  // os campos, vindos do trabalho já submetido).
+  valoresIniciais?: {
+    titulo?: string;
+    resumo?: string;
+    areaTematica?: string;
+    modalidadeApresentacao?: "oral" | "roda_conversa";
+    nomeOrientador?: string;
+    participantes?: { uid: string; nome: string }[];
+  };
+  // Edição de um trabalho já submetido (2026-09-04, trava de prazo — ver
+  // src/app/aluno/trabalhos/page.tsx) — só muda o título do modal e o texto
+  // do botão final; onSubmit continua devolvendo o mesmo formato, quem
+  // decide se isso vira um addDoc ou updateDoc é o componente pai.
+  modoEdicao?: boolean;
+  // Mostrado no topo (fase 1) quando o trabalho está em "revisao" — o motivo
+  // que o avaliador deu pra pedir o ajuste, mesmo aviso que existia no
+  // CorrigirTrabalhoModal (substituído por este componente em 2026-09-04).
+  comentarioRevisao?: string | null;
   onClose: () => void;
   onSubmit: (dados: DadosSubmissao) => void;
 }) {
+  const areaInicial = separarAreaInicial(valoresIniciais?.areaTematica, areasComplexas);
+
   const [fase, setFase] = useState<1 | 2 | 3>(1);
   const [titulo, setTitulo] = useState(valoresIniciais?.titulo ?? "");
-  const [nomeOrientador, setNomeOrientador] = useState("");
-  const [areaNivel1, setAreaNivel1] = useState("");
-  const [subArea, setSubArea] = useState("");
+  const [nomeOrientador, setNomeOrientador] = useState(valoresIniciais?.nomeOrientador ?? "");
+  const [areaNivel1, setAreaNivel1] = useState(areaInicial.areaNivel1);
+  const [subArea, setSubArea] = useState(areaInicial.subArea);
   const [modalidadeApresentacao, setModalidadeApresentacao] = useState<
     "oral" | "roda_conversa" | ""
-  >("");
+  >(valoresIniciais?.modalidadeApresentacao ?? "");
   const [resumo, setResumo] = useState(valoresIniciais?.resumo ?? "");
   const [buscaColega, setBuscaColega] = useState("");
-  const [participantes, setParticipantes] = useState<AlunoParaBusca[]>([]);
+  const [participantes, setParticipantes] = useState<AlunoParaBusca[]>(
+    (valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })),
+  );
 
   const inscritosNoEvento = useInscritosUids(temTaxa ? eventoId : undefined);
   const alunos = useAlunosParaBusca(meuUid, {
@@ -185,13 +227,13 @@ export function SubmeterTrabalhoModal({
   function limpar() {
     setFase(1);
     setTitulo(valoresIniciais?.titulo ?? "");
-    setNomeOrientador("");
-    setAreaNivel1("");
-    setSubArea("");
-    setModalidadeApresentacao("");
+    setNomeOrientador(valoresIniciais?.nomeOrientador ?? "");
+    setAreaNivel1(areaInicial.areaNivel1);
+    setSubArea(areaInicial.subArea);
+    setModalidadeApresentacao(valoresIniciais?.modalidadeApresentacao ?? "");
     setResumo(valoresIniciais?.resumo ?? "");
     setBuscaColega("");
-    setParticipantes([]);
+    setParticipantes((valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })));
   }
 
   function enviar() {
@@ -214,9 +256,23 @@ export function SubmeterTrabalhoModal({
   }
 
   return (
-    <Modal open={open} onClose={fechar} title={`Inscrever trabalho — ${eventoNome}`} size="lg">
+    <Modal
+      open={open}
+      onClose={fechar}
+      title={`${modoEdicao ? "Editar trabalho" : "Inscrever trabalho"} — ${eventoNome}`}
+      size="lg"
+    >
       <div className="flex flex-col gap-5">
         <PassosSubmissao fase={fase} />
+
+        {fase === 1 && comentarioRevisao && (
+          <div className="rounded-xl bg-fatec-orange-50 px-4 py-3">
+            <p className="text-sm font-medium text-fatec-orange-700">
+              O que o avaliador pediu pra ajustar
+            </p>
+            <p className="mt-1 text-sm text-fatec-ink">{comentarioRevisao}</p>
+          </div>
+        )}
 
         {fase === 1 && (
         <>
@@ -492,7 +548,7 @@ export function SubmeterTrabalhoModal({
               disabled={!valido}
               className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
             >
-              Enviar trabalho
+              {modoEdicao ? "Salvar alterações" : "Enviar trabalho"}
             </button>
           )}
         </div>

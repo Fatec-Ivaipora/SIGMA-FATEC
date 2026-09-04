@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import {
   type LucideIcon,
@@ -29,9 +29,9 @@ import {
   addDoc,
   collection,
   doc,
-  documentId,
   getDocs,
   query,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -324,30 +324,71 @@ export default function EventosPage() {
   const [destaqueNoForm, setDestaqueNoForm] = useState(false);
   const [aceitaExternosNoForm, setAceitaExternosNoForm] = useState(false);
   const [valorInscricao, setValorInscricao] = useState("");
+  const [eventoGratuito, setEventoGratuito] = useState(false);
   const [dataRealizacao, setDataRealizacao] = useState("");
   const [cargaHoraria, setCargaHoraria] = useState("");
   const [nomeDiretorAcademico, setNomeDiretorAcademico] = useState("");
-  const [nomePresidenteComissao, setNomePresidenteComissao] = useState("");
+  const [nomeCoordenadorPesquisa, setNomeCoordenadorPesquisa] = useState("");
   const [criando, setCriando] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
   const [cargaHorariaCert, setCargaHorariaCert] = useState("");
   const [nomeDiretorCert, setNomeDiretorCert] = useState("");
-  const [nomePresidenteCert, setNomePresidenteCert] = useState("");
+  const [nomeCoordenadorCert, setNomeCoordenadorCert] = useState("");
+  const [numeroRegistroInicialCert, setNumeroRegistroInicialCert] = useState("");
   const [salvandoCert, setSalvandoCert] = useState(false);
 
   const [modalEduboxId, setModalEduboxId] = useState<string | null>(null);
   const [codigoEduboxForm, setCodigoEduboxForm] = useState("");
   const [salvandoEdubox, setSalvandoEdubox] = useState(false);
-  const [cpfPorUid, setCpfPorUid] = useState<Record<string, string | undefined>>({});
-  const [carregandoCpfs, setCarregandoCpfs] = useState(false);
   const [teste, setTeste] = useState<
     | { status: "idle" }
     | { status: "testando" }
     | { status: "ok"; mensagem: string }
     | { status: "erro"; mensagem: string; explicacao: string }
   >({ status: "idle" });
+  type StatusEdubox = { total: number; prontos: number; pendentesDados: number; jaEnviados: number };
+  const [statusEdubox, setStatusEdubox] = useState<
+    | { status: "idle" }
+    | { status: "carregando" }
+    | { status: "ok"; dados: StatusEdubox }
+    | { status: "erro"; mensagem: string }
+  >({ status: "idle" });
+  const [abaEdubox, setAbaEdubox] = useState<"enviar" | "logs">("enviar");
+  type LogEdubox = {
+    id: string;
+    uid: string;
+    nome: string | null;
+    sucesso: boolean;
+    mensagem?: string;
+    codclEdubox?: number | null;
+    codinsEdubox?: number | null;
+    jaExistiaInscricao?: boolean;
+    pagoEnviado?: boolean | null;
+    chpinsEnviado?: number | null;
+    enviadoEm?: Timestamp | null;
+  };
+  const [logsEdubox, setLogsEdubox] = useState<
+    | { status: "idle" }
+    | { status: "carregando" }
+    | { status: "ok"; itens: LogEdubox[] }
+    | { status: "erro"; mensagem: string }
+  >({ status: "idle" });
+  const [envio, setEnvio] = useState<
+    | { status: "idle" }
+    | { status: "enviando" }
+    | { status: "ok"; enviadosAgora: number; pagamentosAtualizados: number; falharam: number }
+    | { status: "erro"; mensagem: string }
+  >({ status: "idle" });
+  // Progresso do envio em andamento (2026-09-04) — populado conforme o NDJSON
+  // do /api/edubox/lancar chega, pra tela mostrar uma barra de verdade em
+  // envios longos (200+ pessoas) em vez de deixar o admin sem feedback.
+  const [progressoEnvio, setProgressoEnvio] = useState<{ processados: number; total: number } | null>(
+    null,
+  );
+
+  const valorValido = eventoGratuito || (valorInscricao.trim() !== "" && Number(valorInscricao) > 0);
 
   const trabalhosPorEvento = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -402,10 +443,11 @@ export default function EventosPage() {
     setDestaqueNoForm(false);
     setAceitaExternosNoForm(false);
     setValorInscricao("");
+    setEventoGratuito(false);
     setDataRealizacao("");
     setCargaHoraria("");
     setNomeDiretorAcademico("");
-    setNomePresidenteComissao("");
+    setNomeCoordenadorPesquisa("");
     setFaseCriar(1);
   }
 
@@ -414,7 +456,8 @@ export default function EventosPage() {
     setDataRealizacaoCert(evento.dataRealizacao ?? "");
     setCargaHorariaCert(evento.cargaHoraria?.toString() ?? "");
     setNomeDiretorCert(evento.nomeDiretorAcademico ?? "");
-    setNomePresidenteCert(evento.nomePresidenteComissao ?? "");
+    setNomeCoordenadorCert(evento.nomeCoordenadorPesquisa ?? "");
+    setNumeroRegistroInicialCert(evento.numeroRegistroInicial?.toString() ?? "");
   }
 
   async function salvarCertificado() {
@@ -425,7 +468,10 @@ export default function EventosPage() {
         dataRealizacao: dataRealizacaoCert || null,
         cargaHoraria: cargaHorariaCert.trim() ? Number(cargaHorariaCert) : null,
         nomeDiretorAcademico: nomeDiretorCert.trim(),
-        nomePresidenteComissao: nomePresidenteCert.trim(),
+        nomeCoordenadorPesquisa: nomeCoordenadorCert.trim(),
+        numeroRegistroInicial: numeroRegistroInicialCert.trim()
+          ? Number(numeroRegistroInicialCert)
+          : null,
       });
       setModalCertificadoId(null);
     } finally {
@@ -433,56 +479,69 @@ export default function EventosPage() {
     }
   }
 
-  const participantesDoEventoEdubox = useMemo(() => {
-    if (!modalEduboxId) return [];
-    const mapa = new Map<string, string>();
-    for (const t of trabalhos) {
-      if (t.eventoId !== modalEduboxId || t.status !== "aceito") continue;
-      mapa.set(t.alunoUid, t.alunoNome);
-      (t.participantesUids ?? []).forEach((uid, i) => {
-        mapa.set(uid, t.participantesNomes?.[i] ?? uid);
+  async function buscarStatusEdubox(eventoId: string) {
+    if (!user) return;
+    setStatusEdubox({ status: "carregando" });
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/edubox/lancar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ eventoId, apenasStatus: true }),
       });
-    }
-    return Array.from(mapa, ([uid, nome]) => ({ uid, nome }));
-  }, [trabalhos, modalEduboxId]);
-
-  useEffect(() => {
-    if (participantesDoEventoEdubox.length === 0) return;
-    const uids = participantesDoEventoEdubox.map((p) => p.uid);
-    // "in" do Firestore aceita no máximo 30 valores por consulta — evento
-    // típico não deve passar disso, mas divide em blocos por segurança.
-    const blocos: string[][] = [];
-    for (let i = 0; i < uids.length; i += 30) blocos.push(uids.slice(i, i + 30));
-
-    async function buscarCpfs() {
-      setCarregandoCpfs(true);
-      try {
-        const snaps = await Promise.all(
-          blocos.map((bloco) =>
-            getDocs(query(collection(db, "usuarios"), where(documentId(), "in", bloco))),
-          ),
-        );
-        const mapa: Record<string, string | undefined> = {};
-        snaps.forEach((snap) =>
-          snap.forEach((d) => {
-            mapa[d.id] = d.data().cpf;
-          }),
-        );
-        setCpfPorUid(mapa);
-      } finally {
-        setCarregandoCpfs(false);
+      const corpo = await res.json();
+      if (!res.ok) {
+        setStatusEdubox({ status: "erro", mensagem: corpo.erro ?? "Falha ao consultar." });
+        return;
       }
+      setStatusEdubox({ status: "ok", dados: corpo });
+    } catch {
+      setStatusEdubox({ status: "erro", mensagem: "Falha ao consultar." });
     }
-
-    void buscarCpfs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modalEduboxId]);
+  }
 
   async function abrirModalEdubox(evento: Evento) {
     setModalEduboxId(evento.id);
     setCodigoEduboxForm(evento.codigoEdubox ?? "");
     setTeste({ status: "idle" });
-    setCpfPorUid({});
+    setEnvio({ status: "idle" });
+    setAbaEdubox("enviar");
+    setLogsEdubox({ status: "idle" });
+    void buscarStatusEdubox(evento.id);
+  }
+
+  async function carregarLogsEdubox(eventoId: string) {
+    setLogsEdubox({ status: "carregando" });
+    try {
+      const snap = await getDocs(
+        query(collection(db, "eduboxLancamentos"), where("eventoId", "==", eventoId)),
+      );
+      const itens: LogEdubox[] = snap.docs.map((d) => {
+        const dados = d.data();
+        return {
+          id: d.id,
+          uid: dados.uid,
+          nome: dados.nome ?? null,
+          sucesso: dados.sucesso,
+          mensagem: dados.mensagem,
+          codclEdubox: dados.codclEdubox ?? null,
+          codinsEdubox: dados.codinsEdubox ?? null,
+          jaExistiaInscricao: dados.jaExistiaInscricao ?? false,
+          pagoEnviado: dados.pagoEnviado ?? null,
+          chpinsEnviado: dados.chpinsEnviado ?? null,
+          enviadoEm: dados.enviadoEm ?? null,
+        };
+      });
+      itens.sort((a, b) => (b.enviadoEm?.toMillis() ?? 0) - (a.enviadoEm?.toMillis() ?? 0));
+      setLogsEdubox({ status: "ok", itens });
+    } catch {
+      setLogsEdubox({ status: "erro", mensagem: "Não foi possível carregar os logs." });
+    }
+  }
+
+  function abrirAbaLogs() {
+    setAbaEdubox("logs");
+    if (modalEduboxId && logsEdubox.status === "idle") void carregarLogsEdubox(modalEduboxId);
   }
 
   async function salvarCodigoEdubox() {
@@ -522,6 +581,84 @@ export default function EventosPage() {
         mensagem: "Não foi possível chamar a rota de teste.",
         explicacao: "",
       });
+    }
+  }
+
+  async function enviarParaEdubox() {
+    if (!user || !modalEduboxId) return;
+    setEnvio({ status: "enviando" });
+    setProgressoEnvio(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/edubox/lancar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ eventoId: modalEduboxId }),
+      });
+
+      // Erro antes de começar a processar (auth, evento sem código Edubox,
+      // etc.) ainda vem como JSON único, não NDJSON.
+      if (!res.ok || !res.body) {
+        const corpo = await res.json().catch(() => ({}));
+        setEnvio({ status: "erro", mensagem: corpo.erro ?? "Falha ao enviar." });
+        return;
+      }
+
+      // Daqui em diante é NDJSON — uma linha por participante processado,
+      // pra barra de progresso acompanhar em tempo real (2026-09-04).
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let concluido = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let quebra: number;
+        while ((quebra = buffer.indexOf("\n")) !== -1) {
+          const linha = buffer.slice(0, quebra).trim();
+          buffer = buffer.slice(quebra + 1);
+          if (!linha) continue;
+          const evento = JSON.parse(linha);
+          if (evento.tipo === "progresso") {
+            setProgressoEnvio({ processados: evento.processados, total: evento.total });
+          } else if (evento.tipo === "fim") {
+            concluido = true;
+            setEnvio({
+              status: "ok",
+              enviadosAgora: evento.enviadosAgora,
+              pagamentosAtualizados: evento.pagamentosAtualizados,
+              falharam: evento.falharam,
+            });
+            setStatusEdubox({
+              status: "ok",
+              dados: {
+                total: evento.total,
+                prontos: evento.prontos,
+                pendentesDados: evento.pendentesDados,
+                jaEnviados: evento.jaEnviados + evento.enviadosAgora,
+              },
+            });
+            // Logs ficam desatualizados após um envio — força recarregar na
+            // próxima vez que a aba for aberta (ou já recarrega se estiver
+            // aberta agora).
+            setLogsEdubox({ status: "idle" });
+            if (abaEdubox === "logs" && modalEduboxId) void carregarLogsEdubox(modalEduboxId);
+          } else if (evento.tipo === "erro") {
+            concluido = true;
+            setEnvio({ status: "erro", mensagem: evento.erro ?? "Falha ao enviar." });
+          }
+        }
+      }
+
+      if (!concluido) {
+        setEnvio({ status: "erro", mensagem: "Conexão encerrada antes de terminar o envio." });
+      }
+    } catch {
+      setEnvio({ status: "erro", mensagem: "Não foi possível chamar a rota de envio." });
+    } finally {
+      setProgressoEnvio(null);
     }
   }
 
@@ -577,7 +714,7 @@ export default function EventosPage() {
   }
 
   async function criarEvento() {
-    if (!nome.trim() || areasTematicasForm.length === 0) return;
+    if (!nome.trim() || areasTematicasForm.length === 0 || !valorValido) return;
     setCriando(true);
     try {
       const eventoRef = await addDoc(collection(db, "eventos"), {
@@ -597,14 +734,23 @@ export default function EventosPage() {
         ...(areasComplexasForm.length > 0
           ? { areasTematicasComplexas: areasComplexasForm }
           : {}),
-        ...(valorInscricao.trim() ? { valorInscricao: Number(valorInscricao) } : {}),
+        ...(!eventoGratuito ? { valorInscricao: Number(valorInscricao) } : {}),
+        // Prazo de edição do trabalho pelo aluno (2026-09-04): 23:55 do dia
+        // de fim das inscrições — depois disso o trabalho trava do jeito que
+        // estiver (ver firestore.rules e o botão "Editar" em
+        // src/app/aluno/trabalhos/page.tsx). Sem fimInscricoes definido, o
+        // campo fica ausente e a edição nunca trava (mesmo padrão de
+        // "campo ausente = sem restrição" usado no resto do arquivo).
+        ...(fimInscricoes
+          ? { prazoEdicaoTrabalho: Timestamp.fromDate(new Date(`${fimInscricoes}T23:55:00`)) }
+          : {}),
         ...(dataRealizacao ? { dataRealizacao } : {}),
         ...(cargaHoraria.trim() ? { cargaHoraria: Number(cargaHoraria) } : {}),
         ...(nomeDiretorAcademico.trim()
           ? { nomeDiretorAcademico: nomeDiretorAcademico.trim() }
           : {}),
-        ...(nomePresidenteComissao.trim()
-          ? { nomePresidenteComissao: nomePresidenteComissao.trim() }
+        ...(nomeCoordenadorPesquisa.trim()
+          ? { nomeCoordenadorPesquisa: nomeCoordenadorPesquisa.trim() }
           : {}),
       });
 
@@ -962,24 +1108,41 @@ export default function EventosPage() {
             </span>
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-fatec-navy-900">
-              Valor da inscrição (R$)
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={valorInscricao}
-              onChange={(e) => setValorInscricao(e.target.value)}
-              placeholder="Deixe em branco para evento gratuito"
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-            />
-            <span className="text-xs text-fatec-muted">
-              Com valor definido, o aluno paga (via Asaas) antes de poder
-              enviar o trabalho para este evento.
-            </span>
-          </label>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Valor da inscrição (R$) <span className="text-fatec-orange-600">*</span>
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                disabled={eventoGratuito}
+                value={valorInscricao}
+                onChange={(e) => setValorInscricao(e.target.value)}
+                placeholder="Ex.: 25.00"
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+              />
+              <span className="text-xs text-fatec-muted">
+                Com valor definido, o aluno paga (via Asaas) antes de poder
+                enviar o trabalho para este evento.
+              </span>
+            </label>
+            <label className="mt-1 flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={eventoGratuito}
+                onChange={(e) => {
+                  setEventoGratuito(e.target.checked);
+                  if (e.target.checked) setValorInscricao("");
+                }}
+                className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+              />
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Este evento é gratuito
+              </span>
+            </label>
+          </div>
 
           <div className="flex flex-col gap-4 border-t border-fatec-line pt-5">
             <p className="text-sm font-semibold text-fatec-navy-900">
@@ -1026,12 +1189,12 @@ export default function EventosPage() {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
-                  Presidente da Comissão
+                  Coordenador(a) da Pesquisa
                 </span>
                 <input
                   type="text"
-                  value={nomePresidenteComissao}
-                  onChange={(e) => setNomePresidenteComissao(e.target.value)}
+                  value={nomeCoordenadorPesquisa}
+                  onChange={(e) => setNomeCoordenadorPesquisa(e.target.value)}
                   placeholder="Nome de quem assina"
                   className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
                 />
@@ -1074,7 +1237,7 @@ export default function EventosPage() {
               <button
                 type="button"
                 onClick={criarEvento}
-                disabled={!nome.trim() || areasTematicasForm.length === 0 || criando}
+                disabled={!nome.trim() || areasTematicasForm.length === 0 || !valorValido || criando}
                 className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
               >
                 {criando ? "Criando..." : "Criar evento"}
@@ -1224,15 +1387,35 @@ export default function EventosPage() {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
-              Presidente da Comissão Organizadora
+              Coordenador(a) da Pesquisa e Formação Científica
             </span>
             <input
               type="text"
-              value={nomePresidenteCert}
-              onChange={(e) => setNomePresidenteCert(e.target.value)}
+              value={nomeCoordenadorCert}
+              onChange={(e) => setNomeCoordenadorCert(e.target.value)}
               placeholder="Nome de quem assina"
               className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
             />
+          </label>
+          <label className="flex flex-col gap-1.5 border-t border-fatec-line pt-4">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Número inicial de registro
+            </span>
+            <input
+              type="number"
+              min="1"
+              value={numeroRegistroInicialCert}
+              onChange={(e) => setNumeroRegistroInicialCert(e.target.value)}
+              placeholder="Ex.: 15520"
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            />
+            <span className="text-xs text-fatec-muted">
+              Número do primeiro certificado desse evento no &quot;REGISTRO
+              SOB O N°&quot; — definido pela comissão. Os próximos saem em
+              sequência a partir daqui. Só vale antes do primeiro certificado
+              ser emitido; depois disso, mudar aqui não afeta os números já
+              usados. Em branco, começa em 1.
+            </span>
           </label>
           <button
             type="button"
@@ -1252,9 +1435,10 @@ export default function EventosPage() {
       >
         <div className="flex flex-col gap-5">
           <p className="text-sm text-fatec-muted">
-            Lança os participantes desse evento no Edubox. Isso ainda depende
-            de infraestrutura que não temos (ver aviso abaixo) — essa tela
-            existe pra deixar pronto o que já dá pra preparar.
+            Envia os participantes desse evento pro Edubox. Pode ser usado
+            várias vezes durante o período de inscrição — quem já foi
+            enviado não é duplicado, mas o status de pagamento é revisado a
+            cada envio.
           </p>
 
           <label className="flex flex-col gap-1.5">
@@ -1278,59 +1462,135 @@ export default function EventosPage() {
                 {salvandoEdubox ? "Salvando..." : "Salvar"}
               </button>
             </div>
-            <span className="text-xs text-fatec-muted">
-              Hoje precisa ser digitado à mão (buscar automaticamente no banco
-              do Edubox depende da mesma conexão testada abaixo).
-            </span>
           </label>
 
-          <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">
-            <p className="text-sm font-semibold text-fatec-navy-900">
-              Participantes com resultado aceito ({participantesDoEventoEdubox.length})
-            </p>
-            {participantesDoEventoEdubox.length === 0 ? (
-              <p className="text-sm text-fatec-muted">
-                Nenhum trabalho aceito nesse evento ainda.
+          <div className="flex gap-1 border-t border-fatec-line pt-4">
+            <button
+              type="button"
+              onClick={() => setAbaEdubox("enviar")}
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                abaEdubox === "enviar"
+                  ? "bg-fatec-navy-900 text-white"
+                  : "text-fatec-muted hover:bg-fatec-navy-50"
+              }`}
+            >
+              Enviar
+            </button>
+            <button
+              type="button"
+              onClick={abrirAbaLogs}
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                abaEdubox === "logs"
+                  ? "bg-fatec-navy-900 text-white"
+                  : "text-fatec-muted hover:bg-fatec-navy-50"
+              }`}
+            >
+              Logs
+            </button>
+          </div>
+
+          {abaEdubox === "enviar" && (
+          <div className="flex flex-col gap-3">
+            {statusEdubox.status === "carregando" && (
+              <p className="flex items-center gap-2 text-sm text-fatec-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+                Consultando...
               </p>
-            ) : (
-              <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
-                {participantesDoEventoEdubox.map((p) => {
-                  const cpf = cpfPorUid[p.uid];
-                  return (
-                    <div
-                      key={p.uid}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-3 py-2"
-                    >
-                      <span className="truncate text-sm text-fatec-navy-900">{p.nome}</span>
-                      {carregandoCpfs ? (
-                        <Loader2
-                          className="h-3.5 w-3.5 flex-none animate-spin text-fatec-muted"
-                          strokeWidth={1.75}
-                        />
-                      ) : cpf ? (
-                        <span className="inline-flex flex-none items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-                          CPF ok
-                        </span>
-                      ) : (
-                        <span className="inline-flex flex-none items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                          <XCircle className="h-3 w-3" strokeWidth={2} />
-                          CPF pendente
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+            )}
+            {statusEdubox.status === "erro" && (
+              <p className="text-sm text-rose-700">{statusEdubox.mensagem}</p>
+            )}
+            {statusEdubox.status === "ok" && (
+              <div className="flex gap-4">
+                <div className="flex-1 rounded-xl border border-fatec-line px-4 py-3">
+                  <p className="text-2xl font-bold text-fatec-navy-900">
+                    {statusEdubox.dados.prontos - statusEdubox.dados.jaEnviados > 0
+                      ? statusEdubox.dados.prontos - statusEdubox.dados.jaEnviados
+                      : 0}
+                  </p>
+                  <p className="text-xs text-fatec-muted">prontos pra enviar</p>
+                </div>
+                <div className="flex-1 rounded-xl border border-fatec-line px-4 py-3">
+                  <p className="text-2xl font-bold text-fatec-navy-900">
+                    {statusEdubox.dados.jaEnviados}
+                  </p>
+                  <p className="text-xs text-fatec-muted">já enviados</p>
+                </div>
+                {statusEdubox.dados.pendentesDados > 0 && (
+                  <div className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-2xl font-bold text-amber-800">
+                      {statusEdubox.dados.pendentesDados}
+                    </p>
+                    <p className="text-xs text-amber-700">sem CPF/nascimento</p>
+                  </div>
+                )}
               </div>
             )}
-            <p className="rounded-xl bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-              O CPF só fica salvo pra quem já pagou uma inscrição pelo Asaas —
-              em eventos gratuitos vai faltar pra todo mundo. Data de
-              nascimento (também exigida pelo Edubox) ainda não é coletada em
-              nenhum lugar do sistema. Os dois precisam entrar no cadastro
-              antes do lançamento automático funcionar de verdade.
-            </p>
-          </div>
+
+            <button
+              type="button"
+              onClick={enviarParaEdubox}
+              disabled={
+                envio.status === "enviando" ||
+                statusEdubox.status !== "ok" ||
+                statusEdubox.dados.prontos <= 0
+              }
+              className="flex w-fit items-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+            >
+              {envio.status === "enviando" && (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              )}
+              Enviar ao Edubox
+            </button>
+            {envio.status === "enviando" && (
+              <div className="space-y-1">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-fatec-navy-100">
+                  <div
+                    className="h-full rounded-full bg-fatec-orange-500 transition-all duration-300"
+                    style={{
+                      width: progressoEnvio
+                        ? `${Math.round((progressoEnvio.processados / progressoEnvio.total) * 100)}%`
+                        : "6%",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-fatec-muted">
+                  {progressoEnvio
+                    ? `Enviando... ${progressoEnvio.processados} de ${progressoEnvio.total}`
+                    : "Conectando ao Edubox..."}
+                </p>
+              </div>
+            )}
+            {envio.status === "ok" && (
+              <div className="space-y-1">
+                <p className="flex items-center gap-1.5 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                  {envio.enviadosAgora} enviado{envio.enviadosAgora === 1 ? "" : "s"} agora.
+                </p>
+                <p className="flex items-center gap-1.5 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                  {envio.pagamentosAtualizados} pagamento
+                  {envio.pagamentosAtualizados === 1 ? "" : "s"} atualizado
+                  {envio.pagamentosAtualizados === 1 ? "" : "s"} (de não pago pra pago).
+                </p>
+                {envio.falharam > 0 && (
+                  <p className="flex items-center gap-1.5 text-sm text-rose-700">
+                    <XCircle className="h-4 w-4" strokeWidth={2} />
+                    {envio.falharam} falharam. Veja o motivo na aba{" "}
+                    <button type="button" onClick={abrirAbaLogs} className="font-semibold underline">
+                      Logs
+                    </button>
+                    .
+                  </p>
+                )}
+              </div>
+            )}
+            {envio.status === "erro" && (
+              <p className="flex items-center gap-1.5 text-sm text-rose-700">
+                <XCircle className="h-4 w-4" strokeWidth={2} />
+                {envio.mensagem}
+              </p>
+            )}
 
           <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">
             <p className="text-sm font-semibold text-fatec-navy-900">
@@ -1361,6 +1621,81 @@ export default function EventosPage() {
               </div>
             )}
           </div>
+          </div>
+          )}
+
+          {abaEdubox === "logs" && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-fatec-muted">
+                Histórico de envios desse evento (mais recentes primeiro).
+              </p>
+              <button
+                type="button"
+                onClick={() => modalEduboxId && carregarLogsEdubox(modalEduboxId)}
+                disabled={logsEdubox.status === "carregando"}
+                className="text-xs font-semibold text-fatec-sky-600 hover:underline disabled:opacity-60"
+              >
+                Atualizar
+              </button>
+            </div>
+            {logsEdubox.status === "carregando" && (
+              <p className="flex items-center gap-2 text-sm text-fatec-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+                Carregando...
+              </p>
+            )}
+            {logsEdubox.status === "erro" && (
+              <p className="text-sm text-rose-700">{logsEdubox.mensagem}</p>
+            )}
+            {logsEdubox.status === "ok" && logsEdubox.itens.length === 0 && (
+              <p className="text-sm text-fatec-muted">Ninguém foi enviado ainda.</p>
+            )}
+            {logsEdubox.status === "ok" && logsEdubox.itens.length > 0 && (
+              <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+                {logsEdubox.itens.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`rounded-xl border px-4 py-2.5 text-sm ${
+                      item.sucesso
+                        ? "border-emerald-200 bg-emerald-50"
+                        : "border-rose-200 bg-rose-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-fatec-navy-900">
+                        {item.nome ?? item.uid}
+                      </p>
+                      <span
+                        className={`flex-none text-xs font-semibold ${
+                          item.sucesso ? "text-emerald-700" : "text-rose-700"
+                        }`}
+                      >
+                        {item.sucesso ? "OK" : "Falhou"}
+                      </span>
+                    </div>
+                    {item.enviadoEm && (
+                      <p className="text-xs text-fatec-muted">
+                        {item.enviadoEm.toDate().toLocaleString("pt-BR")}
+                      </p>
+                    )}
+                    {item.sucesso ? (
+                      <p className="mt-1 text-xs text-emerald-800">
+                        {item.jaExistiaInscricao ? "Pagamento revisado" : "Inscrição criada"}
+                        {" · pagamento: "}
+                        {item.pagoEnviado === true ? "pago" : item.pagoEnviado === false ? "não pago" : "?"}
+                        {" · carga horária: "}
+                        {item.chpinsEnviado ?? "?"}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-rose-800">{item.mensagem}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
         </div>
       </Modal>
     </main>

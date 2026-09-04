@@ -13,7 +13,7 @@ import {
 } from "@/components/SubmeterTrabalhoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos } from "@/lib/data/eventos";
+import { useEventosPublicos, eventosParaAluno, useIndicadorEventos } from "@/lib/data/eventos";
 import {
   corrigirTurmaTrabalho,
   submeterTurmaTrabalho,
@@ -21,6 +21,7 @@ import {
   useTurma,
   type TurmaTrabalho,
 } from "@/lib/data/turmas";
+import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
 
 function formatarData(valor: number): string {
   return new Date(valor).toLocaleDateString("pt-BR", {
@@ -96,6 +97,7 @@ export default function TurmaAlunoPage() {
   const { turma } = useTurma(turmaId);
   const { trabalho } = useMeuTurmaTrabalho(turmaId, user?.uid);
   const { eventos: todosEventos } = useEventosPublicos();
+  const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
 
   const [titulo, setTitulo] = useState("");
   const [resumo, setResumo] = useState("");
@@ -105,10 +107,7 @@ export default function TurmaAlunoPage() {
   const [modalInscricao, setModalInscricao] = useState(false);
 
   const eventosElegiveis = useMemo(
-    () =>
-      perfil?.vinculoFatec === false
-        ? todosEventos.filter((e) => e.aceitaExternos)
-        : todosEventos,
+    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
     [todosEventos, perfil],
   );
   const eventoEscolhido = eventosElegiveis.find((e) => e.id === eventoEscolhidoId);
@@ -133,7 +132,7 @@ export default function TurmaAlunoPage() {
 
   async function enviarInscricao(dados: DadosSubmissao) {
     if (!eventoEscolhido || !user || !perfil) return;
-    await addDoc(collection(db, "trabalhos"), {
+    const ref = await addDoc(collection(db, "trabalhos"), {
       ...dados,
       eventoId: eventoEscolhido.id,
       alunoUid: user.uid,
@@ -142,6 +141,8 @@ export default function TurmaAlunoPage() {
       convitesPendentes: dados.participantesUids,
       atualizadoEm: serverTimestamp(),
     });
+    notificarStatusTrabalho(user, ref.id, "submetido");
+    dados.participantesUids.forEach((colegaUid) => notificarConviteColega(user, ref.id, colegaUid));
     setModalInscricao(false);
   }
 
@@ -150,7 +151,7 @@ export default function TurmaAlunoPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
         activeHref="/aluno/projeto-integrador"
         userName={perfil.nome}
         userRoleLabel="Aluno"

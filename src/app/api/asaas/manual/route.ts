@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
 /** Inscrição extra (2026-08-26) — organização/admin marcam manualmente um
  * aluno como pago, pra casos de pagamento feito por fora do sistema
@@ -73,6 +74,18 @@ export async function POST(request: Request) {
     },
     { merge: true },
   );
+
+  if (aluno.email) {
+    await enviarEmail({
+      to: aluno.email,
+      subject: `Pagamento confirmado — ${evento.nome}`,
+      html: modeloEmail(
+        `<p>Recebemos a confirmação do seu pagamento pra <strong>${evento.nome}</strong>.</p>
+         <p>Sua inscrição está completa.</p>`,
+        { texto: "Ver no SIGMA", href: `${URL_SISTEMA}/aluno/eventos` },
+      ),
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

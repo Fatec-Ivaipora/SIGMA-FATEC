@@ -10,8 +10,14 @@ export const NAV_ALUNO = [
 
 // Projeto Integrador é exclusivo de aluno da Fatec (RF-53, 2026-08-25) —
 // participante externo (vinculoFatec === false) não vê esse item de menu.
-export function navAlunoPara(vinculoFatec: boolean | undefined) {
-  return vinculoFatec === false
+// temEventoAtivo (2026-09-04) — acende um indicador no item "Eventos" pra
+// avisar o aluno que tem evento aberto sem precisar entrar na tela; quem
+// chama já filtrou os eventos por vinculoFatec (ver eventosParaAluno).
+export function navAlunoPara(vinculoFatec: boolean | undefined, temEventoAtivo = false) {
+  const itens = vinculoFatec === false
     ? NAV_ALUNO.filter((item) => item.label !== "Projeto Integrador")
     : NAV_ALUNO;
+  return itens.map((item) =>
+    item.label === "Eventos" ? { ...item, indicador: temEventoAtivo } : item,
+  );
 }

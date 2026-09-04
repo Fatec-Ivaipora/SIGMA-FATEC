@@ -14,6 +14,7 @@ import { useTrabalhos, type TrabalhoStatus, type Trabalho } from "@/lib/data/tra
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
+import { notificarAtribuicao, notificarStatusTrabalho } from "@/lib/notificarEmail";
 
 type Etapa =
   | "submissao"
@@ -362,6 +363,11 @@ export default function TrabalhosAdminPage() {
       });
     }
     await batch.commit();
+    if (user) {
+      notificarAtribuicao(user, [
+        { uid: pessoa.uid, papel: papelAlvoEnvio, quantidade: selecionados.size },
+      ]);
+    }
     setSelecionados(new Set());
     setModalEnviar(false);
   }
@@ -383,6 +389,14 @@ export default function TrabalhosAdminPage() {
       }
     }
     await batch.commit();
+    if (user) {
+      notificarAtribuicao(
+        user,
+        distribuicao
+          .filter((linha) => linha.quantidade > 0)
+          .map((linha) => ({ uid: linha.uid, papel: papelAlvoEnvio, quantidade: linha.quantidade })),
+      );
+    }
     setSelecionados(new Set());
     setModalEnviar(false);
   }
@@ -394,6 +408,7 @@ export default function TrabalhosAdminPage() {
       status: aceitar ? "aceito" : "nao_aceito",
       atualizadoEm: serverTimestamp(),
     });
+    if (user) notificarStatusTrabalho(user, id, aceitar ? "aceito" : "nao_aceito");
   }
 
   /** Libera o certificado/declaração pro aluno/avaliador/moderador verem na
@@ -441,6 +456,9 @@ export default function TrabalhosAdminPage() {
       });
     }
     await batch.commit();
+    if (user) {
+      selecionadosElegiveisParaAceite.forEach((t) => notificarStatusTrabalho(user, t.id, "aceito"));
+    }
     setSelecionados(new Set());
   }
 

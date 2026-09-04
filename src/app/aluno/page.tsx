@@ -1,53 +1,66 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import {
   AlertTriangle,
-  ArrowRight,
-  CalendarDays,
-  Check,
   CheckCircle2,
   FileStack,
   UserPlus,
+  Check,
   X,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
+import { StatusBadge } from "@/components/StatusBadge";
+import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
+import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos } from "@/lib/data/eventos";
+import { useEventosPublicos, eventosParaAluno } from "@/lib/data/eventos";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
-import { useMinhaInscricao } from "@/lib/data/inscricoes";
+import { useMinhasInscricoes } from "@/lib/data/inscricoes";
+import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
 
 export default function AlunoPainelPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { eventos: todosEventos } = useEventosPublicos();
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  const { inscricoes: minhasInscricoes } = useMinhasInscricoes(user?.uid);
+  const [modalEventoId, setModalEventoId] = useState<string | null>(null);
+  const [inscricaoEventoId, setInscricaoEventoId] = useState<string | null>(null);
 
-  // Participante externo (sem vínculo com a Fatec) só pode ver/inscrever nos
-  // eventos marcados como aceitaExternos; aluno da Fatec vê todos.
   const eventos = useMemo(
-    () =>
-      perfil?.vinculoFatec === false
-        ? todosEventos.filter((e) => e.aceitaExternos)
-        : todosEventos,
+    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
     [todosEventos, perfil],
   );
 
-  // Ainda não há um campo de status (aberto/encerrado) no schema de eventos —
-  // por ora todo evento cadastrado é tratado como aberto para inscrição.
-  const destaque = useMemo(
-    () => eventos.find((e) => e.destaque) ?? eventos[0],
-    [eventos],
+  // Indicador do menu "Eventos" (2026-09-04) — só acende se tem algum evento
+  // em que o aluno ainda NÃO se inscreveu (nenhuma inscricaoEvento). Assim
+  // que ele se inscreve, o indicador some pra esse evento — pedido explícito.
+  const temEventoPendente = useMemo(
+    () => eventos.some((e) => !minhasInscricoes.has(e.id)),
+    [eventos, minhasInscricoes],
   );
 
-  const jaInscrito = !!(destaque && trabalhos.some((t) => t.eventoId === destaque.id));
-  const temTaxaDestaque = !!destaque?.valorInscricao;
-  const { inscricao: inscricaoDestaque } = useMinhaInscricao(
-    temTaxaDestaque ? destaque?.id : undefined,
-    user?.uid,
-  );
-  const pagamentoPendente = temTaxaDestaque && inscricaoDestaque?.status !== "pago";
+  // Eventos inscritos (2026-09-04): antes o painel só mostrava o banner de
+  // UM evento em destaque, sem dar pra acompanhar o andamento sem entrar em
+  // Eventos. "Inscrito" aqui é qualquer evento com trabalho meu (dono ou
+  // colega) OU com inscricaoEvento minha (mesmo só "interesse") — a mesma
+  // união usada em outros lugares do app (ex.: lançamento pro Edubox).
+  const eventosInscritos = useMemo(() => {
+    const idsRelacionados = new Set<string>();
+    trabalhos.forEach((t) => idsRelacionados.add(t.eventoId));
+    minhasInscricoes.forEach((_insc, eventoId) => idsRelacionados.add(eventoId));
+    return eventos
+      .filter((e) => idsRelacionados.has(e.id))
+      .map((evento) => ({
+        evento,
+        trabalho: trabalhos.find((t) => t.eventoId === evento.id) ?? null,
+        inscricao: minhasInscricoes.get(evento.id) ?? null,
+      }));
+  }, [eventos, trabalhos, minhasInscricoes]);
 
   const trabalhosRecentes = useMemo(() => [...trabalhos].slice(0, 5), [trabalhos]);
 
@@ -61,12 +74,34 @@ export default function AlunoPainelPage() {
     responderConvite(trabalho, user.uid, aceitar);
   }
 
+  // Enviar trabalho direto da tela inicial (2026-09-04) — antes o botão só
+  // linkava pra /aluno/eventos; o pedido foi poder fazer tudo sem sair
+  // daqui. Mesma lógica de src/app/aluno/eventos/page.tsx.
+  async function enviarTrabalho(dados: DadosSubmissao) {
+    if (!modalEventoId || !user || !perfil) return;
+    const ref = await addDoc(collection(db, "trabalhos"), {
+      ...dados,
+      eventoId: modalEventoId,
+      alunoUid: user.uid,
+      alunoNome: perfil.nome,
+      status: "submissao",
+      convitesPendentes: dados.participantesUids,
+      atualizadoEm: serverTimestamp(),
+    });
+    notificarStatusTrabalho(user, ref.id, "submetido");
+    dados.participantesUids.forEach((colegaUid) => notificarConviteColega(user, ref.id, colegaUid));
+    setModalEventoId(null);
+  }
+
+  const eventoModal = eventos.find((e) => e.id === modalEventoId);
+  const eventoInscricao = eventos.find((e) => e.id === inscricaoEventoId);
+
   if (carregando || !perfil) return null;
 
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
         activeHref="/aluno"
         userName={perfil.nome}
         userRoleLabel="Aluno"
@@ -80,7 +115,7 @@ export default function AlunoPainelPage() {
             Bem-vindo(a), {perfil.nome}
           </h1>
           <p className="text-sm text-fatec-muted">
-            Acompanhe o evento aberto e o andamento dos seus trabalhos.
+            Acompanhe seus eventos inscritos e o andamento dos seus trabalhos.
           </p>
         </header>
 
@@ -165,104 +200,105 @@ export default function AlunoPainelPage() {
             </div>
           </div>
 
-          {destaque && (
-            <section className="mt-8">
-              <h2 className="mb-4 text-base font-semibold text-fatec-navy-900">
-                Evento aberto para inscrição
-              </h2>
+          <section className="mt-8">
+            <h2 className="mb-4 text-base font-semibold text-fatec-navy-900">
+              Eventos inscritos
+            </h2>
 
-              <div className="group relative mx-auto max-w-2xl overflow-hidden rounded-3xl shadow-[0_20px_45px_-25px_rgba(14,58,94,0.45)] transition-transform duration-200 hover:-translate-y-1">
-                {destaque.imagemDestaqueUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={destaque.imagemDestaqueUrl}
-                    alt={destaque.nome}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : (
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-600"
-                  >
-                    <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-                    <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-black/10" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
-
-                <div className="relative flex min-h-[280px] flex-col justify-end p-6 md:min-h-[340px] md:p-8">
-                  <div className="rounded-2xl bg-black/40 p-5 backdrop-blur-md">
-                  {destaque.periodoSubmissao && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white">
-                      <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
-                      Inscrições: {destaque.periodoSubmissao}
-                    </span>
-                  )}
-                  <h3 className="mt-2 text-2xl font-bold leading-tight text-white">
-                    {destaque.nome}
-                  </h3>
-                  {destaque.descricao && (
-                    <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/90">
-                      {destaque.descricao}
-                    </p>
-                  )}
-
-                  {pagamentoPendente ? (
-                    // Pagamento pendente vira o CTA principal (2026-08-31) —
-                    // mais urgente que "inscrição feita". Clicar sempre leva
-                    // pra Eventos, que é onde a inscrição/pagamento de
-                    // verdade acontece — esse banner é só uma vitrine.
-                    <Link
-                      href="/aluno/eventos"
-                      className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-amber-100 px-6 py-3 text-sm font-semibold text-amber-800 transition-transform hover:-translate-y-0.5"
+            {eventosInscritos.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+                Você ainda não está inscrito em nenhum evento.{" "}
+                <Link
+                  href="/aluno/eventos"
+                  className="font-medium text-fatec-sky-600 hover:text-fatec-navy-800"
+                >
+                  Veja os eventos abertos
+                </Link>
+                .
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {eventosInscritos.map(({ evento, trabalho, inscricao }) => {
+                  const temTaxa = !!evento.valorInscricao;
+                  const pago = inscricao?.status === "pago";
+                  return (
+                    <div
+                      key={evento.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-fatec-line bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <AlertTriangle className="h-4 w-4" strokeWidth={2} />
-                      Pagamento pendente — pagar agora
-                    </Link>
-                  ) : jaInscrito ? (
-                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50">
-                      <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
-                      Inscrição feita
-                    </span>
-                  ) : (
-                    <Link
-                      href="/aluno/eventos"
-                      className="group/btn mt-2 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
-                    >
-                      Inscrever trabalho
-                      <ArrowRight
-                        className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
-                        strokeWidth={2}
-                      />
-                    </Link>
-                  )}
-                  </div>
-                </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
+                        <p className="mt-0.5 text-sm text-fatec-muted">
+                          {trabalho ? trabalho.titulo : "Nenhum trabalho enviado ainda"}
+                        </p>
+                      </div>
+                      <div className="flex flex-none flex-wrap items-center gap-2">
+                        {trabalho && (
+                          <Link href="/aluno/trabalhos" className="transition-opacity hover:opacity-80">
+                            <StatusBadge status={trabalho.status} />
+                          </Link>
+                        )}
+                        {temTaxa &&
+                          (pago ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                              Pago
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setInscricaoEventoId(evento.id)}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                              Pagamento pendente
+                            </button>
+                          ))}
+                        {!trabalho && (
+                          <button
+                            type="button"
+                            onClick={() => setModalEventoId(evento.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                          >
+                            Enviar trabalho
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-
-              {eventos.length > 1 && (
-                <p className="mt-4 text-center text-sm text-fatec-muted">
-                  Há outros eventos abertos —{" "}
-                  <a
-                    href="/aluno/eventos"
-                    className="font-medium text-fatec-sky-600 hover:text-fatec-navy-800"
-                  >
-                    veja todos em Eventos
-                  </a>
-                  .
-                </p>
-              )}
-            </section>
-          )}
-
-          {!destaque && (
-            <p className="mt-8 rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
-              Nenhum evento aberto para inscrição no momento.
-            </p>
-          )}
+            )}
+          </section>
         </div>
       </div>
+
+      {eventoModal && (
+        <SubmeterTrabalhoModal
+          open={!!eventoModal}
+          eventoId={eventoModal.id}
+          temTaxa={!!eventoModal.valorInscricao}
+          eventoNome={eventoModal.nome}
+          areasDisponiveis={eventoModal.areasTematicas ?? []}
+          areasComplexas={eventoModal.areasTematicasComplexas ?? []}
+          meuUid={user?.uid}
+          onClose={() => setModalEventoId(null)}
+          onSubmit={enviarTrabalho}
+        />
+      )}
+
+      {eventoInscricao && (
+        <InscricaoEventoModal
+          open={!!eventoInscricao}
+          eventoId={eventoInscricao.id}
+          eventoNome={eventoInscricao.nome}
+          valor={eventoInscricao.valorInscricao ?? 0}
+          temCpf={!!perfil.cpf}
+          permiteSimulacao={!!eventoInscricao.permiteSimulacaoPagamento}
+          user={user}
+          onClose={() => setInscricaoEventoId(null)}
+        />
+      )}
     </main>
   );
 }

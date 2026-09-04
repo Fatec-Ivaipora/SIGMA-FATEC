@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
 /** Simulação da Etapa 1 (pagamento) — marca a inscrição como paga sem passar
  * por nenhum gateway real. Se desliga sozinha assim que ASAAS_API_KEY existir
@@ -65,6 +66,18 @@ export async function POST(request: Request) {
     },
     { merge: true },
   );
+
+  if (usuario.email) {
+    await enviarEmail({
+      to: usuario.email,
+      subject: `Pagamento confirmado — ${evento.nome}`,
+      html: modeloEmail(
+        `<p>Recebemos a confirmação do seu pagamento pra <strong>${evento.nome}</strong>.</p>
+         <p>Sua inscrição está completa.</p>`,
+        { texto: "Ver no SIGMA", href: `${URL_SISTEMA}/aluno/eventos` },
+      ),
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

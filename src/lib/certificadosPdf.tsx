@@ -135,7 +135,7 @@ export function CertificadoApresentacaoPDF({
   tituloTrabalho,
   registroNumero,
   diretorNome,
-  presidenteNome,
+  coordenadorNome,
 }: {
   nomes: string[];
   eventoNome: string;
@@ -143,7 +143,7 @@ export function CertificadoApresentacaoPDF({
   tituloTrabalho: string;
   registroNumero: number;
   diretorNome: string;
-  presidenteNome: string;
+  coordenadorNome: string;
 }) {
   const plural = nomes.length > 1;
   return (
@@ -177,10 +177,10 @@ export function CertificadoApresentacaoPDF({
             <View style={estiloApresentacao.assinatura}>
               <View style={estiloApresentacao.linhaAssinatura} />
               <Text style={estiloApresentacao.nomeAssinatura}>
-                {presidenteNome.toUpperCase()}
+                {coordenadorNome.toUpperCase()}
               </Text>
               <Text style={estiloApresentacao.cargoAssinatura}>
-                Presidente da Comissão Organizadora
+                Coordenador(a) da Pesquisa e Formação Científica
               </Text>
             </View>
           </View>

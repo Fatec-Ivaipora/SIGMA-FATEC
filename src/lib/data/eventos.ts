@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, documentId, onSnapshot, query, where } from "firebase/firestore";
+import { collection, documentId, onSnapshot, query, where, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { PerfilUsuario } from "@/lib/auth";
+import { useMinhasInscricoes } from "@/lib/data/inscricoes";
 
 // Sub-área dentro de uma área temática "complexa" (2026-09-01) — ex.: dentro
 // de "Projetos Integradores", cada curso/grupo de cursos vira uma sub-área
@@ -56,7 +57,17 @@ export type Evento = {
   dataRealizacao?: string;
   cargaHoraria?: number;
   nomeDiretorAcademico?: string;
-  nomePresidenteComissao?: string;
+  // Renomeado de nomePresidenteComissao (2026-09-04) — o cargo no
+  // certificado mudou de "Presidente da Comissão Organizadora" pra
+  // "Coordenador(a) da Pesquisa e Formação Científica" (documento oficial
+  // atualizado, ver CERTIFICADOS APRESENTAÇÃO - PARA IMPRESSÃO-C.ORIENTADOR).
+  nomeCoordenadorPesquisa?: string;
+  // Número do primeiro certificado desse evento no "REGISTRO SOB O N°" —
+  // definido pela organização/comissão (documento próprio deles, fora do
+  // sistema); os certificados seguintes desse evento saem em sequência a
+  // partir daqui (ver obterNumeroRegistro em /api/certificados). Ausente =
+  // começa em 1.
+  numeroRegistroInicial?: number;
   // Código desse evento no sistema Edubox (2026-08-28) — usado pra lançar os
   // alunos participantes lá dentro (exigência legal do MEC). Preenchido à mão
   // pelo admin por enquanto: a busca automática desse código no banco do
@@ -67,6 +78,12 @@ export type Evento = {
   // demonstração, onde não faz sentido cobrar de verdade. Em qualquer outro
   // evento, a simulação continua bloqueada assim que ASAAS_API_KEY existir.
   permiteSimulacaoPagamento?: boolean;
+  // Prazo de edição do trabalho pelo aluno (2026-09-04) — 23:55 do dia de
+  // fim das inscrições (fimInscricoes na criação do evento), gravado como
+  // Timestamp real pra dar pra comparar com "agora" tanto no client quanto
+  // nas firestore.rules. Ausente = sem prazo definido, edição nunca trava
+  // (eventos criados antes dessa feature, ou sem fimInscricoes preenchido).
+  prazoEdicaoTrabalho?: Timestamp;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */
@@ -100,6 +117,28 @@ export function useEventos(perfil: PerfilUsuario | null | undefined) {
   }, [perfil]);
 
   return { eventos, carregando };
+}
+
+/** Participante externo (sem vínculo com a Fatec) só vê/participa dos
+ * eventos marcados aceitaExternos; aluno da Fatec vê todos. Centralizado
+ * aqui (2026-09-04) — antes cada tela do aluno repetia esse filtro na mão. */
+export function eventosParaAluno(eventos: Evento[], vinculoFatec: boolean | undefined) {
+  return vinculoFatec === false ? eventos.filter((e) => e.aceitaExternos) : eventos;
+}
+
+/** Indicador do item "Eventos" no menu do aluno (2026-09-04): só acende se
+ * existe algum evento visível pra ele (já filtrado por vinculoFatec) em que
+ * ele ainda não tem NENHUMA inscricaoEvento — ou seja, ainda não clicou em
+ * "Participar" nesse evento. Assim que ele se inscreve (mesmo sem ter
+ * enviado trabalho ainda), o indicador some pra esse evento — pedido
+ * explícito do usuário. Usado nas telas que não têm essa lista pronta na
+ * mão (as que já têm — /aluno e /aluno/eventos — calculam isso na hora
+ * pra não abrir mais um listener duplicado). */
+export function useIndicadorEventos(perfil: PerfilUsuario | null | undefined, uid: string | undefined) {
+  const { eventos: todosEventos } = useEventosPublicos();
+  const { inscricoes } = useMinhasInscricoes(uid);
+  const eventos = eventosParaAluno(todosEventos, perfil?.vinculoFatec);
+  return eventos.some((e) => !inscricoes.has(e.id));
 }
 
 /** Lê todos os eventos, sem escopo — para o aluno, que não é restrito por

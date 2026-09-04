@@ -19,11 +19,20 @@ function slug(texto: string): string {
 }
 
 /** Get-or-create: reaproveita o número já atribuído a essa chave se já
- * existir; senão incrementa o contador global numa transação e grava. */
-async function obterNumeroRegistro(chave: string): Promise<number> {
+ * existir; senão incrementa o contador desse evento numa transação e grava.
+ * Contador escopado por evento (2026-09-04, não é mais um contador global
+ * único) — cada evento tem seu próprio "livro" de registro, e a organização
+ * define em que número ele começa (evento.numeroRegistroInicial, decidido
+ * junto com a comissão fora do sistema); os certificados seguintes DESSE
+ * evento saem em sequência a partir daí. Ausente = começa em 1. */
+async function obterNumeroRegistro(
+  chave: string,
+  eventoId: string,
+  numeroInicial: number,
+): Promise<number> {
   const db = getAdminDb();
   const registroRef = db.doc(`registrosCertificados/${chave}`);
-  const contadorRef = db.doc("contadores/certificados");
+  const contadorRef = db.doc(`contadores/certificados_${eventoId}`);
 
   return db.runTransaction(async (tx) => {
     const registroSnap = await tx.get(registroRef);
@@ -31,7 +40,7 @@ async function obterNumeroRegistro(chave: string): Promise<number> {
     if (existente) return existente;
 
     const contadorSnap = await tx.get(contadorRef);
-    const numero = (contadorSnap.data()?.proximo as number | undefined) ?? 1;
+    const numero = (contadorSnap.data()?.proximo as number | undefined) ?? numeroInicial;
 
     tx.set(contadorRef, { proximo: numero + 1 }, { merge: true });
     tx.set(registroRef, {
@@ -52,8 +61,8 @@ function faltandoDadosEvento(
   if (!evento.dataRealizacao) faltando.push("data de realização");
   if (!evento.cargaHoraria) faltando.push("carga horária");
   if (!evento.nomeDiretorAcademico) faltando.push("nome do Diretor Acadêmico");
-  if (papel === "aluno" && !evento.nomePresidenteComissao) {
-    faltando.push("nome do Presidente da Comissão");
+  if (papel === "aluno" && !evento.nomeCoordenadorPesquisa) {
+    faltando.push("nome do Coordenador(a) da Pesquisa e Formação Científica");
   }
   return faltando;
 }
@@ -172,7 +181,11 @@ export async function GET(request: Request) {
       );
     }
 
-    const numero = await obterNumeroRegistro(`${trabalhoId}_aluno`);
+    const numero = await obterNumeroRegistro(
+      `${trabalhoId}_aluno`,
+      trabalho.eventoId as string,
+      (evento.numeroRegistroInicial as number | undefined) ?? 1,
+    );
 
     const nomes = [
       trabalho.alunoNome as string,
@@ -188,7 +201,7 @@ export async function GET(request: Request) {
         tituloTrabalho: trabalho.titulo as string,
         registroNumero: numero,
         diretorNome: evento.nomeDiretorAcademico as string,
-        presidenteNome: evento.nomePresidenteComissao as string,
+        coordenadorNome: evento.nomeCoordenadorPesquisa as string,
       }),
     );
 

@@ -49,6 +49,45 @@ export function useMinhaInscricao(eventoId: string | undefined, uid: string | un
   return { inscricao, carregando };
 }
 
+/** Todas as próprias inscrições do aluno logado, em qualquer evento —
+ * usado no painel inicial (seção "Eventos inscritos", 2026-09-04) pra saber
+ * o status de pagamento de cada evento sem precisar um hook por evento
+ * (useMinhaInscricao é por eventoId só). Regra já permite (uid ==
+ * request.auth.uid), ver firestore.rules. */
+export function useMinhasInscricoes(uid: string | undefined) {
+  const [inscricoes, setInscricoes] = useState<Map<string, InscricaoEvento>>(new Map());
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    if (!uid) {
+      Promise.resolve().then(() => {
+        setInscricoes(new Map());
+        setCarregando(false);
+      });
+      return;
+    }
+    const q = query(collection(db, "inscricoesEvento"), where("uid", "==", uid));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const mapa = new Map<string, InscricaoEvento>();
+        snap.forEach((d) => {
+          const dados = { id: d.id, ...d.data() } as InscricaoEvento;
+          mapa.set(dados.eventoId, dados);
+        });
+        setInscricoes(mapa);
+        setCarregando(false);
+      },
+      () => {
+        setInscricoes(new Map());
+        setCarregando(false);
+      },
+    );
+  }, [uid]);
+
+  return { inscricoes, carregando };
+}
+
 /** Todos os inscritos de um evento, qualquer status (organizador/admin) — RF:
  * modal "Inscritos". Pagamento não bloqueia mais inscrição/trabalho
  * (2026-08-31, pedido da diretoria) — por isso não filtra mais por "pago";

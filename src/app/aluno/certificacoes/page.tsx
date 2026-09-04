@@ -5,7 +5,7 @@ import { Award, AlertTriangle, Clock, Download, Loader2, UserCog } from "lucide-
 import { Sidebar } from "@/components/Sidebar";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos, type Evento } from "@/lib/data/eventos";
+import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 import { useMinhasMonitorias, type MonitorEvento } from "@/lib/data/monitores";
@@ -136,6 +136,7 @@ export default function AlunoCertificacoesPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { eventos } = useEventosPublicos();
+  const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
   const monitorias = useMinhasMonitorias(user?.uid);
 
   const [baixandoId, setBaixandoId] = useState<string | null>(null);
@@ -168,7 +169,7 @@ export default function AlunoCertificacoesPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
         activeHref="/aluno/certificacoes"
         userName={perfil.nome}
         userRoleLabel="Aluno"

@@ -28,5 +28,16 @@ service firebase.storage {
       allow read: if true;
       allow write: if souAdmin() || (logado() && meuPapel() == "organizacao" && eventoId in meusEventos());
     }
+
+    // declaracoes/** e editais/** (2026-09-04) — PDFs públicos, lidos na home
+    // sem login; só admin faz upload (telas /declaracoes e /editais/gerenciar).
+    match /declaracoes/{tudo=**} {
+      allow read: if true;
+      allow write: if souAdmin();
+    }
+    match /editais/{tudo=**} {
+      allow read: if true;
+      allow write: if souAdmin();
+    }
   }
 }

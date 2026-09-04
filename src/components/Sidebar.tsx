@@ -23,6 +23,9 @@ export type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  // Bolinha de destaque no item (2026-09-04) — ex.: avisa o aluno que tem
+  // evento em andamento sem precisar entrar na tela de Eventos.
+  indicador?: boolean;
 };
 
 export function Sidebar({
@@ -82,7 +85,7 @@ export function Sidebar({
     return (
       <>
         <nav className="mt-10 flex flex-col gap-1">
-          {navItems.map(({ label, href, icon: Icon }) => {
+          {navItems.map(({ label, href, icon: Icon, indicador }) => {
             const active = href === activeHref;
             return (
               <Link
@@ -91,7 +94,7 @@ export function Sidebar({
                 aria-current={active ? "page" : undefined}
                 onClick={() => setAberto(false)}
                 title={mini ? label : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors ${
+                className={`relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors ${
                   mini ? "justify-center" : ""
                 } ${
                   active
@@ -99,8 +102,20 @@ export function Sidebar({
                     : "text-fatec-navy-50/70 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <Icon className="h-4.5 w-4.5 flex-none" strokeWidth={1.75} />
-                {!mini && label}
+                <span className="relative flex-none">
+                  <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
+                  {indicador && mini && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-fatec-orange-500 ring-2 ring-fatec-navy-900" />
+                  )}
+                </span>
+                {!mini && (
+                  <span className="flex flex-1 items-center justify-between gap-2">
+                    {label}
+                    {indicador && (
+                      <span className="h-2 w-2 flex-none rounded-full bg-fatec-orange-500" />
+                    )}
+                  </span>
+                )}
               </Link>
             );
           })}

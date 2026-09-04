@@ -17,6 +17,7 @@ import {
   type Trabalho,
   type TrabalhoStatus,
 } from "@/lib/data/trabalhos";
+import { notificarStatusTrabalho } from "@/lib/notificarEmail";
 
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 const NOTAS = [1, 2, 3, 4, 5];
@@ -358,21 +359,23 @@ export default function AvaliadorTrabalhosPage() {
               statusPendente="aguardando_avaliacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao
-              onEnviarNota={(id, soma, notas) =>
-                atualizarTrabalho(id, {
+              onEnviarNota={async (id, soma, notas) => {
+                await atualizarTrabalho(id, {
                   status: "avaliado",
                   notasCriterios: notas as unknown as NotasCriterios,
                   notaAvaliador: soma,
                   atualizadoEm: serverTimestamp(),
-                })
-              }
-              onSolicitarRevisao={(id, comentario) =>
-                atualizarTrabalho(id, {
+                });
+                if (user) notificarStatusTrabalho(user, id, "avaliado");
+              }}
+              onSolicitarRevisao={async (id, comentario) => {
+                await atualizarTrabalho(id, {
                   status: "revisao",
                   comentarioRevisao: comentario,
                   atualizadoEm: serverTimestamp(),
-                })
-              }
+                });
+                if (user) notificarStatusTrabalho(user, id, "revisao");
+              }}
             />
           ) : (
             <PainelTrabalhos

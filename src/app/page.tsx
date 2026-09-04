@@ -7,8 +7,8 @@ import { InstagramIcon } from "@/components/icons/InstagramIcon";
 import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Logo } from "@/components/Logo";
-import { LogoLockup } from "@/components/LogoLockup";
 import { FlowCarousel } from "@/components/FlowCarousel";
+import { SiteHeader } from "@/components/SiteHeader";
 
 const CONTATOS = {
   instagram: "https://www.instagram.com/fatec.ivaipora/",
@@ -54,20 +54,9 @@ export default function HomePage() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 py-6 md:px-12">
-        <LogoLockup
-          logoClassName="h-12 w-auto md:h-16"
-          wordmarkClassName="text-xl md:text-2xl"
-        />
-        <Link
-          href="/login"
-          className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-        >
-          Entrar
-        </Link>
-      </header>
+      <SiteHeader mostrarEvento={!!eventoDestaque} />
 
-      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-28 md:px-12 md:pb-24 md:pt-32">
+      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-16 md:px-12 md:pb-24 md:pt-20">
         <div
           aria-hidden
           className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
@@ -115,7 +104,7 @@ export default function HomePage() {
           cima da imagem e vira uma seção de texto própria logo abaixo. */}
       {eventoDestaque && (
         <>
-          <section id="evento-destaque" className="relative">
+          <section id="evento-destaque" className="relative scroll-mt-20">
             <div className="group relative w-full overflow-hidden">
               {eventoDestaque.imagemDestaqueUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element

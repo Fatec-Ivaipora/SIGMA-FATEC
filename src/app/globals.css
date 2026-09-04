@@ -4,21 +4,32 @@
   --background: #f5f7f9;
   --foreground: #0e3a5e;
 
-  /* Fatec Ivaiporã institutional palette (extracted from fatecivaipora.com.br) */
-  --color-fatec-navy-950: #071d30;
-  --color-fatec-navy-900: #0a2c47;
-  --color-fatec-navy-800: #0e3a5e;
-  --color-fatec-navy-700: #164a72;
+  /* Fatec Ivaiporã institutional palette (2026-09-04: cores oficiais pedidas
+     pelo time de design — ver exemplo de cores.png. Azul escurão 2/1/escuro
+     viram a escala navy 950/900/800; navy-700 é um tom intermediário
+     derivado entre escuro e claro (o design não deu um 4º tom de navy).
+     navy-100/50, ink/muted/line ficam como estavam — são neutros de apoio,
+     não fazem parte da paleta de marca que foi passada. */
+  --color-fatec-navy-950: #001d35; /* Azul escurão 2 */
+  --color-fatec-navy-900: #003263; /* Azul escurão 1 */
+  --color-fatec-navy-800: #0051b2; /* Azul escuro */
+  --color-fatec-navy-700: #0081d9; /* derivado, entre Azul escuro e Azul claro */
   --color-fatec-navy-100: #dbe7ef;
   --color-fatec-navy-50: #f0f5f8;
 
-  --color-fatec-orange-600: #da6d1a;
-  --color-fatec-orange-500: #ea741c;
-  --color-fatec-orange-400: #f2934f;
-  --color-fatec-orange-100: #fce4d1;
+  --color-fatec-orange-600: #d85120; /* derivado, mais escuro (hover) */
+  --color-fatec-orange-500: #f05a24; /* Laranja */
+  --color-fatec-orange-400: #f4835b; /* derivado, mais claro */
+  --color-fatec-orange-100: #fdebe5; /* derivado, tom pastel */
 
-  --color-fatec-sky-600: #2376b9;
-  --color-fatec-sky-100: #d9edfb;
+  --color-fatec-sky-600: #00b1ff; /* Azul claro */
+  --color-fatec-sky-100: #e0f6ff; /* derivado, tom pastel */
+
+  /* Ainda sem uso definido no site (2026-09-04) — só deixados disponíveis
+     como token, pra usar quando surgir um caso concreto. */
+  --color-fatec-yellow-500: #ffb000; /* Amarelo */
+  --color-fatec-purple-600: #6300aa; /* Roxo */
+  --color-fatec-lilac-500: #a201ff; /* Lilás */
 
   --color-fatec-ink: #142433;
   --color-fatec-muted: #5b6b78;
@@ -42,6 +53,9 @@
   --color-fatec-orange-100: var(--color-fatec-orange-100);
   --color-fatec-sky-600: var(--color-fatec-sky-600);
   --color-fatec-sky-100: var(--color-fatec-sky-100);
+  --color-fatec-yellow-500: var(--color-fatec-yellow-500);
+  --color-fatec-purple-600: var(--color-fatec-purple-600);
+  --color-fatec-lilac-500: var(--color-fatec-lilac-500);
   --color-fatec-ink: var(--color-fatec-ink);
   --color-fatec-muted: var(--color-fatec-muted);
   --color-fatec-line: var(--color-fatec-line);

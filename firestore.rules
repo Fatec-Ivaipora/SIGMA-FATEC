@@ -50,6 +50,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/eventos/$(eventoId)).data.aceitaExternos == true;
     }
 
+    // Prazo de edição do trabalho pelo aluno (2026-09-04) — eventos/{id}.
+    // prazoEdicaoTrabalho é 23:55 do dia de fim das inscrições (gravado como
+    // Timestamp na criação do evento, ver src/app/eventos/page.tsx). Sem
+    // esse campo (evento criado antes da feature, ou sem data de fim
+    // preenchida), nunca trava.
+    function dentroDoPrazoEdicao(eventoId) {
+      let evento = get(/databases/$(database)/documents/eventos/$(eventoId)).data;
+      return !("prazoEdicaoTrabalho" in evento) || request.time < evento.prazoEdicaoTrabalho;
+    }
+
     // usuarios/{uid} — RF-26/RF-27/RF-28: qualquer um lê o próprio perfil (para
     // saber seu papel no login); organizacao/admin listam todos. Escrita é do
     // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
@@ -128,7 +138,12 @@ service cloud.firestore {
         (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "atualizadoEm"])) ||
-        (meuPapel() == "aluno" && resource.data.alunoUid == request.auth.uid) ||
+        // Dono do trabalho edita livremente (título, resumo, orientador,
+        // colegas, etc.) enquanto "revisao" (avaliador pediu ajuste, sem
+        // prazo) OU dentro do prazo de edição do evento — depois disso,
+        // trava (2026-09-04).
+        (meuPapel() == "aluno" && resource.data.alunoUid == request.auth.uid &&
+          (resource.data.status == "revisao" || dentroDoPrazoEdicao(resource.data.eventoId))) ||
         // Colega convidado (RF-52) responde o próprio convite — só pode
         // mexer em convitesPendentes/participantesUids/participantesNomes,
         // nunca em status/nota/resumo/etc. Exige estar em convitesPendentes
@@ -209,6 +224,34 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // rasCadastrados/{ra} — índice de unicidade de RA (2026-09-04): doc ID é
+    // o próprio RA, criado junto com usuarios/{uid} no mesmo writeBatch no
+    // autocadastro (RF-01). "allow update: if false" é o que garante a
+    // unicidade — se o RA já existe, a escrita vira "update" (não "create")
+    // pras regras do Firestore, e é negada, derrubando o batch inteiro.
+    // Motivo (2026-09-04): um funcionário se cadastrou como aluno usando o
+    // RA de outra pessoa — não havia nenhuma trava contra isso, só validação
+    // de formato do RA.
+    match /rasCadastrados/{ra} {
+      allow read: if logado();
+      allow create: if logado() && request.auth.uid == request.resource.data.uid;
+      allow update, delete: if false;
+    }
+
+    // eduboxLancamentos/{eventoId}::{uid} — rastreio de quem já foi lançado
+    // no Edubox (2026-09-04), pra não duplicar em execuções repetidas (o
+    // relay também deduplica do lado do Postgres deles, isso aqui é só pra
+    // não precisar rechecar o Edubox toda vez — e pra dar visibilidade pro
+    // admin de quantos já foram/faltam). Escrita só via Admin SDK
+    // (/api/edubox/lancar), igual inscricoesEvento.
+    match /eduboxLancamentos/{id} {
+      allow read: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
+      allow write: if false;
+    }
+
     // monitoresEvento/{eventoId}::{uid} — cargo de monitor (2026-09-01):
     // aluno que ajuda na operação do evento, atribuído por fora pela
     // organização/admin (não é o próprio aluno quem se marca). Certificado
@@ -238,6 +281,26 @@ service cloud.firestore {
     // ninguém no client lê ou escreve diretamente.
     match /mail/{autoId} {
       allow read, write: if false;
+    }
+
+    // declaracaoCategorias/{id} e declaracoes/{id} (2026-09-04) — biblioteca
+    // pública de declarações antigas (PDFs por ano/categoria), acessível no
+    // menu da home pública sem login (mesmo padrão de eventos com
+    // destaque==true). Só admin gerencia (tela /declaracoes).
+    match /declaracaoCategorias/{id} {
+      allow read: if true;
+      allow write: if souAdmin();
+    }
+    match /declaracoes/{id} {
+      allow read: if true;
+      allow write: if souAdmin();
+    }
+
+    // editais/{id} (2026-09-04) — cards públicos com PDF de edital, listados
+    // em /editais (sem login) e geridos pelo admin em /editais/gerenciar.
+    match /editais/{id} {
+      allow read: if true;
+      allow write: if souAdmin();
     }
   }
 }

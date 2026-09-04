@@ -18,6 +18,7 @@ import {
   type TurmaTrabalho,
   type TurmaTrabalhoStatus,
 } from "@/lib/data/turmas";
+import { notificarConviteTurma } from "@/lib/notificarEmail";
 
 const ETAPAS: { key: TurmaTrabalhoStatus; label: string }[] = [
   { key: "aguardando_avaliacao", label: "Aguardando avaliação" },
@@ -85,8 +86,9 @@ export default function TurmaOrientadorPage() {
   }
 
   async function convidar(aluno: { uid: string; nome: string }) {
-    if (!turma) return;
+    if (!turma || !user) return;
     await convidarAlunoTurma(turma, aluno);
+    notificarConviteTurma(user, turma.id, aluno.uid);
     setBuscaAluno("");
   }
 

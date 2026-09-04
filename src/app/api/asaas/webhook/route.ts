@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
 const STATUS_PAGO = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
 
@@ -23,9 +24,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  await getAdminDb()
-    .doc(`inscricoesEvento/${body.payment.externalReference}`)
-    .set({ status: "pago", pagoEm: FieldValue.serverTimestamp() }, { merge: true });
+  const db = getAdminDb();
+  const inscricaoRef = db.doc(`inscricoesEvento/${body.payment.externalReference}`);
+  await inscricaoRef.set({ status: "pago", pagoEm: FieldValue.serverTimestamp() }, { merge: true });
+
+  const inscricao = (await inscricaoRef.get()).data();
+  if (inscricao?.email) {
+    const evento = (await db.doc(`eventos/${inscricao.eventoId}`).get()).data();
+    await enviarEmail({
+      to: inscricao.email,
+      subject: `Pagamento confirmado — ${evento?.nome ?? "seu evento"}`,
+      html: modeloEmail(
+        `<p>Recebemos a confirmação do seu pagamento pra <strong>${evento?.nome ?? "o evento"}</strong>.</p>
+         <p>Sua inscrição está completa.</p>`,
+        { texto: "Ver no SIGMA", href: `${URL_SISTEMA}/aluno/eventos` },
+      ),
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
