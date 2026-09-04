@@ -169,11 +169,36 @@ export default function AlunoEventosPage() {
   );
   const jaInscritoDestaque = !!(destaque && trabalhos.some((t) => t.eventoId === destaque.id));
   const temTaxaDestaque = !!destaque?.valorInscricao;
-  const { inscricao: inscricaoDestaque } = useMinhaInscricao(
-    temTaxaDestaque ? destaque?.id : undefined,
-    user?.uid,
-  );
-  const pagamentoPendenteDestaque = temTaxaDestaque && inscricaoDestaque?.status !== "pago";
+  // Busca sempre (não só quando tem taxa) — é a existência desse registro
+  // (mesmo só "interesse") que decide se mostra "Inscreva-se" ou já pula
+  // pra "Inscrever trabalho" (mesma regra do CardEvento abaixo). Bug corrigido
+  // 2026-09-04: antes só buscava pra eventos com taxa, então um aluno que
+  // nunca tinha clicado em nada aparecia direto como "pagamento pendente"
+  // num evento pago — inscricaoDestaque undefined também bate `!== "pago"`.
+  const { inscricao: inscricaoDestaque } = useMinhaInscricao(destaque?.id, user?.uid);
+  const pagamentoPendenteDestaque =
+    temTaxaDestaque && !!inscricaoDestaque && inscricaoDestaque.status !== "pago";
+  const [participandoDestaque, setParticipandoDestaque] = useState(false);
+  const [erroParticiparDestaque, setErroParticiparDestaque] = useState<string | null>(null);
+
+  async function participarDestaque() {
+    if (!user || !destaque) return;
+    setErroParticiparDestaque(null);
+    setParticipandoDestaque(true);
+    try {
+      const idToken = await user.getIdToken();
+      const resposta = await fetch("/api/asaas/interesse", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ eventoId: destaque.id }),
+      });
+      if (!resposta.ok) throw new Error();
+    } catch {
+      setErroParticiparDestaque("Não foi possível registrar. Tente de novo.");
+    } finally {
+      setParticipandoDestaque(false);
+    }
+  }
 
   // O card do destaque já aparece no banner acima — tira ele da grade pra
   // não duplicar (só quando sobra mais gente na grade).
@@ -235,7 +260,7 @@ export default function AlunoEventosPage() {
                   <img
                     src={destaque.imagemDestaqueUrl}
                     alt={destaque.nome}
-                    className="absolute inset-0 h-full w-full object-cover"
+                    className="absolute inset-0 h-full w-full scale-105 object-cover blur-[3px]"
                   />
                 ) : (
                   <div
@@ -249,10 +274,9 @@ export default function AlunoEventosPage() {
                 <div className="absolute inset-0 bg-black/10" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
 
-                <div className="relative flex min-h-[190px] flex-col justify-end p-5 md:min-h-[230px] md:p-6">
-                  <div className="rounded-xl bg-black/40 p-4 backdrop-blur-md">
+                <div className="relative flex min-h-[190px] flex-col items-start justify-end p-5 md:min-h-[230px] md:p-6">
                     {destaque.periodoSubmissao && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-semibold text-white">
                         <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
                         Inscrições: {destaque.periodoSubmissao}
                       </span>
@@ -261,37 +285,64 @@ export default function AlunoEventosPage() {
                       {destaque.nome}
                     </h3>
 
-                    {pagamentoPendenteDestaque ? (
+                    {!inscricaoDestaque ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={participarDestaque}
+                          disabled={participandoDestaque}
+                          className="group/btn mt-3 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {participandoDestaque ? "Registrando..." : "Inscreva-se"}
+                        </button>
+                        {erroParticiparDestaque && (
+                          <p className="mt-1.5 text-xs text-rose-200">{erroParticiparDestaque}</p>
+                        )}
+                      </>
+                    ) : jaInscritoDestaque && pagamentoPendenteDestaque ? (
                       <button
                         type="button"
                         onClick={() => setInscricaoEventoId(destaque.id)}
-                        className="group/btn mt-3 inline-flex items-center gap-2 rounded-full bg-amber-100 px-5 py-2.5 text-sm font-semibold text-amber-800 transition-transform hover:-translate-y-0.5"
+                        className="group/btn mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-800 transition-transform hover:-translate-y-0.5"
                       >
-                        <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+                        <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
                         Pagamento pendente — pagar agora
                       </button>
-                    ) : jaInscritoDestaque ? (
-                      <Link
-                        href="/aluno/trabalhos"
-                        className="group/btn mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/30"
-                      >
-                        <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
-                        Inscrição feita — ver trabalho
-                      </Link>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setModalEventoId(destaque.id)}
-                        className="group/btn mt-3 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
-                      >
-                        Inscrever trabalho
-                        <ArrowRight
-                          className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
-                          strokeWidth={2}
-                        />
-                      </button>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {jaInscritoDestaque ? (
+                          <Link
+                            href="/aluno/trabalhos"
+                            className="group/btn inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-4 py-1.5 text-xs font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/30"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                            Inscrição feita — ver trabalho
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setModalEventoId(destaque.id)}
+                            className="group/btn inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
+                          >
+                            Inscrever trabalho
+                            <ArrowRight
+                              className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
+                              strokeWidth={2}
+                            />
+                          </button>
+                        )}
+                        {pagamentoPendenteDestaque && (
+                          <button
+                            type="button"
+                            onClick={() => setInscricaoEventoId(destaque.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-200"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                            Pagamento pendente
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </div>
                 </div>
               </div>
             </div>
