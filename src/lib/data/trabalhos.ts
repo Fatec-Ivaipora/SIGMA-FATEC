@@ -35,17 +35,18 @@ export type NotasCriterios = {
   aplicabilidadeRelevancia: number;
 };
 
-// Critérios da etapa de Apresentação (2026-08-26), pontuados pelo moderador
-// — mesmo formato do avaliador (1 a 5 cada, soma 5-25). PROVISÓRIO: o
-// usuário ainda não passou a lista real de critérios do edital pra
-// apresentação; os nomes abaixo são placeholder (ver CRITERIOS_APRESENTACAO
-// em src/app/avaliador/trabalhos/page.tsx pra trocar quando ele mandar).
+// Critérios da etapa de Apresentação, pontuados pelo moderador — item 6.4 do
+// edital X MAC (conferido 2026-09-08 contra o PDF real, substituindo os 5
+// placeholder que existiam antes). 7 critérios, 1 a 5 cada, soma 7-35 — ver
+// CRITERIOS_APRESENTACAO em src/app/avaliador/trabalhos/page.tsx.
 export type NotasCriteriosApresentacao = {
-  dominioConteudo: number;
-  clarezaComunicacao: number;
-  usoDoTempo: number;
-  qualidadeMaterial: number;
-  posturaSeguranca: number;
+  pontualidade: number;
+  numeroApresentadores: number;
+  linguagemTecnica: number;
+  qualidadeSlides: number;
+  clarezaObjetividade: number;
+  ordemLogica: number;
+  postura: number;
 };
 
 export type Trabalho = {

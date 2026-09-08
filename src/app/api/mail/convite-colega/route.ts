@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     to: colega.email,
     subject: `Você foi adicionado(a) num trabalho — ${trabalho.titulo}`,
     html: modeloEmail(
-      `<p><strong>${trabalho.alunoNome}</strong> te adicionou como colega no trabalho <strong>"${trabalho.titulo}"</strong>.</p>
+      `<p><strong>${trabalho.alunoNome}</strong> te adicionou como autor no trabalho <strong>"${trabalho.titulo}"</strong>.</p>
        <p>Entre no SIGMA pra aceitar ou recusar o convite.</p>`,
       { texto: "Ver convite", href: `${URL_SISTEMA}/aluno` },
     ),

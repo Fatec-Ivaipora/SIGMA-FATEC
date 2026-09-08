@@ -151,7 +151,7 @@ export default function AlunoEventosPage() {
     [todosEventos, perfil],
   );
 
-  // Indicador do menu "Eventos" (2026-09-04) — ver eventos.ts/useIndicadorEventos:
+  // Indicador do menu "Submissões" (2026-09-04) — ver eventos.ts/useIndicadorEventos:
   // some assim que o aluno tem inscricaoEvento pra todos os eventos visíveis.
   const temEventoPendente = useMemo(
     () => eventos.some((e) => !minhasInscricoes.has(e.id)),
@@ -242,7 +242,7 @@ export default function AlunoEventosPage() {
       <div className="flex flex-1 flex-col overflow-x-hidden">
         <header className="border-b border-fatec-line bg-white px-6 py-5 md:px-10">
           <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">
-            Eventos
+            Submissões
           </h1>
           <p className="text-sm text-fatec-muted">
             {perfil.vinculoFatec === false

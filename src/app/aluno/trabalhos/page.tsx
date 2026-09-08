@@ -127,7 +127,7 @@ export default function AlunoTrabalhosPage() {
                       </p>
                       {(t.participantesNomes?.length ?? 0) > 0 && (
                         <p className="mt-0.5 text-xs text-fatec-muted">
-                          Colegas: {t.participantesNomes!.join(", ")}
+                          Autores: {t.participantesNomes!.join(", ")}
                         </p>
                       )}
                     </div>

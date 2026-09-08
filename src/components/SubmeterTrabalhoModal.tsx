@@ -12,7 +12,7 @@ const RESUMO_MAX = 2000;
 const FASES_SUBMISSAO = [
   { numero: 1, label: "Trabalho" },
   { numero: 2, label: "Detalhes" },
-  { numero: 3, label: "Colegas" },
+  { numero: 3, label: "Autores" },
 ] as const;
 
 const MODALIDADES = [
@@ -457,7 +457,7 @@ export function SubmeterTrabalhoModal({
         <>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-fatec-navy-900">
-            Colegas (participantes)
+            Autores (participantes)
           </span>
 
           {participantes.length > 0 && (
@@ -486,7 +486,7 @@ export function SubmeterTrabalhoModal({
               type="text"
               value={buscaColega}
               onChange={(e) => setBuscaColega(e.target.value)}
-              placeholder="Buscar colega por nome ou e-mail"
+              placeholder="Buscar autor por nome ou e-mail"
               className="w-full rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
             />
             {sugestoes.length > 0 && (
@@ -508,10 +508,10 @@ export function SubmeterTrabalhoModal({
             )}
           </div>
           <span className="text-xs text-fatec-muted">
-            Opcional. Colegas adicionados também acompanham o status deste
+            Opcional. Autores adicionados também acompanham o status deste
             trabalho, mas só quem submeteu pode corrigir e reenviar.
             {temTaxa &&
-              " Só aparecem colegas que já demonstraram interesse neste evento."}
+              " Só aparecem autores que já demonstraram interesse neste evento."}
           </span>
         </div>
         </>

@@ -35,15 +35,18 @@ const CRITERIOS_AVALIACAO: CriterioDef[] = [
   { key: "aplicabilidadeRelevancia", label: "Aplicabilidade e relevância" },
 ];
 
-// Critérios da etapa de Apresentação (2026-08-26) — PROVISÓRIO, o usuário
-// ainda não passou a lista real; trocar aqui quando ele mandar (mesmo
-// formato: 1 a 5 cada, soma 5-25 — ver NotasCriteriosApresentacao).
+// Critérios da etapa de Apresentação (item 6.4 do edital X MAC, conferido
+// 2026-09-08 contra o PDF real — substituem os 5 placeholder de antes, que
+// nunca bateram com o edital de verdade). 7 critérios, 1 a 5 cada, soma
+// 7-35 — ver NotasCriteriosApresentacao.
 const CRITERIOS_APRESENTACAO: CriterioDef[] = [
-  { key: "dominioConteudo", label: "Domínio do conteúdo" },
-  { key: "clarezaComunicacao", label: "Clareza da comunicação" },
-  { key: "usoDoTempo", label: "Uso do tempo" },
-  { key: "qualidadeMaterial", label: "Qualidade do material/slides" },
-  { key: "posturaSeguranca", label: "Postura e segurança" },
+  { key: "pontualidade", label: "Pontualidade para início da apresentação" },
+  { key: "numeroApresentadores", label: "Respeito ao número máximo de apresentadores" },
+  { key: "linguagemTecnica", label: "Uso de linguagem formal e técnica apropriada" },
+  { key: "qualidadeSlides", label: "Qualidade dos slides" },
+  { key: "clarezaObjetividade", label: "Clareza e objetividade das informações" },
+  { key: "ordemLogica", label: "Ordem lógica da apresentação" },
+  { key: "postura", label: "Postura adequada ao longo da apresentação" },
 ];
 
 /** Lista + formulário de nota (5 critérios, 1 a 5 cada) reaproveitado tanto
@@ -211,7 +214,8 @@ function PainelTrabalhos({
                     ))}
                     <p className="text-sm text-fatec-muted">
                       Total:{" "}
-                      <span className="font-semibold text-fatec-navy-900">{somaNotas}</span> / 25
+                      <span className="font-semibold text-fatec-navy-900">{somaNotas}</span> /{" "}
+                      {criterios.length * 5}
                     </p>
                   </div>
 

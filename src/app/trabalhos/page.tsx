@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronDown, Send, Minus, Plus, Check, X, Award, ListChecks } from "lucide-react";
+import { Search, ChevronDown, Send, Minus, Plus, Check, X, Award, ListChecks, Scale } from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -95,6 +95,12 @@ export default function TrabalhosAdminPage() {
   const [busca, setBusca] = useState("");
   const [eventoId, setEventoId] = useState("todos");
   const [areaFiltro, setAreaFiltro] = useState("Todas as áreas");
+  // Só empatados (2026-09-08, pedido explícito) — nem todo trabalho avaliado
+  // vai pra apresentação, só os que empataram em nota dentro da mesma área
+  // temática (prêmio é "em cada categoria", item 6.6 do edital) — sem isso a
+  // organização não tinha como saber quem precisa da apresentação pra
+  // desempatar.
+  const [soEmpatados, setSoEmpatados] = useState(false);
 
   // Pré-seleciona o evento em destaque assim que a lista carrega, só na
   // primeira vez (2026-08-31) — evita ter que escolher toda vez o evento que
@@ -144,6 +150,30 @@ export default function TrabalhosAdminPage() {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
   }, [eventos, eventoId]);
 
+  // Ids de trabalhos empatados: mesma notaAvaliador que pelo menos outro
+  // trabalho, dentro do mesmo evento + área temática — calculado sobre TODOS
+  // os trabalhos (não só os já filtrados), pra não depender de busca/etapa
+  // ativa na hora de decidir quem empatou de verdade.
+  const idsEmpatados = useMemo(() => {
+    const porGrupo = new Map<string, Map<number, string[]>>();
+    for (const t of trabalhos) {
+      if (typeof t.notaAvaliador !== "number") continue;
+      const chave = `${t.eventoId}::${t.areaTematica}`;
+      const porNota = porGrupo.get(chave) ?? new Map<number, string[]>();
+      porGrupo.set(chave, porNota);
+      const ids = porNota.get(t.notaAvaliador) ?? [];
+      ids.push(t.id);
+      porNota.set(t.notaAvaliador, ids);
+    }
+    const empatados = new Set<string>();
+    for (const porNota of porGrupo.values()) {
+      for (const ids of porNota.values()) {
+        if (ids.length > 1) ids.forEach((id) => empatados.add(id));
+      }
+    }
+    return empatados;
+  }, [trabalhos]);
+
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return trabalhos.filter((t) => {
@@ -151,13 +181,14 @@ export default function TrabalhosAdminPage() {
       const bateEvento = eventoId === "todos" || t.eventoId === eventoId;
       const bateArea =
         areaFiltro === "Todas as áreas" || t.areaTematica === areaFiltro;
+      const bateEmpate = !soEmpatados || idsEmpatados.has(t.id);
       const bateBusca =
         !termo ||
         t.titulo.toLowerCase().includes(termo) ||
         t.alunoNome?.toLowerCase().includes(termo);
-      return bateEtapa && bateEvento && bateArea && bateBusca;
+      return bateEtapa && bateEvento && bateArea && bateEmpate && bateBusca;
     });
-  }, [trabalhos, busca, eventoId, areaFiltro, etapa]);
+  }, [trabalhos, busca, eventoId, areaFiltro, etapa, soEmpatados, idsEmpatados]);
 
   // Orientador pode ser alocado como avaliador de um evento (2026-08-25, RF-46).
   const avaliadoresDisponiveis = useMemo(
@@ -583,6 +614,29 @@ export default function TrabalhosAdminPage() {
                   strokeWidth={1.75}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={() => setSoEmpatados((v) => !v)}
+                title="Mostra só quem empatou em nota com outro trabalho da mesma área — são esses que precisam da apresentação pra desempatar"
+                className={`flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+                  soEmpatados
+                    ? "border-fatec-orange-500 bg-fatec-orange-50 text-fatec-orange-700"
+                    : "border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-50"
+                }`}
+              >
+                <Scale className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                Só empatados
+                {idsEmpatados.size > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+                      soEmpatados ? "bg-fatec-orange-500 text-white" : "bg-fatec-navy-100 text-fatec-navy-800"
+                    }`}
+                  >
+                    {idsEmpatados.size}
+                  </span>
+                )}
+              </button>
             </div>
 
             {ETAPA_PARA_PAPEL_ALVO[etapa] && (

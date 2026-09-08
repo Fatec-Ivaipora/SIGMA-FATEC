@@ -136,7 +136,7 @@ export default function AlunoPainelPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="font-medium text-fatec-navy-900">
-                        {t.alunoNome} te adicionou como colega em{" "}
+                        {t.alunoNome} te adicionou como autor em{" "}
                         <span className="font-semibold">{t.titulo}</span>
                       </p>
                       <p className="mt-0.5 text-sm text-fatec-muted">
