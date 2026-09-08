@@ -65,7 +65,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: mensagem }, { status: 400 });
   }
 
-  await getAdminDb()
+  const db = getAdminDb();
+  await db
     .doc(`usuarios/${uid}`)
     .set({
       nome: body.nome.trim(),
@@ -86,6 +87,17 @@ export async function POST(request: Request) {
       // (nunca foi dela pra começo de conversa).
       senhaTemporaria: true,
     });
+
+  // Espelho público (2026-09-08, ver firestore.rules) — só pra "aluno",
+  // mesmo padrão do autocadastro (src/app/cadastro/aluno/page.tsx). Admin
+  // não coleta vinculoFatec nesse form — ausente equivale a true (aluno da
+  // Fatec), mesmo default já usado no resto do app.
+  if (body.papel === "aluno") {
+    await db.doc(`usuariosPublicos/${uid}`).set({
+      nome: body.nome.trim(),
+      email: body.email.trim(),
+    });
+  }
 
   return NextResponse.json({ uid, senhaTemporaria: senha });
 }
@@ -119,6 +131,9 @@ export async function DELETE(request: Request) {
 
   await getAdminAuth().deleteUser(uid);
   await getAdminDb().doc(`usuarios/${uid}`).delete();
+  // Best-effort — só existe pra "aluno" (ver POST acima), mas apagar um doc
+  // inexistente não dá erro no Admin SDK.
+  await getAdminDb().doc(`usuariosPublicos/${uid}`).delete();
 
   return NextResponse.json({ ok: true });
 }

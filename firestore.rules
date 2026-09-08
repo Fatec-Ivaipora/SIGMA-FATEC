@@ -65,11 +65,15 @@ service cloud.firestore {
     // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
     // cadastrado (RF-01: autocadastro), sempre com papel "aluno" fixo.
     match /usuarios/{uid} {
-      // Aluno também pode ler outras contas de aluno (nunca avaliador/organizacao/
-      // admin) — usado na busca de colegas ao submeter um trabalho (RF-08).
-      // Orientador também lê contas de aluno — busca pra convidar pra turma
-      // do Projeto Integrador (RF-53, 2026-08-25).
-      allow read: if logado() && (request.auth.uid == uid || meuPapel() in ["organizacao", "admin"] || (meuPapel() in ["aluno", "orientador"] && resource.data.papel == "aluno"));
+      // Doc completo (cpf, dataNascimento, ra, telefone) só pra si mesmo ou
+      // pra quem administra (organizacao/admin). Corrigido em 2026-09-08
+      // (achado do pentest): antes disso, qualquer aluno/orientador logado
+      // podia ler o doc INTEIRO de qualquer outro aluno — inclusive CPF e
+      // data de nascimento — só pra alimentar a busca de autor (RF-08) e o
+      // convite de turma (RF-53), que só precisam de nome/e-mail. Esses dois
+      // fluxos agora leem usuariosPublicos/{uid} (ver abaixo), um espelho
+      // público só com os campos não sensíveis.
+      allow read: if logado() && (request.auth.uid == uid || meuPapel() in ["organizacao", "admin"]);
       allow create: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.papel == "aluno");
       // Autoatendimento (Configurações, 2026-08-25): qualquer usuário logado
       // pode alterar o PRÓPRIO nome — nenhum outro campo (papel, atribuicoesEventos,
@@ -81,6 +85,22 @@ service cloud.firestore {
       // antes dessa exigência existir preencher depois, sem precisar de admin.
       allow update: if souAdmin() || (logado() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome", "senhaTemporaria", "cpf", "dataNascimento"]));
       allow delete: if souAdmin();
+    }
+
+    // usuariosPublicos/{uid} (2026-09-08, corrige achado do pentest) —
+    // espelho PÚBLICO e MÍNIMO de usuarios/{uid}, só criado pra contas
+    // "aluno": nome, email, vinculoFatec. Alimenta a busca de autor (RF-08,
+    // ver SubmeterTrabalhoModal/MonitoresEventoModal/InscricaoManualModal) e
+    // o convite de turma do orientador (RF-53) sem expor cpf/dataNascimento/
+    // ra/telefone. Nunca é a fonte de verdade — mantido em sincronia pelo
+    // app (cadastro/aluno, ConfiguracoesModal, /api/usuarios) sempre que
+    // usuarios/{uid} muda.
+    match /usuariosPublicos/{uid} {
+      allow read: if logado();
+      allow create: if logado() && request.auth.uid == uid;
+      allow update: if logado() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["nome"]);
+      allow delete: if false;
     }
 
     // eventos/{eventoId} — RN-15: admin vê tudo; organizacao só os seus eventos

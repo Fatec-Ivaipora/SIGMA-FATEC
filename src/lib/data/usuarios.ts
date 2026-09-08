@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { AtribuicaoEvento, Papel, PapelAvaliacao } from "@/lib/auth";
 
@@ -40,9 +40,10 @@ export type AlunoParaBusca = { uid: string; nome: string; email: string };
 /** Lista contas de aluno (Fatec ou externo) para o aluno buscar colegas na
  * hora de submeter um trabalho (RF-08), ou pro orientador convidar pra uma
  * turma do Projeto Integrador (RF-53 — aí só Fatec, `apenasFatec`, já que
- * participante externo não tem essa vertente). Um aluno só pode ler outros
- * usuarios com papel "aluno" (ver firestore.rules) — nunca
- * avaliador/organizacao/admin/orientador. */
+ * participante externo não tem essa vertente). Lê usuariosPublicos (2026-09-08,
+ * corrige achado do pentest) — um espelho só com nome/email/vinculoFatec de
+ * quem é aluno, nunca o doc usuarios/{uid} inteiro (que tem cpf/dataNascimento).
+ * Por isso não precisa mais filtrar por papel aqui: só aluno tem espelho. */
 export function useAlunosParaBusca(
   meuUid: string | null | undefined,
   opcoes?: {
@@ -58,8 +59,7 @@ export function useAlunosParaBusca(
   const restringirA = opcoes?.restringirA;
 
   useEffect(() => {
-    const q = query(collection(db, "usuarios"), where("papel", "==", "aluno"));
-    return onSnapshot(q, (snap) => {
+    return onSnapshot(collection(db, "usuariosPublicos"), (snap) => {
       setAlunos(
         snap.docs
           .filter((d) => d.id !== meuUid)

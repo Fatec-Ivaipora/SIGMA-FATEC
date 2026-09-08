@@ -7,7 +7,7 @@ import {
   updatePassword,
   type AuthError,
 } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { ChevronDown, Pencil } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
@@ -114,7 +114,18 @@ function ConfiguracoesForm({
 
     setSalvandoNome(true);
     try {
-      await updateDoc(doc(db, "usuarios", uid), { nome });
+      // Espelho público (2026-09-08, ver firestore.rules) — só existe pra
+      // "aluno" (ver cadastro/aluno e /api/usuarios), por isso só entra no
+      // batch quando ehAluno; escrever nele pra quem não tem doc lá criaria
+      // um doc órfão sem os outros campos (email/vinculoFatec).
+      if (ehAluno) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "usuarios", uid), { nome });
+        batch.update(doc(db, "usuariosPublicos", uid), { nome });
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, "usuarios", uid), { nome });
+      }
       setEditandoNome(false);
     } catch {
       setErroNome("Não foi possível salvar o nome. Tente novamente.");

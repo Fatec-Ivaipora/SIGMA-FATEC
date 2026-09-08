@@ -197,6 +197,14 @@ export default function CadastroAlunoPage() {
           dataNascimento,
           ...(vinculoFatec ? { ra: ra.trim(), curso } : {}),
         });
+        // Espelho público (2026-09-08, ver firestore.rules) — só nome/email/
+        // vinculoFatec, pra busca de autor/convite de turma nunca precisar
+        // ler o doc usuarios/{uid} inteiro (que tem cpf/dataNascimento).
+        batch.set(doc(db, "usuariosPublicos", credencial.user.uid), {
+          nome: nome.trim(),
+          email: email.trim(),
+          vinculoFatec,
+        });
         await batch.commit();
         router.push("/aluno");
       } catch {
