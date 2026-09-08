@@ -908,8 +908,13 @@ export default function EventosPage() {
                   className="h-5 w-5 flex-none text-fatec-muted"
                   strokeWidth={1.75}
                 />
-                <span className="text-sm text-fatec-muted">
-                  Escolher imagem (usada no banner de destaque da home)
+                <span className="flex flex-col">
+                  <span className="text-sm text-fatec-muted">
+                    Escolher imagem (usada no banner de destaque da home)
+                  </span>
+                  <span className="text-xs text-fatec-muted/70">
+                    Recomendado: 1920 × 800px (proporção 12:5) — dá pra ajustar o enquadramento depois
+                  </span>
                 </span>
                 <input
                   type="file"
@@ -1277,7 +1282,12 @@ export default function EventosPage() {
             )}
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-fatec-line bg-fatec-navy-50 px-4 py-4 transition-colors hover:border-fatec-sky-600">
               <ImageIcon className="h-5 w-5 flex-none text-fatec-muted" strokeWidth={1.75} />
-              <span className="text-sm text-fatec-muted">Escolher nova imagem</span>
+              <span className="flex flex-col">
+                <span className="text-sm text-fatec-muted">Escolher nova imagem</span>
+                <span className="text-xs text-fatec-muted/70">
+                  Recomendado: 1920 × 800px (proporção 12:5) — dá pra ajustar o enquadramento depois
+                </span>
+              </span>
               <input
                 type="file"
                 accept="image/*"

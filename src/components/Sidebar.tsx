@@ -13,7 +13,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { LogoLockup } from "@/components/LogoLockup";
 import { ConfiguracoesModal } from "@/components/ConfiguracoesModal";
 import { sair } from "@/lib/auth";
 
@@ -194,6 +194,15 @@ export function Sidebar({
               <LogOut className="h-4 w-4" strokeWidth={1.75} />
             </button>
           </div>
+
+          {!mini && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/desenvolvido-por-fatec.jpg"
+              alt="Desenvolvido por Fatec Ivaiporã"
+              className="mx-auto mt-4 h-6 w-auto rounded-md bg-white px-2 py-1"
+            />
+          )}
         </div>
       </>
     );
@@ -202,7 +211,7 @@ export function Sidebar({
   return (
     <>
       <header className="flex flex-none items-center justify-between bg-fatec-navy-900 px-4 py-3 md:hidden">
-        <Logo className="h-8 w-auto" />
+        <LogoLockup className="ml-1 h-12 w-auto" variant="branco" />
         <button
           type="button"
           onClick={() => setAberto(true)}
@@ -221,7 +230,7 @@ export function Sidebar({
           />
           <aside className="relative flex h-full w-72 max-w-[80vw] flex-col overflow-y-auto bg-fatec-navy-900 px-5 pt-6 pb-4">
             <div className="flex items-center justify-between">
-              <Logo className="h-10 w-auto pl-1" />
+              <LogoLockup className="ml-2 h-16 w-auto" variant="branco" />
               <button
                 type="button"
                 onClick={() => setAberto(false)}
@@ -238,11 +247,11 @@ export function Sidebar({
 
       <aside
         className={`relative hidden flex-none flex-col bg-fatec-navy-900 pt-7 pb-4 transition-[width] duration-150 md:flex ${
-          colapsado ? "w-[76px] px-3" : "w-64 px-5"
+          colapsado ? "w-[76px] px-3" : "w-72 px-5"
         }`}
       >
         <div className={`flex items-center ${colapsado ? "justify-center" : "justify-between pl-1"}`}>
-          {!colapsado && <Logo className="h-12 w-auto" />}
+          {!colapsado && <LogoLockup className="ml-2 h-20 w-auto" variant="branco" />}
           <button
             type="button"
             onClick={alternarColapso}

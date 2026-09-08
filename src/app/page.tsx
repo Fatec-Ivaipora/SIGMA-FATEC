@@ -288,8 +288,16 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-fatec-navy-50/50">
-            © {new Date().getFullYear()} SIGMA Fatec · Fatec Ivaiporã
+          <div className="mt-10 flex flex-col items-center gap-4 border-t border-white/10 pt-8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/desenvolvido-por-fatec.jpg"
+              alt="Desenvolvido por Fatec Ivaiporã"
+              className="h-12 w-fit rounded-lg bg-white px-4 py-2.5"
+            />
+            <p className="text-xs text-fatec-navy-50/50">
+              © {new Date().getFullYear()} SIGMA Fatec · Fatec Ivaiporã
+            </p>
           </div>
         </div>
       </footer>

@@ -1,21 +1,23 @@
-import { Logo } from "@/components/Logo";
-
+/** Logo oficial do SIGMA (2026-09-08) — recebida do marketing. Duas versões
+ * geradas a partir do mesmo PNG (script one-off com sharp, já rodado e
+ * descartado): "cor" é o original, escrita ("IGMA") em azul escuro — só
+ * legível em fundo claro. "branco" recolore só essa escrita pra branco
+ * (o "S" continua azul claro, o ícone continua intocado) — pedido
+ * explícito do usuário pra usar em fundo escuro (navy), onde a versão
+ * original ficava com pouco contraste. */
 export function LogoLockup({
-  logoClassName = "h-12 w-auto",
-  wordmarkClassName = "text-xl",
+  className = "h-12 w-auto",
+  variant = "cor",
 }: {
-  logoClassName?: string;
-  wordmarkClassName?: string;
+  className?: string;
+  variant?: "cor" | "branco";
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <Logo className={logoClassName} />
-      <span aria-hidden className="h-8 w-px bg-white/20" />
-      <span
-        className={`font-bold tracking-[-0.01em] text-white ${wordmarkClassName}`}
-      >
-        SIGMA Fatec
-      </span>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={variant === "branco" ? "/logo-sigma-white.png" : "/logo-sigma.png"}
+      alt="SIGMA Fatec"
+      className={`${className} object-contain`}
+    />
   );
 }

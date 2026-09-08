@@ -27,7 +27,7 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
     <header className="sticky top-0 z-50 border-b border-white/10 bg-fatec-navy-900">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-12 md:py-6">
         <Link href="/" className="flex-none" onClick={() => setAberto(false)}>
-          <LogoLockup logoClassName="h-10 w-auto md:h-12" wordmarkClassName="text-xl md:text-2xl" />
+          <LogoLockup className="h-16 w-auto md:h-20" variant="branco" />
         </Link>
 
         <nav className="hidden items-center gap-10 md:flex">

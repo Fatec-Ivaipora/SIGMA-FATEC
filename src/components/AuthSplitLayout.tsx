@@ -23,10 +23,7 @@ export function AuthSplitLayout({
           className="pointer-events-none absolute -bottom-24 -right-16 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
         />
 
-        <LogoLockup
-          logoClassName="relative h-14 w-auto"
-          wordmarkClassName="relative text-2xl"
-        />
+        <LogoLockup className="relative ml-1 h-24 w-auto" variant="branco" />
 
         <div className="relative flex flex-col gap-6">
           <p className="max-w-sm text-2xl font-semibold leading-snug text-white">
@@ -35,9 +32,12 @@ export function AuthSplitLayout({
           <div className="h-1 w-14 rounded-full bg-fatec-orange-500" />
         </div>
 
-        <p className="relative text-sm text-fatec-navy-50/70">
-          SIGMA Fatec · Sistema oficial de submissão da Fatec Ivaiporã
-        </p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/desenvolvido-por-fatec.jpg"
+          alt="Desenvolvido por Fatec Ivaiporã"
+          className="relative h-9 w-fit rounded-lg bg-white px-3 py-2"
+        />
       </section>
 
       <section className="flex flex-1 flex-col justify-center bg-white px-6 py-16 md:px-16 lg:px-24">
@@ -50,11 +50,8 @@ export function AuthSplitLayout({
             Voltar
           </Link>
 
-          <div className="mb-8 flex w-fit rounded-xl bg-fatec-navy-900 px-5 py-3.5 md:hidden">
-            <LogoLockup
-              logoClassName="h-9 w-auto"
-              wordmarkClassName="text-base"
-            />
+          <div className="mb-6 flex justify-center md:hidden">
+            <LogoLockup className="h-16 w-auto" />
           </div>
 
           {children}
