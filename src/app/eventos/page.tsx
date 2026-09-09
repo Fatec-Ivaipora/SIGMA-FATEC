@@ -67,7 +67,7 @@ function formatarData(iso: string): string {
 const FASES_CRIAR = [
   { numero: 1, label: "Básico" },
   { numero: 2, label: "Áreas temáticas" },
-  { numero: 3, label: "Inscrições e avaliação" },
+  { numero: 3, label: "Inscrições e submissão" },
   { numero: 4, label: "Certificado e valores" },
 ] as const;
 
@@ -283,12 +283,12 @@ function CardEventoAdmin({
   const { inscritos } = useInscritosDoEvento(temTaxa ? evento.id : undefined);
   const inscritosPagos = inscritos.filter((i) => i.status === "pago").length;
 
-  const periodo = [
-    evento.periodoSubmissao && `Inscrições: ${evento.periodoSubmissao}`,
-    evento.periodoAvaliacao && `Avaliação: ${evento.periodoAvaliacao}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // Duas linhas, uma embaixo da outra (2026-09-09, pedido do coordenador) —
+  // "Inscrições" (pagamento/interesse) e "Submissão" (janela de ENVIAR o
+  // trabalho em si) são coisas diferentes, precisam aparecer separadas, não
+  // juntas com " · " como antes.
+  const periodoInscricao = evento.periodoSubmissao && `Inscrições: ${evento.periodoSubmissao}`;
+  const periodoEnvio = evento.periodoEnvioTrabalho && `Submissão: ${evento.periodoEnvioTrabalho}`;
 
   const certificadoConfigurado =
     !!(evento.dataRealizacao && evento.cargaHoraria && evento.nomeDiretorAcademico);
@@ -323,7 +323,8 @@ function CardEventoAdmin({
               </span>
             )}
           </div>
-          {periodo && <p className="text-sm text-fatec-muted">{periodo}</p>}
+          {periodoInscricao && <p className="text-sm text-fatec-muted">{periodoInscricao}</p>}
+          {periodoEnvio && <p className="text-sm text-fatec-muted">{periodoEnvio}</p>}
         </div>
       </div>
 
@@ -416,8 +417,8 @@ export default function EventosPage() {
   const [bannerParaCortar, setBannerParaCortar] = useState<File | null>(null);
   const [inicioInscricoes, setInicioInscricoes] = useState("");
   const [fimInscricoes, setFimInscricoes] = useState("");
-  const [inicioAvaliacao, setInicioAvaliacao] = useState("");
-  const [fimAvaliacao, setFimAvaliacao] = useState("");
+  const [inicioEnvioTrabalho, setInicioEnvioTrabalho] = useState("");
+  const [fimEnvioTrabalho, setFimEnvioTrabalho] = useState("");
   const [areasTematicasForm, setAreasTematicasForm] = useState<string[]>([]);
   const [novaAreaForm, setNovaAreaForm] = useState("");
   const [areasComplexasForm, setAreasComplexasForm] = useState<AreaTematicaComplexa[]>([]);
@@ -443,8 +444,8 @@ export default function EventosPage() {
   const [descricaoConfig, setDescricaoConfig] = useState("");
   const [inicioInscricoesConfig, setInicioInscricoesConfig] = useState("");
   const [fimInscricoesConfig, setFimInscricoesConfig] = useState("");
-  const [inicioAvaliacaoConfig, setInicioAvaliacaoConfig] = useState("");
-  const [fimAvaliacaoConfig, setFimAvaliacaoConfig] = useState("");
+  const [inicioEnvioTrabalhoConfig, setInicioEnvioTrabalhoConfig] = useState("");
+  const [fimEnvioTrabalhoConfig, setFimEnvioTrabalhoConfig] = useState("");
   const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
@@ -551,8 +552,8 @@ export default function EventosPage() {
     setBannerParaCortar(null);
     setInicioInscricoes("");
     setFimInscricoes("");
-    setInicioAvaliacao("");
-    setFimAvaliacao("");
+    setInicioEnvioTrabalho("");
+    setFimEnvioTrabalho("");
     setAreasTematicasForm([]);
     setNovaAreaForm("");
     setAreasComplexasForm([]);
@@ -573,8 +574,8 @@ export default function EventosPage() {
     setDescricaoConfig(evento.descricao ?? "");
     setInicioInscricoesConfig(evento.inicioInscricoes ?? "");
     setFimInscricoesConfig(evento.fimInscricoes ?? "");
-    setInicioAvaliacaoConfig(evento.inicioAvaliacao ?? "");
-    setFimAvaliacaoConfig(evento.fimAvaliacao ?? "");
+    setInicioEnvioTrabalhoConfig(evento.inicioEnvioTrabalho ?? "");
+    setFimEnvioTrabalhoConfig(evento.fimEnvioTrabalho ?? "");
   }
 
   async function salvarConfig() {
@@ -588,14 +589,14 @@ export default function EventosPage() {
           inicioInscricoesConfig && fimInscricoesConfig
             ? `${formatarData(inicioInscricoesConfig)} — ${formatarData(fimInscricoesConfig)}`
             : "",
-        periodoAvaliacao:
-          inicioAvaliacaoConfig && fimAvaliacaoConfig
-            ? `${formatarData(inicioAvaliacaoConfig)} — ${formatarData(fimAvaliacaoConfig)}`
+        periodoEnvioTrabalho:
+          inicioEnvioTrabalhoConfig && fimEnvioTrabalhoConfig
+            ? `${formatarData(inicioEnvioTrabalhoConfig)} — ${formatarData(fimEnvioTrabalhoConfig)}`
             : "",
         inicioInscricoes: inicioInscricoesConfig || deleteField(),
         fimInscricoes: fimInscricoesConfig || deleteField(),
-        inicioAvaliacao: inicioAvaliacaoConfig || deleteField(),
-        fimAvaliacao: fimAvaliacaoConfig || deleteField(),
+        inicioEnvioTrabalho: inicioEnvioTrabalhoConfig || deleteField(),
+        fimEnvioTrabalho: fimEnvioTrabalhoConfig || deleteField(),
         // Reflete a mudança no prazo de edição do trabalho pelo aluno também
         // (mesma regra da criação: 23:55 do dia de fim das inscrições) — se
         // o admin corrigir a data de fim, o prazo de edição some/atualiza
@@ -883,16 +884,16 @@ export default function EventosPage() {
           inicioInscricoes && fimInscricoes
             ? `${formatarData(inicioInscricoes)} — ${formatarData(fimInscricoes)}`
             : "",
-        periodoAvaliacao:
-          inicioAvaliacao && fimAvaliacao
-            ? `${formatarData(inicioAvaliacao)} — ${formatarData(fimAvaliacao)}`
+        periodoEnvioTrabalho:
+          inicioEnvioTrabalho && fimEnvioTrabalho
+            ? `${formatarData(inicioEnvioTrabalho)} — ${formatarData(fimEnvioTrabalho)}`
             : "",
         // Datas cruas por trás dos textos acima (2026-09-09) — sem isso não
         // dá pra reabrir e editar depois no modal de Configurações.
         ...(inicioInscricoes ? { inicioInscricoes } : {}),
         ...(fimInscricoes ? { fimInscricoes } : {}),
-        ...(inicioAvaliacao ? { inicioAvaliacao } : {}),
-        ...(fimAvaliacao ? { fimAvaliacao } : {}),
+        ...(inicioEnvioTrabalho ? { inicioEnvioTrabalho } : {}),
+        ...(fimEnvioTrabalho ? { fimEnvioTrabalho } : {}),
         destaque: destaqueNoForm,
         aceitaExternos: aceitaExternosNoForm,
         areasTematicas: areasTematicasForm,
@@ -1229,26 +1230,30 @@ export default function EventosPage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Início das avaliações
+                Início da submissão de trabalho
               </span>
               <input
                 type="date"
-                value={inicioAvaliacao}
-                onChange={(e) => setInicioAvaliacao(e.target.value)}
+                value={inicioEnvioTrabalho}
+                onChange={(e) => setInicioEnvioTrabalho(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Fim das avaliações
+                Fim da submissão de trabalho
               </span>
               <input
                 type="date"
-                value={fimAvaliacao}
-                onChange={(e) => setFimAvaliacao(e.target.value)}
+                value={fimEnvioTrabalho}
+                onChange={(e) => setFimEnvioTrabalho(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
+            <span className="text-xs text-fatec-muted sm:col-span-2">
+              Depois dessa data, o aluno não consegue mais enviar um trabalho
+              novo pra esse evento.
+            </span>
           </div>
 
           <label className="flex items-center gap-2.5">
@@ -1520,8 +1525,9 @@ export default function EventosPage() {
       >
         <div className="flex flex-col gap-5">
           <p className="text-sm text-fatec-muted">
-            Nome e datas de inscrição/avaliação — dá pra corrigir aqui a
-            qualquer momento, mesmo depois do evento já criado.
+            Nome, período de inscrição e período de submissão de trabalho —
+            dá pra corrigir aqui a qualquer momento, mesmo depois do evento
+            já criado.
           </p>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
@@ -1576,27 +1582,31 @@ export default function EventosPage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Início da avaliação
+                Início da submissão de trabalho
               </span>
               <input
                 type="date"
-                value={inicioAvaliacaoConfig}
-                onChange={(e) => setInicioAvaliacaoConfig(e.target.value)}
+                value={inicioEnvioTrabalhoConfig}
+                onChange={(e) => setInicioEnvioTrabalhoConfig(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Fim da avaliação
+                Fim da submissão de trabalho
               </span>
               <input
                 type="date"
-                value={fimAvaliacaoConfig}
-                onChange={(e) => setFimAvaliacaoConfig(e.target.value)}
+                value={fimEnvioTrabalhoConfig}
+                onChange={(e) => setFimEnvioTrabalhoConfig(e.target.value)}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               />
             </label>
           </div>
+          <span className="-mt-3 text-xs text-fatec-muted">
+            Depois dessa data, o aluno não consegue mais enviar um trabalho
+            novo pra esse evento.
+          </span>
           <button
             type="button"
             onClick={salvarConfig}

@@ -25,7 +25,7 @@ import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/Submete
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos, eventosParaAluno } from "@/lib/data/eventos";
+import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio } from "@/lib/data/eventos";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
 import { useMinhasInscricoes } from "@/lib/data/inscricoes";
 import { useAtividades } from "@/lib/data/atividades";
@@ -319,15 +319,23 @@ export default function AlunoPainelPage() {
                               Pagamento pendente
                             </button>
                           ))}
-                        {!trabalho && (
-                          <button
-                            type="button"
-                            onClick={() => setModalEventoId(evento.id)}
-                            className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-                          >
-                            Enviar trabalho
-                          </button>
-                        )}
+                        {!trabalho &&
+                          (dentroDoPrazoEnvio(evento) ? (
+                            <button
+                              type="button"
+                              onClick={() => setModalEventoId(evento.id)}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                            >
+                              Enviar trabalho
+                            </button>
+                          ) : (
+                            // Prazo de submissão encerrado (2026-09-09,
+                            // pedido do coordenador) — não dá mais pra
+                            // enviar um trabalho novo pra esse evento.
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-muted">
+                              Submissão encerrada
+                            </span>
+                          ))}
                       </div>
                     </div>
                   );

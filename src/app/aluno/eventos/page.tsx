@@ -10,7 +10,7 @@ import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/Submete
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos, eventosParaAluno, type Evento } from "@/lib/data/eventos";
+import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useMinhaInscricao, useMinhasInscricoes } from "@/lib/data/inscricoes";
 import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
@@ -40,13 +40,14 @@ function CardEvento({
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const subtitulo = [
-    evento.periodoSubmissao && `Inscrições: ${evento.periodoSubmissao}`,
+  // Inscrições e Submissão em linhas separadas, cores diferentes
+  // (2026-09-09, pedido do usuário) — são prazos diferentes (inscrição/
+  // pagamento vs. enviar o trabalho em si), juntar tudo numa linha só
+  // dificultava notar a diferença.
+  const linhaTaxa =
     temTaxa &&
-      `Taxa R$ ${evento.valorInscricao!.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+    `Taxa R$ ${evento.valorInscricao!.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+  const podeEnviar = dentroDoPrazoEnvio(evento);
 
   async function participar() {
     if (!user) return;
@@ -75,7 +76,15 @@ function CardEvento({
         </span>
         <div className="min-w-0">
           <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
-          {subtitulo && <p className="text-sm text-fatec-muted">{subtitulo}</p>}
+          {evento.periodoSubmissao && (
+            <p className="text-sm text-fatec-muted">Inscrições: {evento.periodoSubmissao}</p>
+          )}
+          {evento.periodoEnvioTrabalho && (
+            <p className="text-sm font-medium text-fatec-orange-600">
+              Submissão: {evento.periodoEnvioTrabalho}
+            </p>
+          )}
+          {linhaTaxa && <p className="text-sm text-fatec-muted">{linhaTaxa}</p>}
         </div>
       </div>
 
@@ -111,7 +120,7 @@ function CardEvento({
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 Trabalho enviado
               </span>
-            ) : (
+            ) : podeEnviar ? (
               <button
                 type="button"
                 onClick={() => onAbrirTrabalho(evento.id)}
@@ -119,6 +128,12 @@ function CardEvento({
               >
                 Inscrever trabalho
               </button>
+            ) : (
+              // Prazo de submissão encerrado (2026-09-09, pedido do
+              // coordenador) — não dá mais pra enviar um trabalho novo.
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fatec-navy-50 px-3 py-1.5 text-xs font-semibold text-fatec-muted">
+                Submissão encerrada
+              </span>
             )}
 
             {temTaxa && !pago && (
@@ -280,12 +295,24 @@ export default function AlunoEventosPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
 
                 <div className="relative flex min-h-[190px] flex-col items-start justify-end p-5 md:min-h-[230px] md:p-6">
-                    {destaque.periodoSubmissao && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-semibold text-white">
-                        <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
-                        Inscrições: {destaque.periodoSubmissao}
-                      </span>
-                    )}
+                    {/* Duas cores (2026-09-09, pedido do usuário) — Inscrições
+                        (laranja, já existia) e Submissão (azul) são prazos
+                        diferentes, precisam ser visualmente distintos aqui
+                        no banner também, não só no card de baixo. */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {destaque.periodoSubmissao && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-semibold text-white">
+                          <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
+                          Inscrições: {destaque.periodoSubmissao}
+                        </span>
+                      )}
+                      {destaque.periodoEnvioTrabalho && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-sky-600 px-3 py-1 text-xs font-semibold text-white">
+                          <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
+                          Submissão: {destaque.periodoEnvioTrabalho}
+                        </span>
+                      )}
+                    </div>
                     <h3 className="mt-2 text-xl font-bold leading-tight text-white">
                       {destaque.nome}
                     </h3>
@@ -323,7 +350,7 @@ export default function AlunoEventosPage() {
                             <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
                             Inscrição feita — ver trabalho
                           </Link>
-                        ) : (
+                        ) : dentroDoPrazoEnvio(destaque) ? (
                           <button
                             type="button"
                             onClick={() => setModalEventoId(destaque.id)}
@@ -335,6 +362,12 @@ export default function AlunoEventosPage() {
                               strokeWidth={2}
                             />
                           </button>
+                        ) : (
+                          // Prazo de submissão encerrado (2026-09-09, pedido
+                          // do coordenador).
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-1.5 text-xs font-semibold text-white/80">
+                            Submissão encerrada
+                          </span>
                         )}
                         {pagamentoPendenteDestaque && (
                           <button

@@ -27,20 +27,29 @@ export type Evento = {
   id: string;
   nome: string;
   descricao?: string;
+  // Texto pronto pro badge "Inscrições: X" (nome histórico confuso — é
+  // sobre INSCRIÇÃO/pagamento, não sobre enviar trabalho; não renomeado
+  // porque já é lido em vários lugares do app, risco não vale a pena).
   periodoSubmissao?: string;
-  periodoAvaliacao?: string;
-  // Datas "cruas" (ISO, 2026-09-09) por trás dos textos formatados acima —
+  // Período de ENVIO do trabalho em si (2026-09-09, pedido do coordenador)
+  // — diferente de periodoSubmissao acima (que é sobre inscrição/pagamento).
+  // Chamado de "envio" no código pra não colidir de nome com o campo
+  // antigo, mas aparece como "Submissão" pro usuário. fimEnvioTrabalho
+  // bloqueia ENVIAR um trabalho novo (ver dentroDoPrazoEnvio abaixo) — não
+  // confundir com prazoEdicaoTrabalho, que trava EDITAR um já enviado.
+  periodoEnvioTrabalho?: string;
+  inicioEnvioTrabalho?: string;
+  fimEnvioTrabalho?: string;
+  // Datas "cruas" (ISO, 2026-09-09) por trás do texto de periodoSubmissao —
   // até aqui só existiam como estado local do formulário de criação, nunca
   // eram salvas, então não dava pra reabrir e editar depois (o texto pronto
   // não é "desmontável" de volta pra um <input type="date">). Guardadas
   // agora pra alimentar o modal de Configurações (editar nome/data depois
-  // de criado). Eventos criados antes disso ficam sem esses 4 campos — o
+  // de criado). Eventos criados antes disso ficam sem esses campos — o
   // modal de Configurações trata isso como "nunca preenchido", o admin só
   // digita de novo uma vez.
   inicioInscricoes?: string;
   fimInscricoes?: string;
-  inicioAvaliacao?: string;
-  fimAvaliacao?: string;
   destaque?: boolean;
   imagemDestaqueUrl?: string | null;
   // Lista "achatada" de todas as áreas selecionáveis desse evento — inclui
@@ -131,6 +140,17 @@ export function useEventos(perfil: PerfilUsuario | null | undefined) {
  * aqui (2026-09-04) — antes cada tela do aluno repetia esse filtro na mão. */
 export function eventosParaAluno(eventos: Evento[], vinculoFatec: boolean | undefined) {
   return vinculoFatec === false ? eventos.filter((e) => e.aceitaExternos) : eventos;
+}
+
+/** Prazo de ENVIAR um trabalho novo (2026-09-09, pedido do coordenador) —
+ * até 23:59 do dia de fim do período de envio (eventos/{id}.fimEnvioTrabalho,
+ * definido em Configurações). Ausente = sem prazo, nunca trava (mesmo
+ * padrão de "campo ausente = sem restrição" usado no resto do app). Não
+ * confundir com dentroDoPrazoEdicao (em aluno/trabalhos/page.tsx) — aquele
+ * trava EDITAR um trabalho já enviado, este trava ENVIAR um novo. */
+export function dentroDoPrazoEnvio(evento: Evento | undefined): boolean {
+  if (!evento?.fimEnvioTrabalho) return true;
+  return new Date(`${evento.fimEnvioTrabalho}T23:59:59`).getTime() > Date.now();
 }
 
 /** Indicador do item "Eventos" no menu do aluno (2026-09-04): só acende se
