@@ -29,6 +29,18 @@ export type Evento = {
   descricao?: string;
   periodoSubmissao?: string;
   periodoAvaliacao?: string;
+  // Datas "cruas" (ISO, 2026-09-09) por trás dos textos formatados acima —
+  // até aqui só existiam como estado local do formulário de criação, nunca
+  // eram salvas, então não dava pra reabrir e editar depois (o texto pronto
+  // não é "desmontável" de volta pra um <input type="date">). Guardadas
+  // agora pra alimentar o modal de Configurações (editar nome/data depois
+  // de criado). Eventos criados antes disso ficam sem esses 4 campos — o
+  // modal de Configurações trata isso como "nunca preenchido", o admin só
+  // digita de novo uma vez.
+  inicioInscricoes?: string;
+  fimInscricoes?: string;
+  inicioAvaliacao?: string;
+  fimAvaliacao?: string;
   destaque?: boolean;
   imagemDestaqueUrl?: string | null;
   // Lista "achatada" de todas as áreas selecionáveis desse evento — inclui

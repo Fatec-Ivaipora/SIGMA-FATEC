@@ -254,7 +254,12 @@ export default function AlunoEventosPage() {
         <div className="flex-1 px-6 py-8 md:px-10">
           {destaque && (
             <div className="mb-8 max-w-2xl">
-              <div className="group relative overflow-hidden rounded-2xl shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
+              {/* aspect-[12/5] (2026-09-09) — mesma proporção do
+                  BannerCropModal; min-h-[190px]/[230px] do conteúdo abaixo
+                  segue funcionando como piso em telas estreitas (aspect só
+                  cresce a altura em telas largas, nunca encolhe abaixo do
+                  que o conteúdo já exigia). */}
+              <div className="group relative aspect-[12/5] overflow-hidden rounded-2xl shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
                 {destaque.imagemDestaqueUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img

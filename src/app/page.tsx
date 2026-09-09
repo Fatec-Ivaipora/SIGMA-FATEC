@@ -136,8 +136,15 @@ export default function HomePage() {
                   texto/botão em cima da foto; nome/período/descrição/CTA
                   ficam todos na seção "Sobre o evento" logo abaixo. Essa div
                   só existe pra dar altura ao container (a imagem é
-                  absolute inset-0 por cima dela). */}
-              <div className="min-h-[320px] md:min-h-[440px]" />
+                  absolute inset-0 por cima dela). aspect-[12/5] (2026-09-09,
+                  achado: banner cortando embaixo/pixelado) — antes era altura
+                  fixa (min-h) independente da largura da tela; como a seção é
+                  full-bleed (w-full), em tela larga a proporção real ficava
+                  bem mais "achatada" que os 12:5 do BannerCropModal, cortando
+                  mais imagem do que o admin viu ao enquadrar. Agora a altura
+                  sempre acompanha a mesma proporção do recorte — min-h só
+                  como piso pra celular estreito não ficar baixo demais. */}
+              <div className="aspect-[12/5] min-h-[220px]" />
             </div>
           </section>
 

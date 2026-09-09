@@ -24,10 +24,13 @@ import {
   Ticket,
   AlertTriangle,
   Award,
+  Settings,
+  MoreVertical,
 } from "lucide-react";
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   getDocs,
   query,
@@ -160,6 +163,97 @@ function AcaoEvento({
   );
 }
 
+type ItemMenuEvento = {
+  icone: LucideIcon;
+  cor: keyof typeof CORES_ACAO_EVENTO;
+  label: string;
+  onClick?: () => void;
+  href?: string;
+};
+
+/** Menu "⋮ Mais opções" (2026-09-09) — o card de evento tinha até 9 botões
+ * soltos num grid, ficando poluído (pedido explícito do usuário pra reduzir
+ * isso). Fica só o que é usado com mais frequência solto no card (Banner,
+ * Monitores); o resto (configurações, certificado, edubox etc.) mora aqui
+ * dentro. `pendencia` acende um ponto laranja no próprio gatilho quando
+ * algum item escondido precisa de atenção (certificado/Edubox ainda não
+ * configurado) — sem isso, esconder o item também esconderia o aviso. */
+function MenuAcoesEvento({ itens, pendencia }: { itens: ItemMenuEvento[]; pendencia?: boolean }) {
+  const [aberto, setAberto] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="relative flex items-center gap-2 rounded-xl border border-fatec-line px-3 py-2 transition-colors hover:bg-fatec-navy-50 hover:border-fatec-navy-200"
+      >
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-fatec-navy-100 text-fatec-navy-800">
+          <MoreVertical className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </span>
+        <span className="truncate text-xs font-semibold text-fatec-navy-900">Mais opções</span>
+        {pendencia && (
+          <span
+            aria-hidden
+            className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white"
+          />
+        )}
+      </button>
+
+      {aberto && (
+        <>
+          {/* Backdrop invisível só pra fechar ao clicar fora — não usa o
+              Modal com fundo escuro/blur porque isso aqui é um menu leve,
+              não um diálogo. */}
+          <div aria-hidden onClick={() => setAberto(false)} className="fixed inset-0 z-10" />
+          <div className="absolute left-0 top-full z-20 mt-1.5 w-56 overflow-hidden rounded-xl border border-fatec-line bg-white py-1.5 shadow-lg">
+            {itens.map((item) => {
+              const Icone = item.icone;
+              const conteudo = (
+                <>
+                  <span
+                    className={`flex h-6 w-6 flex-none items-center justify-center rounded-lg ${CORES_ACAO_EVENTO[item.cor]}`}
+                  >
+                    <Icone className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </span>
+                  <span className="truncate text-sm text-fatec-navy-900">{item.label}</span>
+                </>
+              );
+              const className =
+                "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-fatec-navy-50";
+              if (item.href) {
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={className}
+                    onClick={() => setAberto(false)}
+                  >
+                    {conteudo}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    setAberto(false);
+                    item.onClick?.();
+                  }}
+                  className={className}
+                >
+                  {conteudo}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CardEventoAdmin({
   evento,
   totalTrabalhos,
@@ -167,6 +261,7 @@ function CardEventoAdmin({
   onAlternarAceitaExternos,
   onAbrirInscritos,
   onInscricaoExtra,
+  onConfigurarEvento,
   onConfigurarCertificado,
   onAbrirEdubox,
   onAbrirMonitores,
@@ -178,6 +273,7 @@ function CardEventoAdmin({
   onAlternarAceitaExternos: () => void;
   onAbrirInscritos: () => void;
   onInscricaoExtra: () => void;
+  onConfigurarEvento: () => void;
   onConfigurarCertificado: () => void;
   onAbrirEdubox?: () => void;
   onAbrirMonitores: () => void;
@@ -252,41 +348,49 @@ function CardEventoAdmin({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-        {!evento.destaque && (
-          <AcaoEvento icone={Star} cor="navy" label="Marcar destaque" onClick={onMarcarDestaque} />
-        )}
-        <AcaoEvento
-          icone={Globe}
-          cor="navy"
-          label={evento.aceitaExternos ? "Não aceitar externos" : "Aceitar externos"}
-          onClick={onAlternarAceitaExternos}
-        />
-        {temTaxa && (
-          <AcaoEvento icone={Ticket} cor="navy" label="Inscrição extra" onClick={onInscricaoExtra} />
-        )}
+      <div className="flex flex-wrap gap-2">
         <AcaoEvento
           icone={ImageIcon}
           cor="navy"
           label={evento.imagemDestaqueUrl ? "Trocar banner" : "Adicionar banner"}
           onClick={onAbrirBanner}
         />
-        <AcaoEvento icone={Tag} cor="navy" label="Áreas temáticas" href="/areas-tematicas" />
         <AcaoEvento icone={UserCog} cor="navy" label="Monitores" onClick={onAbrirMonitores} />
+        <AcaoEvento icone={Settings} cor="navy" label="Configurações" onClick={onConfigurarEvento} />
         <AcaoEvento
           icone={certificadoConfigurado ? Award : AlertTriangle}
           cor={certificadoConfigurado ? "navy" : "amber"}
           label={certificadoConfigurado ? "Certificado" : "Configurar certificado"}
           onClick={onConfigurarCertificado}
         />
-        {onAbrirEdubox && (
-          <AcaoEvento
-            icone={evento.codigoEdubox ? Send : AlertTriangle}
-            cor={evento.codigoEdubox ? "navy" : "amber"}
-            label={evento.codigoEdubox ? "Edubox" : "Configurar Edubox"}
-            onClick={onAbrirEdubox}
-          />
+        {temTaxa && (
+          <AcaoEvento icone={Ticket} cor="navy" label="Inscrição extra" onClick={onInscricaoExtra} />
         )}
+        <MenuAcoesEvento
+          pendencia={!!onAbrirEdubox && !evento.codigoEdubox}
+          itens={[
+            ...(!evento.destaque
+              ? [{ icone: Star, cor: "navy" as const, label: "Marcar destaque", onClick: onMarcarDestaque }]
+              : []),
+            {
+              icone: Globe,
+              cor: "navy",
+              label: evento.aceitaExternos ? "Não aceitar externos" : "Aceitar externos",
+              onClick: onAlternarAceitaExternos,
+            },
+            { icone: Tag, cor: "navy", label: "Áreas temáticas", href: "/areas-tematicas" },
+            ...(onAbrirEdubox
+              ? [
+                  {
+                    icone: evento.codigoEdubox ? Send : AlertTriangle,
+                    cor: evento.codigoEdubox ? ("navy" as const) : ("amber" as const),
+                    label: evento.codigoEdubox ? "Edubox" : "Configurar Edubox",
+                    onClick: onAbrirEdubox,
+                  },
+                ]
+              : []),
+          ]}
+        />
       </div>
     </div>
   );
@@ -330,6 +434,18 @@ export default function EventosPage() {
   const [nomeDiretorAcademico, setNomeDiretorAcademico] = useState("");
   const [nomeCoordenadorPesquisa, setNomeCoordenadorPesquisa] = useState("");
   const [criando, setCriando] = useState(false);
+
+  // Configurações do evento (2026-09-09) — editar nome/descrição/datas de
+  // inscrição/avaliação depois que o evento já existe (o wizard de criação
+  // só permite preencher uma vez, e às vezes sai errado ou precisa mudar).
+  const [modalConfigId, setModalConfigId] = useState<string | null>(null);
+  const [nomeConfig, setNomeConfig] = useState("");
+  const [descricaoConfig, setDescricaoConfig] = useState("");
+  const [inicioInscricoesConfig, setInicioInscricoesConfig] = useState("");
+  const [fimInscricoesConfig, setFimInscricoesConfig] = useState("");
+  const [inicioAvaliacaoConfig, setInicioAvaliacaoConfig] = useState("");
+  const [fimAvaliacaoConfig, setFimAvaliacaoConfig] = useState("");
+  const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
@@ -449,6 +565,49 @@ export default function EventosPage() {
     setNomeDiretorAcademico("");
     setNomeCoordenadorPesquisa("");
     setFaseCriar(1);
+  }
+
+  function abrirModalConfig(evento: Evento) {
+    setModalConfigId(evento.id);
+    setNomeConfig(evento.nome);
+    setDescricaoConfig(evento.descricao ?? "");
+    setInicioInscricoesConfig(evento.inicioInscricoes ?? "");
+    setFimInscricoesConfig(evento.fimInscricoes ?? "");
+    setInicioAvaliacaoConfig(evento.inicioAvaliacao ?? "");
+    setFimAvaliacaoConfig(evento.fimAvaliacao ?? "");
+  }
+
+  async function salvarConfig() {
+    if (!modalConfigId || !nomeConfig.trim()) return;
+    setSalvandoConfig(true);
+    try {
+      await updateDoc(doc(db, "eventos", modalConfigId), {
+        nome: nomeConfig.trim(),
+        descricao: descricaoConfig.trim(),
+        periodoSubmissao:
+          inicioInscricoesConfig && fimInscricoesConfig
+            ? `${formatarData(inicioInscricoesConfig)} — ${formatarData(fimInscricoesConfig)}`
+            : "",
+        periodoAvaliacao:
+          inicioAvaliacaoConfig && fimAvaliacaoConfig
+            ? `${formatarData(inicioAvaliacaoConfig)} — ${formatarData(fimAvaliacaoConfig)}`
+            : "",
+        inicioInscricoes: inicioInscricoesConfig || deleteField(),
+        fimInscricoes: fimInscricoesConfig || deleteField(),
+        inicioAvaliacao: inicioAvaliacaoConfig || deleteField(),
+        fimAvaliacao: fimAvaliacaoConfig || deleteField(),
+        // Reflete a mudança no prazo de edição do trabalho pelo aluno também
+        // (mesma regra da criação: 23:55 do dia de fim das inscrições) — se
+        // o admin corrigir a data de fim, o prazo de edição some/atualiza
+        // junto, em vez de ficar preso na data antiga.
+        prazoEdicaoTrabalho: fimInscricoesConfig
+          ? Timestamp.fromDate(new Date(`${fimInscricoesConfig}T23:55:00`))
+          : deleteField(),
+      });
+      setModalConfigId(null);
+    } finally {
+      setSalvandoConfig(false);
+    }
   }
 
   function abrirModalCertificado(evento: Evento) {
@@ -728,6 +887,12 @@ export default function EventosPage() {
           inicioAvaliacao && fimAvaliacao
             ? `${formatarData(inicioAvaliacao)} — ${formatarData(fimAvaliacao)}`
             : "",
+        // Datas cruas por trás dos textos acima (2026-09-09) — sem isso não
+        // dá pra reabrir e editar depois no modal de Configurações.
+        ...(inicioInscricoes ? { inicioInscricoes } : {}),
+        ...(fimInscricoes ? { fimInscricoes } : {}),
+        ...(inicioAvaliacao ? { inicioAvaliacao } : {}),
+        ...(fimAvaliacao ? { fimAvaliacao } : {}),
         destaque: destaqueNoForm,
         aceitaExternos: aceitaExternosNoForm,
         areasTematicas: areasTematicasForm,
@@ -815,6 +980,7 @@ export default function EventosPage() {
                 }
                 onAbrirInscritos={() => setModalInscritosId(evento.id)}
                 onInscricaoExtra={() => setModalInscricaoExtraId(evento.id)}
+                onConfigurarEvento={() => abrirModalConfig(evento)}
                 onConfigurarCertificado={() => abrirModalCertificado(evento)}
                 onAbrirEdubox={
                   perfil.papel === "admin" ? () => abrirModalEdubox(evento) : undefined
@@ -913,7 +1079,7 @@ export default function EventosPage() {
                     Escolher imagem (usada no banner de destaque da home)
                   </span>
                   <span className="text-xs text-fatec-muted/70">
-                    Recomendado: 1920 × 800px (proporção 12:5) — dá pra ajustar o enquadramento depois
+                    Recomendado: pelo menos 2560 × 1067px (proporção 12:5) — dá pra ajustar o enquadramento depois
                   </span>
                 </span>
                 <input
@@ -1285,7 +1451,7 @@ export default function EventosPage() {
               <span className="flex flex-col">
                 <span className="text-sm text-fatec-muted">Escolher nova imagem</span>
                 <span className="text-xs text-fatec-muted/70">
-                  Recomendado: 1920 × 800px (proporção 12:5) — dá pra ajustar o enquadramento depois
+                  Recomendado: pelo menos 2560 × 1067px (proporção 12:5) — dá pra ajustar o enquadramento depois
                 </span>
               </span>
               <input
@@ -1346,6 +1512,101 @@ export default function EventosPage() {
           onClose={() => setModalMonitoresId(null)}
         />
       )}
+
+      <Modal
+        open={!!modalConfigId}
+        onClose={() => setModalConfigId(null)}
+        title="Configurações do evento"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-fatec-muted">
+            Nome e datas de inscrição/avaliação — dá pra corrigir aqui a
+            qualquer momento, mesmo depois do evento já criado.
+          </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Nome do evento
+            </span>
+            <input
+              type="text"
+              value={nomeConfig}
+              onChange={(e) => setNomeConfig(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Descrição
+            </span>
+            <textarea
+              rows={3}
+              value={descricaoConfig}
+              onChange={(e) => setDescricaoConfig(e.target.value)}
+              className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+          <div className="grid grid-cols-1 gap-3 border-t border-fatec-line pt-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Início das inscrições
+              </span>
+              <input
+                type="date"
+                value={inicioInscricoesConfig}
+                onChange={(e) => setInicioInscricoesConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Fim das inscrições
+              </span>
+              <input
+                type="date"
+                value={fimInscricoesConfig}
+                onChange={(e) => setFimInscricoesConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+          </div>
+          <span className="-mt-3 text-xs text-fatec-muted">
+            O prazo de edição do trabalho pelo aluno (23:55 do dia de fim das
+            inscrições) é recalculado automaticamente ao salvar.
+          </span>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Início da avaliação
+              </span>
+              <input
+                type="date"
+                value={inicioAvaliacaoConfig}
+                onChange={(e) => setInicioAvaliacaoConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Fim da avaliação
+              </span>
+              <input
+                type="date"
+                value={fimAvaliacaoConfig}
+                onChange={(e) => setFimAvaliacaoConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={salvarConfig}
+            disabled={salvandoConfig || !nomeConfig.trim()}
+            className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+          >
+            {salvandoConfig ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </Modal>
 
       <Modal
         open={!!modalCertificadoId}

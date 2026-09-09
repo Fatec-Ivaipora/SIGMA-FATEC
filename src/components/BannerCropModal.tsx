@@ -13,8 +13,14 @@ const RATIO_W = 12;
 const RATIO_H = 5;
 const VIEWPORT_W = 640;
 const VIEWPORT_H = Math.round((VIEWPORT_W * RATIO_H) / RATIO_W);
-const OUTPUT_W = 1920;
-const OUTPUT_H = Math.round((OUTPUT_W * RATIO_H) / RATIO_W);
+// 2560 (2026-09-09, achado: banner "pixelado/esticado" em monitor grande) —
+// a home é full-bleed (w-full, sem max-width), então em monitor wide o
+// container pode ficar mais largo que o output antigo de 1920px, forçando o
+// navegador a AMPLIAR a imagem (object-cover não recorta, ele escala pra
+// cobrir) — isso sim borra/pixela de verdade, não é só percepção. É um TETO,
+// não um valor fixo — ver confirmar(): nunca amplia além da resolução real
+// da área recortada, senão uma foto de origem pequena sai pior ainda.
+const OUTPUT_W = 2560;
 
 export function BannerCropModal({
   open,
@@ -125,12 +131,22 @@ export function BannerCropModal({
     const sw = VIEWPORT_W / escala;
     const sh = VIEWPORT_H / escala;
 
+    // Nunca amplia além do que a área recortada realmente tem de pixels
+    // (2026-09-09, achado: foto de origem pequena — 1080×800 — saindo
+    // esticada/pixelada porque isso aqui forçava canvas.width sempre em
+    // OUTPUT_W, mesmo quando sw era bem menor). sw/sh já mantêm a proporção
+    // 12:5 (vêm de VIEWPORT_W/VIEWPORT_H divididos pela mesma escala), então
+    // escalar os dois pelo mesmo fator nunca distorce, só limita o teto.
+    const escalaSaida = Math.min(1, OUTPUT_W / sw);
+    const larguraSaida = Math.round(sw * escalaSaida);
+    const alturaSaida = Math.round(sh * escalaSaida);
+
     const canvas = canvasRef.current;
-    canvas.width = OUTPUT_W;
-    canvas.height = OUTPUT_H;
+    canvas.width = larguraSaida;
+    canvas.height = alturaSaida;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUTPUT_W, OUTPUT_H);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, larguraSaida, alturaSaida);
     canvas.toBlob(
       (blob) => {
         if (blob) onConfirmar(blob);
@@ -172,6 +188,14 @@ export function BannerCropModal({
             />
           )}
         </div>
+
+        {img && VIEWPORT_W / (baseScale * zoom) < OUTPUT_W && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Essa foto tem menos resolução do que o ideal pro banner (que ocupa
+            a tela inteira em telas grandes) — pode sair um pouco menos nítida
+            em monitores grandes. Se der, use uma foto maior.
+          </p>
+        )}
 
         <label className="flex items-center gap-3">
           <span className="text-xs font-medium text-fatec-navy-900">Zoom</span>
