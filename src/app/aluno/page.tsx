@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import {
@@ -10,7 +10,14 @@ import {
   UserPlus,
   Check,
   X,
+  Send,
+  Pencil,
+  XCircle,
+  Wallet,
+  CalendarRange,
+  type LucideIcon,
 } from "lucide-react";
+import type { TipoAtividade } from "@/lib/atividadesAdmin";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -21,7 +28,69 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno } from "@/lib/data/eventos";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
 import { useMinhasInscricoes } from "@/lib/data/inscricoes";
-import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
+import { useAtividades } from "@/lib/data/atividades";
+import {
+  notificarConviteAceito,
+  notificarConviteColega,
+  notificarStatusTrabalho,
+} from "@/lib/notificarEmail";
+
+// Ícone/cor/fundo por tipo de atividade do feed (2026-09-09) — mesma
+// paleta de cores já usada no StatusBadge (laranja=revisão, verde=avaliado/
+// aceito/pago, vermelho=recusado), pra não inventar uma linguagem visual
+// nova. `fundo` é bem sutil de propósito (pedido do usuário: "nada muito
+// chamativo, mas que dê pra diferenciar no olho").
+const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: string; fundo: string }>> = {
+  submetido: { icone: Send, cor: "bg-fatec-sky-100 text-fatec-sky-600", fundo: "bg-fatec-sky-50" },
+  revisao: {
+    icone: Pencil,
+    cor: "bg-fatec-orange-100 text-fatec-orange-600",
+    fundo: "bg-fatec-orange-50",
+  },
+  avaliado: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+  aceito: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+  nao_aceito: { icone: XCircle, cor: "bg-rose-50 text-rose-600", fundo: "bg-rose-50/60" },
+  convite_aceito: {
+    icone: UserPlus,
+    cor: "bg-fatec-navy-100 text-fatec-navy-800",
+    fundo: "bg-fatec-navy-50",
+  },
+  pagamento: { icone: Wallet, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+};
+
+/** "9 de set., 14:32" — formato compacto pro feed (Timestamp do Firestore,
+ * pode faltar por um instante logo após o write, enquanto o serverTimestamp
+ * ainda não resolveu no listener local). */
+function formatarQuando(criadoEm: { toDate: () => Date } | undefined): string {
+  if (!criadoEm) return "agora";
+  const data = criadoEm.toDate();
+  const dataFmt = data.toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
+  const horaFmt = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dataFmt}, ${horaFmt}`;
+}
+
+/** Deixa em negrito só os trechos marcados em `negritos` (nome de trabalho,
+ * evento, autor — pedido do usuário) sem usar dangerouslySetInnerHTML: o
+ * texto vem de campos que o próprio aluno digita (título do trabalho, por
+ * exemplo), então nunca tratamos isso como HTML — só quebramos a string em
+ * pedaços de texto puro e envolvemos os trechos batidos num <strong>. Um
+ * termo que não aparecer em `texto` (nunca deveria acontecer, mas por
+ * segurança) é simplesmente ignorado, sem quebrar o resto da frase. */
+function renderTextoComNegrito(texto: string, negritos: string[] | undefined): ReactNode {
+  if (!negritos || negritos.length === 0) return texto;
+  const partes: ReactNode[] = [];
+  let cursor = 0;
+  negritos.forEach((termo, i) => {
+    if (!termo) return;
+    const indice = texto.indexOf(termo, cursor);
+    if (indice === -1) return;
+    if (indice > cursor) partes.push(texto.slice(cursor, indice));
+    partes.push(<strong key={i}>{termo}</strong>);
+    cursor = indice + termo.length;
+  });
+  if (cursor < texto.length) partes.push(texto.slice(cursor));
+  return partes;
+}
 
 export default function AlunoPainelPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
@@ -62,7 +131,7 @@ export default function AlunoPainelPage() {
       }));
   }, [eventos, trabalhos, minhasInscricoes]);
 
-  const trabalhosRecentes = useMemo(() => [...trabalhos].slice(0, 5), [trabalhos]);
+  const { atividades } = useAtividades(user?.uid);
 
   const convitesPendentes = useMemo(
     () => trabalhos.filter((t) => user && t.convitesPendentes?.includes(user.uid)),
@@ -72,6 +141,9 @@ export default function AlunoPainelPage() {
   function responder(trabalho: (typeof trabalhos)[number], aceitar: boolean) {
     if (!user) return;
     responderConvite(trabalho, user.uid, aceitar);
+    // Feed da tela inicial do DONO do trabalho (2026-09-09) — só faz
+    // sentido no aceite; recusar não vira atividade nenhuma pra ninguém.
+    if (aceitar) notificarConviteAceito(user, trabalho.id);
   }
 
   // Enviar trabalho direto da tela inicial (2026-09-04) — antes o botão só
@@ -168,7 +240,20 @@ export default function AlunoPainelPage() {
             </section>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Dois números lado a lado (2026-09-09, pedido do usuário) —
+              "Meus eventos" e "Atividade recente" viraram seções próprias
+              de largura cheia logo abaixo, em vez de espremer tudo numa
+              grade de 3 colunas e empurrar o resto da tela pra baixo. */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-fatec-line bg-white p-5">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
+                <CalendarRange className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <p className="mt-4 text-2xl font-bold text-fatec-navy-900">
+                {eventosInscritos.length}
+              </p>
+              <p className="text-sm text-fatec-muted">Eventos inscritos</p>
+            </div>
             <div className="rounded-2xl border border-fatec-line bg-white p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
                 <FileStack className="h-5 w-5" strokeWidth={1.75} />
@@ -176,33 +261,13 @@ export default function AlunoPainelPage() {
               <p className="mt-4 text-2xl font-bold text-fatec-navy-900">
                 {trabalhos.length}
               </p>
-              <p className="text-sm text-fatec-muted">Trabalhos inscritos</p>
-            </div>
-            <div className="rounded-2xl border border-fatec-line bg-white p-5 sm:col-span-2">
-              <p className="text-sm font-semibold text-fatec-navy-900">
-                Trabalhos recentes
-              </p>
-              <div className="mt-3 flex flex-col gap-2">
-                {trabalhosRecentes.map((t) => (
-                  <p key={t.id} className="truncate text-sm text-fatec-ink">
-                    {t.titulo}{" "}
-                    <span className="text-fatec-muted">
-                      · {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
-                    </span>
-                  </p>
-                ))}
-                {trabalhosRecentes.length === 0 && (
-                  <p className="text-sm text-fatec-muted">
-                    Nenhum trabalho inscrito ainda.
-                  </p>
-                )}
-              </div>
+              <p className="text-sm text-fatec-muted">Submissões feitas</p>
             </div>
           </div>
 
           <section className="mt-8">
             <h2 className="mb-4 text-base font-semibold text-fatec-navy-900">
-              Eventos inscritos
+              Meus eventos
             </h2>
 
             {eventosInscritos.length === 0 ? (
@@ -269,6 +334,50 @@ export default function AlunoPainelPage() {
                 })}
               </div>
             )}
+          </section>
+
+          {/* Feed de atividades (2026-09-09, substituiu "Trabalhos
+              recentes" — antes só repetia título+evento, que já aparece
+              acima em Eventos inscritos). Só mostra o que aconteceu a
+              partir de quando isso foi implantado, sem histórico
+              retroativo (ver src/lib/data/atividades.ts). max-h + overflow
+              pra não crescer sem limite conforme o semestre passa. */}
+          <section className="mt-8">
+            <h2 className="mb-4 text-base font-semibold text-fatec-navy-900">
+              Atividade recente
+            </h2>
+            <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-fatec-line bg-white p-5">
+              <div className="flex flex-col gap-2">
+                {atividades.map((a) => {
+                  const meta = ATIVIDADE_META[a.tipo];
+                  const Icone = meta?.icone ?? FileStack;
+                  return (
+                    <div
+                      key={a.id}
+                      className={`flex items-start gap-3 rounded-xl p-2.5 ${meta?.fundo ?? "bg-fatec-navy-50"}`}
+                    >
+                      <span
+                        className={`flex h-7 w-7 flex-none items-center justify-center rounded-lg ${meta?.cor ?? "bg-fatec-navy-100 text-fatec-navy-800"}`}
+                      >
+                        <Icone className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-fatec-ink">
+                          {renderTextoComNegrito(a.texto, a.negritos)}
+                        </p>
+                        <p className="text-xs text-fatec-muted">{formatarQuando(a.criadoEm)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {atividades.length === 0 && (
+                  <p className="text-sm text-fatec-muted">
+                    Nada por aqui ainda — assim que algo acontecer com seus
+                    trabalhos, aparece nesta lista.
+                  </p>
+                )}
+              </div>
+            </div>
           </section>
         </div>
       </div>

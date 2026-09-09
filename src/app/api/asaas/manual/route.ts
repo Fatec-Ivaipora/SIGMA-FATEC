@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { registrarAtividade } from "@/lib/atividadesAdmin";
 
 /** Inscrição extra (2026-08-26) — organização/admin marcam manualmente um
  * aluno como pago, pra casos de pagamento feito por fora do sistema
@@ -74,6 +75,20 @@ export async function POST(request: Request) {
     },
     { merge: true },
   );
+
+  // Feed da tela inicial (2026-09-09) — melhor esforço, nunca derruba o
+  // e-mail abaixo se falhar.
+  try {
+    await registrarAtividade({
+      uid: alunoUid,
+      tipo: "pagamento",
+      texto: `Seu pagamento foi confirmado para o evento ${evento.nome}.`,
+      negritos: [evento.nome],
+      eventoId,
+    });
+  } catch {
+    // idem
+  }
 
   if (aluno.email) {
     await enviarEmail({

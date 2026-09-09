@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
-import { Download, FileStack, Pencil } from "lucide-react";
+import { Download, FileStack, Pencil, Eye } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
@@ -145,7 +145,7 @@ export default function AlunoTrabalhosPage() {
                         </a>
                       )}
                       <StatusBadge status={t.status} />
-                      {podeEditar && (
+                      {podeEditar ? (
                         <button
                           type="button"
                           onClick={() => setEditando(t)}
@@ -153,6 +153,19 @@ export default function AlunoTrabalhosPage() {
                         >
                           <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
                           {t.status === "revisao" ? "Corrigir" : "Editar"}
+                        </button>
+                      ) : (
+                        // Colega convidado (2026-09-09) — acompanha tudo
+                        // (inclusive o comentário de revisão), mas não
+                        // edita; só o dono corrige. Mesmo botão aparece pro
+                        // dono fora do prazo de edição.
+                        <button
+                          type="button"
+                          onClick={() => setEditando(t)}
+                          className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                        >
+                          <Eye className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Ver
                         </button>
                       )}
                     </div>
@@ -168,6 +181,7 @@ export default function AlunoTrabalhosPage() {
         <SubmeterTrabalhoModal
           open={!!editando}
           modoEdicao
+          somenteLeitura={editando.alunoUid !== user?.uid}
           eventoId={editando.eventoId}
           temTaxa={!!eventos.find((e) => e.id === editando.eventoId)?.valorInscricao}
           eventoNome={eventos.find((e) => e.id === editando.eventoId)?.nome ?? ""}

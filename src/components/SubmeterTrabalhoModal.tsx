@@ -109,6 +109,7 @@ export function SubmeterTrabalhoModal({
   meuUid,
   valoresIniciais,
   modoEdicao = false,
+  somenteLeitura = false,
   comentarioRevisao,
   onClose,
   onSubmit,
@@ -145,6 +146,12 @@ export function SubmeterTrabalhoModal({
   // do botão final; onSubmit continua devolvendo o mesmo formato, quem
   // decide se isso vira um addDoc ou updateDoc é o componente pai.
   modoEdicao?: boolean;
+  // Colega/autor convidado abrindo o trabalho de outra pessoa (2026-09-09) —
+  // vê tudo (inclusive o comentário de revisão), mas não mexe em nada; só
+  // quem submeteu o trabalho (dono) pode editar. Desabilita todo campo e
+  // esconde o botão final — navegação entre fases continua funcionando,
+  // é só olhar.
+  somenteLeitura?: boolean;
   // Mostrado no topo (fase 1) quando o trabalho está em "revisao" — o motivo
   // que o avaliador deu pra pedir o ajuste, mesmo aviso que existia no
   // CorrigirTrabalhoModal (substituído por este componente em 2026-09-04).
@@ -259,7 +266,7 @@ export function SubmeterTrabalhoModal({
     <Modal
       open={open}
       onClose={fechar}
-      title={`${modoEdicao ? "Editar trabalho" : "Inscrever trabalho"} — ${eventoNome}`}
+      title={`${somenteLeitura ? "Ver trabalho" : modoEdicao ? "Editar trabalho" : "Inscrever trabalho"} — ${eventoNome}`}
       size="lg"
     >
       <div className="flex flex-col gap-5">
@@ -283,10 +290,11 @@ export function SubmeterTrabalhoModal({
           <input
             type="text"
             required
+            disabled={somenteLeitura}
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             placeholder="Ex.: Otimização de rotas com algoritmos genéticos"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
           />
         </label>
 
@@ -296,9 +304,10 @@ export function SubmeterTrabalhoModal({
           </span>
           <select
             required
+            disabled={somenteLeitura}
             value={areaNivel1}
             onChange={(e) => trocarArea(e.target.value)}
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
           >
             <option value="" disabled>
               Selecione a área temática
@@ -324,9 +333,10 @@ export function SubmeterTrabalhoModal({
             </span>
             <select
               required
+              disabled={somenteLeitura}
               value={subArea}
               onChange={(e) => setSubArea(e.target.value)}
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
             >
               <option value="" disabled>
                 Selecione a sub-área
@@ -354,11 +364,12 @@ export function SubmeterTrabalhoModal({
                 <button
                   key={m.valor}
                   type="button"
+                  disabled={somenteLeitura}
                   onClick={() => setModalidadeApresentacao(m.valor)}
-                  className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                  className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed ${
                     selecionada
                       ? "border-fatec-orange-500 bg-fatec-orange-50"
-                      : "border-fatec-line hover:bg-fatec-navy-50"
+                      : "border-fatec-line hover:bg-fatec-navy-50 disabled:hover:bg-transparent"
                   }`}
                 >
                   <span
@@ -426,10 +437,11 @@ export function SubmeterTrabalhoModal({
           <textarea
             rows={6}
             maxLength={RESUMO_MAX}
+            disabled={somenteLeitura}
             value={resumo}
             onChange={(e) => setResumo(e.target.value)}
             placeholder="Descreva brevemente o trabalho (até 2000 caracteres)"
-            className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
           />
         </label>
 
@@ -440,10 +452,11 @@ export function SubmeterTrabalhoModal({
           <input
             type="text"
             required
+            disabled={somenteLeitura}
             value={nomeOrientador}
             onChange={(e) => setNomeOrientador(e.target.value)}
             placeholder="Nome completo do professor orientador"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
           />
           <span className="text-xs text-fatec-muted">
             Apenas identificação — a aprovação do orientador acontece fora do
@@ -468,19 +481,24 @@ export function SubmeterTrabalhoModal({
                   className="flex items-center gap-1.5 rounded-full bg-fatec-navy-50 py-1.5 pl-3.5 pr-2 text-sm font-medium text-fatec-navy-900"
                 >
                   {p.nome}
-                  <button
-                    type="button"
-                    aria-label={`Remover ${p.nome}`}
-                    onClick={() => removerColega(p.uid)}
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-fatec-muted transition-colors hover:bg-fatec-navy-100 hover:text-fatec-navy-900"
-                  >
-                    <X className="h-3.5 w-3.5" strokeWidth={2} />
-                  </button>
+                  {!somenteLeitura && (
+                    <button
+                      type="button"
+                      aria-label={`Remover ${p.nome}`}
+                      onClick={() => removerColega(p.uid)}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-fatec-muted transition-colors hover:bg-fatec-navy-100 hover:text-fatec-navy-900"
+                    >
+                      <X className="h-3.5 w-3.5" strokeWidth={2} />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
           )}
 
+          {/* Busca de autor some inteira em modo leitura (2026-09-09) —
+              colega convidado só acompanha, não adiciona/remove ninguém. */}
+          {!somenteLeitura && (
           <div className="relative">
             <input
               type="text"
@@ -507,6 +525,7 @@ export function SubmeterTrabalhoModal({
               </div>
             )}
           </div>
+          )}
           <span className="text-xs text-fatec-muted">
             Opcional. Autores adicionados também acompanham o status deste
             trabalho, mas só quem submeteu pode corrigir e reenviar.
@@ -541,6 +560,10 @@ export function SubmeterTrabalhoModal({
             >
               Próximo
             </button>
+          ) : somenteLeitura ? (
+            // Sem botão de salvar em modo leitura (2026-09-09) — colega só
+            // acompanha, "Fechar" já existe no X do cabeçalho do Modal.
+            <span />
           ) : (
             <button
               type="button"

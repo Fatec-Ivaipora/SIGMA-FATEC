@@ -1,20 +1,63 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, FileClock, BadgeCheck, ArrowRight } from "lucide-react";
+import {
+  ChevronDown,
+  FileClock,
+  BadgeCheck,
+  ArrowRight,
+  Send,
+  type LucideIcon,
+} from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
+import { useAtividades } from "@/lib/data/atividades";
+import type { TipoAtividade } from "@/lib/atividadesAdmin";
 
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
+
+// Só "atribuicao" acontece pro avaliador/moderador por enquanto — os
+// outros tipos (submetido, revisao etc.) são do feed do aluno; um fallback
+// genérico cobre qualquer tipo futuro sem quebrar a tela.
+const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: string; fundo: string }>> = {
+  atribuicao: { icone: Send, cor: "bg-fatec-sky-100 text-fatec-sky-600", fundo: "bg-fatec-sky-50" },
+};
+
+function formatarQuando(criadoEm: { toDate: () => Date } | undefined): string {
+  if (!criadoEm) return "agora";
+  const data = criadoEm.toDate();
+  const dataFmt = data.toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
+  const horaFmt = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dataFmt}, ${horaFmt}`;
+}
+
+/** Mesma função de src/app/aluno/page.tsx — nunca HTML, só quebra a string
+ * em pedaços de texto puro e envolve os trechos batidos num <strong>. */
+function renderTextoComNegrito(texto: string, negritos: string[] | undefined): ReactNode {
+  if (!negritos || negritos.length === 0) return texto;
+  const partes: ReactNode[] = [];
+  let cursor = 0;
+  negritos.forEach((termo, i) => {
+    if (!termo) return;
+    const indice = texto.indexOf(termo, cursor);
+    if (indice === -1) return;
+    if (indice > cursor) partes.push(texto.slice(cursor, indice));
+    partes.push(<strong key={i}>{termo}</strong>);
+    cursor = indice + termo.length;
+  });
+  if (cursor < texto.length) partes.push(texto.slice(cursor));
+  return partes;
+}
 
 export default function AvaliadorPainelPage() {
   const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  const { atividades } = useAtividades(user?.uid);
   const [eventoId, setEventoId] = useState(TODOS_MEUS_EVENTOS);
 
   const resumo = useMemo(() => {
@@ -80,7 +123,9 @@ export default function AvaliadorPainelPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:max-w-xl">
+          {/* full-width (2026-09-09, mesmo padrão da tela do aluno) — antes
+              tinha sm:max-w-xl sobrando espaço em branco na direita. */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="rounded-2xl border border-fatec-line bg-white p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-100 text-fatec-navy-800">
                 <FileClock className="h-5 w-5" strokeWidth={1.75} />
@@ -116,6 +161,47 @@ export default function AvaliadorPainelPage() {
               Ver meus eventos e área temática
             </Link>
           </div>
+
+          {/* Atividade recente (2026-09-09, mesmo padrão da tela do aluno) —
+              por enquanto só "atribuicao" acontece pro avaliador/moderador
+              (quando a organização manda trabalhos novos). */}
+          <section className="mt-8">
+            <h2 className="mb-4 text-base font-semibold text-fatec-navy-900">
+              Atividade recente
+            </h2>
+            <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-fatec-line bg-white p-5">
+              <div className="flex flex-col gap-2">
+                {atividades.map((a) => {
+                  const meta = ATIVIDADE_META[a.tipo];
+                  const Icone = meta?.icone ?? FileClock;
+                  return (
+                    <div
+                      key={a.id}
+                      className={`flex items-start gap-3 rounded-xl p-2.5 ${meta?.fundo ?? "bg-fatec-navy-50"}`}
+                    >
+                      <span
+                        className={`flex h-7 w-7 flex-none items-center justify-center rounded-lg ${meta?.cor ?? "bg-fatec-navy-100 text-fatec-navy-800"}`}
+                      >
+                        <Icone className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-fatec-ink">
+                          {renderTextoComNegrito(a.texto, a.negritos)}
+                        </p>
+                        <p className="text-xs text-fatec-muted">{formatarQuando(a.criadoEm)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {atividades.length === 0 && (
+                  <p className="text-sm text-fatec-muted">
+                    Nada por aqui ainda — assim que a organização te enviar
+                    trabalhos novos, aparece nesta lista.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </main>

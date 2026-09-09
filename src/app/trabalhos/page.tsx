@@ -395,9 +395,11 @@ export default function TrabalhosAdminPage() {
     }
     await batch.commit();
     if (user) {
-      notificarAtribuicao(user, [
-        { uid: pessoa.uid, papel: papelAlvoEnvio, quantidade: selecionados.size },
-      ]);
+      notificarAtribuicao(
+        user,
+        [{ uid: pessoa.uid, papel: papelAlvoEnvio, quantidade: selecionados.size }],
+        eventoComumSelecionado,
+      );
     }
     setSelecionados(new Set());
     setModalEnviar(false);
@@ -426,6 +428,7 @@ export default function TrabalhosAdminPage() {
         distribuicao
           .filter((linha) => linha.quantidade > 0)
           .map((linha) => ({ uid: linha.uid, papel: papelAlvoEnvio, quantidade: linha.quantidade })),
+        eventoComumSelecionado,
       );
     }
     setSelecionados(new Set());

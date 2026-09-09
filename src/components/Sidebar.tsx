@@ -7,6 +7,8 @@ import type { LucideIcon } from "lucide-react";
 import {
   LogOut,
   HelpCircle,
+  Mail,
+  MessageCircle,
   Menu,
   Settings,
   X,
@@ -153,35 +155,6 @@ export function Sidebar({
                 <p className="truncate text-xs text-fatec-navy-50/60">
                   {userRoleLabel}
                 </p>
-                {showAjuda && (
-                  <div className="relative mt-1 w-fit">
-                    <button
-                      type="button"
-                      onClick={() => setAjudaAberta((v) => !v)}
-                      aria-label="Precisa de ajuda?"
-                      aria-expanded={ajudaAberta}
-                      className="flex h-6 w-6 items-center justify-center rounded-lg text-fatec-navy-50/60 transition-colors hover:bg-white/10 hover:text-white"
-                    >
-                      <HelpCircle className="h-4 w-4" strokeWidth={1.75} />
-                    </button>
-                    {ajudaAberta && (
-                      <div className="absolute bottom-full left-0 z-10 mb-2 w-56 rounded-xl border border-white/10 bg-fatec-navy-800 p-4 shadow-lg">
-                        <p className="text-sm font-medium text-white">
-                          Precisa de ajuda?
-                        </p>
-                        <p className="mt-1 text-xs text-fatec-navy-50/70">
-                          Fale com a organização do evento.
-                        </p>
-                        <a
-                          href="mailto:suporte@fatecivaipora.com.br"
-                          className="mt-1 block text-xs font-semibold text-fatec-orange-400 hover:text-fatec-orange-300"
-                        >
-                          suporte@fatecivaipora.com.br
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
             <button
@@ -210,8 +183,10 @@ export function Sidebar({
 
   return (
     <>
+      {/* Sanduíche à esquerda, logo à direita (2026-09-09, pedido do
+          usuário) — o menu abre do mesmo lado do botão (esquerda, ver aside
+          abaixo), pra não ficar desalinhado. */}
       <header className="flex flex-none items-center justify-between bg-fatec-navy-900 px-4 py-3 md:hidden">
-        <LogoLockup className="ml-1 h-12 w-auto" variant="branco" />
         <button
           type="button"
           onClick={() => setAberto(true)}
@@ -220,6 +195,7 @@ export function Sidebar({
         >
           <Menu className="h-5 w-5" strokeWidth={1.75} />
         </button>
+        <LogoLockup className="mr-1 h-12 w-auto" variant="branco" />
       </header>
 
       {aberto && (
@@ -228,7 +204,9 @@ export function Sidebar({
             className="absolute inset-0 bg-black/50"
             onClick={() => setAberto(false)}
           />
-          <aside className="relative flex h-full w-72 max-w-[80vw] flex-col overflow-y-auto bg-fatec-navy-900 px-5 pt-6 pb-4">
+          {/* absolute left-0 (2026-09-09) — sanduíche fica à esquerda no
+              cabeçalho mobile, então o menu abre desse mesmo lado. */}
+          <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[80vw] flex-col overflow-y-auto bg-fatec-navy-900 px-5 pt-6 pb-4">
             <div className="flex items-center justify-between">
               <LogoLockup className="ml-2 h-16 w-auto" variant="branco" />
               <button
@@ -268,6 +246,52 @@ export function Sidebar({
         </div>
         {renderConteudo(colapsado)}
       </aside>
+
+      {/* Botão de ajuda flutuante (2026-09-09) — antes vivia dentro do menu,
+          embaixo do nome, e podia sair da tela dependendo do scroll da
+          página. Agora é fixed, sempre visível, pequeno, no canto — clicar
+          mostra e-mail e WhatsApp de suporte. */}
+      {showAjuda && (
+        <div className="fixed bottom-4 right-4 z-40">
+          <button
+            type="button"
+            onClick={() => setAjudaAberta((v) => !v)}
+            aria-label="Precisa de ajuda?"
+            aria-expanded={ajudaAberta}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-fatec-navy-900 text-white shadow-lg ring-1 ring-black/10 transition-colors hover:bg-fatec-navy-800"
+          >
+            <HelpCircle className="h-4.5 w-4.5" strokeWidth={1.75} />
+          </button>
+
+          {ajudaAberta && (
+            <>
+              <div aria-hidden onClick={() => setAjudaAberta(false)} className="fixed inset-0 z-10" />
+              <div className="absolute bottom-full right-0 z-20 mb-2 w-60 rounded-xl border border-white/10 bg-fatec-navy-800 p-4 shadow-lg">
+                <p className="text-sm font-medium text-white">Precisa de ajuda?</p>
+                <p className="mt-1 text-xs text-fatec-navy-50/70">
+                  Fale com a organização do evento.
+                </p>
+                <a
+                  href="mailto:suporte@fatecivaipora.com.br"
+                  className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-fatec-orange-400 hover:text-fatec-orange-300"
+                >
+                  <Mail className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+                  suporte@fatecivaipora.com.br
+                </a>
+                <a
+                  href="https://wa.me/5543996780170"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+                  (43) 99678-0170
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <ConfiguracoesModal
         open={configModalAberto}

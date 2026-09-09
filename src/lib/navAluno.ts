@@ -1,11 +1,16 @@
-import { LayoutGrid, FileStack, CalendarRange, Award, GraduationCap } from "lucide-react";
+import { LayoutGrid, FileStack, CalendarRange, Award } from "lucide-react";
+// GraduationCap fica sem uso enquanto "Projeto Integrador" está comentado
+// abaixo — volta a ser necessário quando o item for reativado.
 
 // "Submissões" em vez de "Eventos" (2026-09-08, pedido do coordenador — os
 // alunos entendem melhor esse nome). Rota continua /aluno/eventos por
 // baixo, só o texto do menu mudou.
 export const NAV_ALUNO = [
   { label: "Início", href: "/aluno", icon: LayoutGrid },
-  { label: "Projeto Integrador", href: "/aluno/projeto-integrador", icon: GraduationCap },
+  // Escondido do menu por pedido do usuário (2026-09-09) — "por hora não
+  // vamos usar". A tela e a rota continuam existindo, só não aparece na
+  // navegação; é só descomentar aqui pra voltar a mostrar.
+  // { label: "Projeto Integrador", href: "/aluno/projeto-integrador", icon: GraduationCap },
   { label: "Submissões", href: "/aluno/eventos", icon: CalendarRange },
   { label: "Trabalhos", href: "/aluno/trabalhos", icon: FileStack },
   { label: "Certificações", href: "/aluno/certificacoes", icon: Award },

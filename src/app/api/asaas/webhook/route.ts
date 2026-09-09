@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { registrarAtividade } from "@/lib/atividadesAdmin";
 
 const STATUS_PAGO = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
 
@@ -29,8 +30,27 @@ export async function POST(request: Request) {
   await inscricaoRef.set({ status: "pago", pagoEm: FieldValue.serverTimestamp() }, { merge: true });
 
   const inscricao = (await inscricaoRef.get()).data();
+  const evento = inscricao
+    ? (await db.doc(`eventos/${inscricao.eventoId}`).get()).data()
+    : undefined;
+
+  if (inscricao?.uid) {
+    // Feed da tela inicial (2026-09-09) — melhor esforço, nunca derruba o
+    // e-mail abaixo se falhar.
+    try {
+      const eventoNome = evento?.nome ?? "seu evento";
+      await registrarAtividade({
+        uid: inscricao.uid,
+        tipo: "pagamento",
+        texto: `Seu pagamento foi confirmado para o evento ${eventoNome}.`,
+        negritos: [eventoNome],
+        eventoId: inscricao.eventoId,
+      });
+    } catch {
+      // idem
+    }
+  }
   if (inscricao?.email) {
-    const evento = (await db.doc(`eventos/${inscricao.eventoId}`).get()).data();
     await enviarEmail({
       to: inscricao.email,
       subject: `Pagamento confirmado — ${evento?.nome ?? "seu evento"}`,

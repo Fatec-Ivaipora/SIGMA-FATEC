@@ -272,6 +272,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // atividades/{autoId} — feed pessoal do aluno na tela inicial
+    // (2026-09-09): "você enviou o trabalho X", "fulano aceitou ser autor
+    // com você", "seu trabalho foi avaliado" etc. Cada linha já nasce com o
+    // texto pronto (calculado no servidor, no momento do evento) — o client
+    // só lê e mostra, nunca decide o que vira atividade nem escreve aqui
+    // direto (evita gente forjando "fulano aceitou X" pra si mesma). Mesmo
+    // padrão de eduboxLancamentos: só o Admin SDK escreve.
+    match /atividades/{id} {
+      allow read: if logado() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
     // monitoresEvento/{eventoId}::{uid} — cargo de monitor (2026-09-01):
     // aluno que ajuda na operação do evento, atribuído por fora pela
     // organização/admin (não é o próprio aluno quem se marca). Certificado
