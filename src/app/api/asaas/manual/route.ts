@@ -83,6 +83,7 @@ export async function POST(request: Request) {
         `<p>Recebemos a confirmação do seu pagamento pra <strong>${evento.nome}</strong>.</p>
          <p>Sua inscrição está completa.</p>`,
         { texto: "Ver no SIGMA", href: `${URL_SISTEMA}/aluno/eventos` },
+        aluno.nome,
       ),
     });
   }

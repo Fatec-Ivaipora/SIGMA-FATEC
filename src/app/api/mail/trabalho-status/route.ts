@@ -4,44 +4,52 @@ import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
 type Tipo = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito";
 
-const CONTEUDO: Record<Tipo, (trabalho: FirebaseFirestore.DocumentData) => { subject: string; html: string }> = {
-  submetido: (t) => ({
+const CONTEUDO: Record<
+  Tipo,
+  (trabalho: FirebaseFirestore.DocumentData, nome: string | undefined) => { subject: string; html: string }
+> = {
+  submetido: (t, nome) => ({
     subject: `Trabalho enviado — ${t.titulo}`,
     html: modeloEmail(
       `<p>Recebemos o seu trabalho <strong>"${t.titulo}"</strong>. Ele já está na fila de avaliação.</p>
        <p>Você pode acompanhar o andamento a qualquer momento no SIGMA.</p>`,
       { texto: "Acompanhar trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
     ),
   }),
-  revisao: (t) => ({
+  revisao: (t, nome) => ({
     subject: `Revisão solicitada — ${t.titulo}`,
     html: modeloEmail(
       `<p>O avaliador pediu ajustes no seu trabalho <strong>"${t.titulo}"</strong>.</p>
        ${t.comentarioRevisao ? `<p style="background:#FFF7ED;border-radius:8px;padding:12px 16px;margin:12px 0;"><strong>Comentário:</strong> ${t.comentarioRevisao}</p>` : ""}
        <p>Entre no SIGMA pra corrigir e reenviar.</p>`,
       { texto: "Corrigir trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
     ),
   }),
-  avaliado: (t) => ({
+  avaliado: (t, nome) => ({
     subject: `Trabalho avaliado — ${t.titulo}`,
     html: modeloEmail(
       `<p>Seu trabalho <strong>"${t.titulo}"</strong> já foi avaliado.</p>
        <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
       { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
     ),
   }),
-  aceito: (t) => ({
+  aceito: (t, nome) => ({
     subject: `Resultado final — ${t.titulo}`,
     html: modeloEmail(
       `<p>Boas notícias! Seu trabalho <strong>"${t.titulo}"</strong> foi <strong>aceito</strong>.</p>`,
       { texto: "Ver detalhes", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
     ),
   }),
-  nao_aceito: (t) => ({
+  nao_aceito: (t, nome) => ({
     subject: `Resultado final — ${t.titulo}`,
     html: modeloEmail(
       `<p>O resultado final do seu trabalho <strong>"${t.titulo}"</strong> já está disponível no SIGMA.</p>`,
       { texto: "Ver detalhes", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
     ),
   }),
 };
@@ -100,7 +108,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const { subject, html } = CONTEUDO[tipo](trabalho);
+  const { subject, html } = CONTEUDO[tipo](trabalho, aluno.nome);
   await enviarEmail({ to: aluno.email, subject, html });
 
   return NextResponse.json({ ok: true });

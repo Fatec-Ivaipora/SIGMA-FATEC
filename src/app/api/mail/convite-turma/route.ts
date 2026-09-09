@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       `<p><strong>${turma.orientadorNome}</strong> te convidou pra turma <strong>"${turma.nome}"</strong> do Projeto Integrador.</p>
        <p>Entre no SIGMA pra aceitar ou recusar o convite.</p>`,
       { texto: "Ver convite", href: `${URL_SISTEMA}/aluno/projeto-integrador` },
+      aluno.nome,
     ),
   });
 

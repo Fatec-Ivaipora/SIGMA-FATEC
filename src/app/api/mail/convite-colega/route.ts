@@ -53,6 +53,7 @@ export async function POST(request: Request) {
       `<p><strong>${trabalho.alunoNome}</strong> te adicionou como autor no trabalho <strong>"${trabalho.titulo}"</strong>.</p>
        <p>Entre no SIGMA pra aceitar ou recusar o convite.</p>`,
       { texto: "Ver convite", href: `${URL_SISTEMA}/aluno` },
+      colega.nome,
     ),
   });
 

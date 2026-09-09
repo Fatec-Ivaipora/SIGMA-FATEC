@@ -51,6 +51,7 @@ export async function POST(request: Request) {
             quantidade === 1 ? "" : "s"
           } pra ${acao} no SIGMA.</p>`,
           { texto: "Ver trabalhos", href: `${URL_SISTEMA}/avaliador/trabalhos?aba=${rota}` },
+          pessoa.nome,
         ),
       });
     }),
