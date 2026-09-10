@@ -23,7 +23,15 @@ export function AuthSplitLayout({
           className="pointer-events-none absolute -bottom-24 -right-16 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
         />
 
-        <LogoLockup className="relative ml-1 h-24 w-auto" variant="branco" />
+        {/* Logo clicável (2026-09-10) — em vez de um cabeçalho de navegação
+            cheio de links (que competia com o formulário e não fazia
+            sentido numa tela de login, ex.: um botão "Acessar" na própria
+            tela de acesso), a marca em si já é o caminho de volta — padrão
+            comum em telas de login bem desenhadas (Stripe, Linear, etc.):
+            discreto, sem disputar atenção com o formulário. */}
+        <Link href="/" className="relative w-fit transition-opacity hover:opacity-90">
+          <LogoLockup className="ml-1 h-24 w-auto" variant="branco" />
+        </Link>
 
         <div className="relative flex flex-col gap-6">
           <p className="max-w-sm text-2xl font-semibold leading-snug text-white">
@@ -42,16 +50,23 @@ export function AuthSplitLayout({
 
       <section className="flex flex-1 flex-col justify-center bg-white px-6 py-16 md:px-16 lg:px-24">
         <div className="mx-auto w-full max-w-sm">
-          <Link
-            href={backHref}
-            className="mb-10 flex w-fit items-center gap-2 text-sm font-medium text-fatec-muted transition-colors hover:text-fatec-navy-800 md:hidden"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
-            Voltar
-          </Link>
-
-          <div className="mb-6 flex justify-center md:hidden">
-            <LogoLockup className="h-16 w-auto" />
+          {/* No celular a logo do painel escuro fica escondida (md:hidden
+              acima) — por isso aqui, além do "Voltar" contextual (volta um
+              passo: no cadastro, pro login; no login, pra home), tem
+              também uma logo pequena e clicável, mesmo padrão do painel
+              desktop. Os dois agora aparecem em qualquer tamanho de tela
+              (antes só existiam no celular). */}
+          <div className="mb-8 flex items-center justify-between">
+            <Link
+              href={backHref}
+              className="flex w-fit items-center gap-2 text-sm font-medium text-fatec-muted transition-colors hover:text-fatec-navy-800"
+            >
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+              Voltar
+            </Link>
+            <Link href="/" className="md:hidden">
+              <LogoLockup className="h-9 w-auto" />
+            </Link>
           </div>
 
           {children}

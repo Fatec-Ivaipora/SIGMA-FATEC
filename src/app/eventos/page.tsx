@@ -34,6 +34,7 @@ import {
   doc,
   getDocs,
   query,
+  serverTimestamp,
   Timestamp,
   updateDoc,
   where,
@@ -266,6 +267,7 @@ function CardEventoAdmin({
   onAbrirEdubox,
   onAbrirMonitores,
   onAbrirBanner,
+  onEncerrarEvento,
 }: {
   evento: Evento;
   totalTrabalhos: number;
@@ -278,6 +280,7 @@ function CardEventoAdmin({
   onAbrirEdubox?: () => void;
   onAbrirMonitores: () => void;
   onAbrirBanner: () => void;
+  onEncerrarEvento: () => void;
 }) {
   const temTaxa = !!evento.valorInscricao;
   const { inscritos } = useInscritosDoEvento(temTaxa ? evento.id : undefined);
@@ -302,6 +305,13 @@ function CardEventoAdmin({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
+            {evento.encerrado && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
+                Encerrado
+                {evento.encerradoEm &&
+                  ` em ${evento.encerradoEm.toDate().toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}`}
+              </span>
+            )}
             {evento.destaque && (
               <span className="inline-flex items-center gap-1 rounded-full bg-fatec-orange-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-orange-600">
                 <Star className="h-3 w-3" strokeWidth={2} />
@@ -326,6 +336,21 @@ function CardEventoAdmin({
           {periodoInscricao && <p className="text-sm text-fatec-muted">{periodoInscricao}</p>}
           {periodoEnvio && <p className="text-sm text-fatec-muted">{periodoEnvio}</p>}
         </div>
+        {/* Botão vermelho bem visível (2026-09-10, pedido do usuário) — fora
+            do grid de ações normais de propósito, é uma ação importante
+            (desliga banner de destaque, inscrição nova e envio de trabalho
+            de uma vez). Reversível — clicar de novo reabre. */}
+        <button
+          type="button"
+          onClick={onEncerrarEvento}
+          className={`flex-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+            evento.encerrado
+              ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+              : "bg-rose-600 text-white hover:bg-rose-700"
+          }`}
+        >
+          {evento.encerrado ? "Reabrir evento" : "Encerrar evento"}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-fatec-line pt-4 text-xs text-fatec-muted">
@@ -873,6 +898,19 @@ export default function EventosPage() {
     await updateDoc(doc(db, "eventos", eventoId), { aceitaExternos: !atual });
   }
 
+  // Encerrar/reabrir evento (2026-09-10, pedido do usuário) — interruptor
+  // manual reversível: desliga banner de destaque, inscrição nova (rota
+  // /api/asaas/interesse) e envio de trabalho (firestore.rules) de uma vez,
+  // e some da aba "Submissões" do aluno por completo. Reabrir só apaga
+  // encerradoEm (não precisa reconfigurar nada, volta a valer as datas de
+  // inscrição/submissão já cadastradas).
+  async function alternarEncerrado(evento: Evento) {
+    await updateDoc(doc(db, "eventos", evento.id), {
+      encerrado: !evento.encerrado,
+      encerradoEm: evento.encerrado ? deleteField() : serverTimestamp(),
+    });
+  }
+
   async function criarEvento() {
     if (!nome.trim() || areasTematicasForm.length === 0 || !valorValido) return;
     setCriando(true);
@@ -988,6 +1026,7 @@ export default function EventosPage() {
                 }
                 onAbrirMonitores={() => setModalMonitoresId(evento.id)}
                 onAbrirBanner={() => setBannerEditEventoId(evento.id)}
+                onEncerrarEvento={() => alternarEncerrado(evento)}
               />
             ))}
 

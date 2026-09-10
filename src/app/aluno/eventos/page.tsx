@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Star } from "lucide-react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -161,8 +161,13 @@ export default function AlunoEventosPage() {
   const [modalEventoId, setModalEventoId] = useState<string | null>(null);
   const [inscricaoEventoId, setInscricaoEventoId] = useState<string | null>(null);
 
+  // Encerrado (2026-09-10) some inteiro dessa tela — nem destaque, nem
+  // card comum na grade. "Submissões" é sobre descobrir/entrar num evento
+  // NOVO; quem já tinha trabalho/inscrição nesse evento antes de encerrar
+  // continua vendo ele normalmente em "Meus eventos" (tela inicial) e
+  // "Trabalhos" — só a descoberta aqui é que trava.
   const eventos = useMemo(
-    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
+    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec).filter((e) => !e.encerrado),
     [todosEventos, perfil],
   );
 
@@ -175,9 +180,9 @@ export default function AlunoEventosPage() {
 
   // Banner de destaque (2026-09-04, movido da tela inicial do aluno pra cá —
   // antes ficava em /aluno, mas o CTA dele já leva pra essa mesma tela, então
-  // faz mais sentido morar aqui e abrir os modais direto). Ainda não há um
-  // campo de status (aberto/encerrado) no schema de eventos — por ora todo
-  // evento cadastrado é tratado como aberto para inscrição.
+  // faz mais sentido morar aqui e abrir os modais direto). `eventos` já vem
+  // sem os encerrados (ver acima) — o fallback pro primeiro da lista nunca
+  // pega um evento fechado.
   const destaque = useMemo(
     () => eventos.find((e) => e.destaque) ?? eventos[0],
     [eventos],
@@ -267,20 +272,26 @@ export default function AlunoEventosPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
+          {/* mx-auto no card abaixo (2026-09-10, pedido do usuário) — só
+              existe um destaque por vez, faz sentido centralizar em telas
+              largas em vez de ficar grudado na esquerda. */}
           {destaque && (
-            <div className="mb-8 max-w-2xl">
-              {/* aspect-[12/5] (2026-09-09) — mesma proporção do
-                  BannerCropModal; min-h-[190px]/[230px] do conteúdo abaixo
-                  segue funcionando como piso em telas estreitas (aspect só
-                  cresce a altura em telas largas, nunca encolhe abaixo do
-                  que o conteúdo já exigia). */}
-              <div className="group relative aspect-[12/5] overflow-hidden rounded-2xl shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
+            <div className="mx-auto mb-8 max-w-2xl overflow-hidden rounded-2xl border border-fatec-line bg-white shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
+              {/* Redesenhado (2026-09-10, "ficou poluído no celular") —
+                  antes era tudo (2 badges + título + botão) empilhado em
+                  cima da foto escurecida, e no celular isso não cabia mais
+                  desde que virou 2 badges. Agora a foto é só um topo
+                  decorativo curto (sem texto por cima, sem depender de
+                  contraste) e as informações ficam num corpo branco comum
+                  embaixo — mesmo padrão do CardEvento logo abaixo na
+                  página, só que maior/com "Em destaque". */}
+              <div className="relative h-28 sm:h-36 md:h-44">
                 {destaque.imagemDestaqueUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={destaque.imagemDestaqueUrl}
                     alt={destaque.nome}
-                    className="absolute inset-0 h-full w-full scale-105 object-cover blur-[3px]"
+                    className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
                   <div
@@ -291,97 +302,93 @@ export default function AlunoEventosPage() {
                     <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/10" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                  <Star className="h-3 w-3" strokeWidth={2} />
+                  Em destaque
+                </span>
+              </div>
 
-                <div className="relative flex min-h-[190px] flex-col items-start justify-end p-5 md:min-h-[230px] md:p-6">
-                    {/* Duas cores (2026-09-09, pedido do usuário) — Inscrições
-                        (laranja, já existia) e Submissão (azul) são prazos
-                        diferentes, precisam ser visualmente distintos aqui
-                        no banner também, não só no card de baixo. */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {destaque.periodoSubmissao && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-semibold text-white">
-                          <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
-                          Inscrições: {destaque.periodoSubmissao}
-                        </span>
-                      )}
-                      {destaque.periodoEnvioTrabalho && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-sky-600 px-3 py-1 text-xs font-semibold text-white">
-                          <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
-                          Submissão: {destaque.periodoEnvioTrabalho}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mt-2 text-xl font-bold leading-tight text-white">
-                      {destaque.nome}
-                    </h3>
+              <div className="flex flex-col items-start gap-3 p-5 md:p-6">
+                <div>
+                  <h3 className="text-lg font-bold leading-tight text-fatec-navy-900 md:text-xl">
+                    {destaque.nome}
+                  </h3>
+                  {destaque.periodoSubmissao && (
+                    <p className="mt-1 text-sm text-fatec-muted">
+                      Inscrições: {destaque.periodoSubmissao}
+                    </p>
+                  )}
+                  {destaque.periodoEnvioTrabalho && (
+                    <p className="text-sm font-medium text-fatec-orange-600">
+                      Submissão: {destaque.periodoEnvioTrabalho}
+                    </p>
+                  )}
+                </div>
 
-                    {!inscricaoDestaque ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={participarDestaque}
-                          disabled={participandoDestaque}
-                          className="group/btn mt-3 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {participandoDestaque ? "Registrando..." : "Inscreva-se"}
-                        </button>
-                        {erroParticiparDestaque && (
-                          <p className="mt-1.5 text-xs text-rose-200">{erroParticiparDestaque}</p>
-                        )}
-                      </>
-                    ) : jaInscritoDestaque && pagamentoPendenteDestaque ? (
+                {!inscricaoDestaque ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={participarDestaque}
+                      disabled={participandoDestaque}
+                      className="inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                    >
+                      {participandoDestaque ? "Registrando..." : "Inscreva-se"}
+                    </button>
+                    {erroParticiparDestaque && (
+                      <p className="-mt-2 text-xs text-rose-600">{erroParticiparDestaque}</p>
+                    )}
+                  </>
+                ) : jaInscritoDestaque && pagamentoPendenteDestaque ? (
+                  <button
+                    type="button"
+                    onClick={() => setInscricaoEventoId(destaque.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                    Pagamento pendente — pagar agora
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {jaInscritoDestaque ? (
+                      <Link
+                        href="/aluno/trabalhos"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                        Inscrição feita — ver trabalho
+                      </Link>
+                    ) : dentroDoPrazoEnvio(destaque) ? (
+                      <button
+                        type="button"
+                        onClick={() => setModalEventoId(destaque.id)}
+                        className="group/btn inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                      >
+                        Inscrever trabalho
+                        <ArrowRight
+                          className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
+                          strokeWidth={2}
+                        />
+                      </button>
+                    ) : (
+                      // Prazo de submissão encerrado (2026-09-09, pedido
+                      // do coordenador).
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-4 py-1.5 text-xs font-semibold text-fatec-muted">
+                        Submissão encerrada
+                      </span>
+                    )}
+                    {pagamentoPendenteDestaque && (
                       <button
                         type="button"
                         onClick={() => setInscricaoEventoId(destaque.id)}
-                        className="group/btn mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-800 transition-transform hover:-translate-y-0.5"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
                       >
                         <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-                        Pagamento pendente — pagar agora
+                        Pagamento pendente
                       </button>
-                    ) : (
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {jaInscritoDestaque ? (
-                          <Link
-                            href="/aluno/trabalhos"
-                            className="group/btn inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-4 py-1.5 text-xs font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/30"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                            Inscrição feita — ver trabalho
-                          </Link>
-                        ) : dentroDoPrazoEnvio(destaque) ? (
-                          <button
-                            type="button"
-                            onClick={() => setModalEventoId(destaque.id)}
-                            className="group/btn inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-fatec-navy-900 transition-transform hover:-translate-y-0.5"
-                          >
-                            Inscrever trabalho
-                            <ArrowRight
-                              className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
-                              strokeWidth={2}
-                            />
-                          </button>
-                        ) : (
-                          // Prazo de submissão encerrado (2026-09-09, pedido
-                          // do coordenador).
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-1.5 text-xs font-semibold text-white/80">
-                            Submissão encerrada
-                          </span>
-                        )}
-                        {pagamentoPendenteDestaque && (
-                          <button
-                            type="button"
-                            onClick={() => setInscricaoEventoId(destaque.id)}
-                            className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-200"
-                          >
-                            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-                            Pagamento pendente
-                          </button>
-                        )}
-                      </div>
                     )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

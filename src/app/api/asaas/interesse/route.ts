@@ -32,6 +32,11 @@ export async function POST(request: Request) {
   if (!evento) {
     return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
   }
+  // Evento encerrado (2026-09-10) — não aceita inscrição nova, mesmo que
+  // alguém chame essa rota direto (não só escondendo o botão no client).
+  if (evento.encerrado) {
+    return NextResponse.json({ erro: "Esse evento está encerrado." }, { status: 400 });
+  }
 
   const usuarioSnap = await db.doc(`usuarios/${uid}`).get();
   const usuario = usuarioSnap.data();

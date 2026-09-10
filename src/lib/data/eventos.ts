@@ -100,6 +100,16 @@ export type Evento = {
   // nas firestore.rules. Ausente = sem prazo definido, edição nunca trava
   // (eventos criados antes dessa feature, ou sem fimInscricoes preenchido).
   prazoEdicaoTrabalho?: Timestamp;
+  // Encerrar evento (2026-09-10, pedido do usuário) — botão do admin que
+  // desliga TUDO de uma vez (banner de destaque, aceitar inscrição nova,
+  // enviar trabalho), reversível ("clicar pra reabrir"), independente das
+  // datas configuradas (é um interruptor manual por cima delas, não troca
+  // as datas). Some da aba "Submissões" do aluno inteiramente — nem
+  // aparece como card comum lá — mas continua visível em "Meus eventos"/
+  // "Trabalhos" de quem já tinha se inscrito antes (é só descoberta de
+  // evento NOVO que trava, não o histórico de quem já participava).
+  encerrado?: boolean;
+  encerradoEm?: Timestamp;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */
@@ -142,13 +152,16 @@ export function eventosParaAluno(eventos: Evento[], vinculoFatec: boolean | unde
   return vinculoFatec === false ? eventos.filter((e) => e.aceitaExternos) : eventos;
 }
 
-/** Prazo de ENVIAR um trabalho novo (2026-09-09, pedido do coordenador) —
- * até 23:59 do dia de fim do período de envio (eventos/{id}.fimEnvioTrabalho,
- * definido em Configurações). Ausente = sem prazo, nunca trava (mesmo
- * padrão de "campo ausente = sem restrição" usado no resto do app). Não
- * confundir com dentroDoPrazoEdicao (em aluno/trabalhos/page.tsx) — aquele
- * trava EDITAR um trabalho já enviado, este trava ENVIAR um novo. */
+/** Pode ENVIAR um trabalho novo agora? Dois motivos pra travar, checados
+ * juntos (2026-09-10): (1) evento.encerrado — interruptor manual do admin,
+ * vale na hora, independe de qualquer data configurada; (2) passou de
+ * fimEnvioTrabalho (23:59 do dia de fim do período de envio, definido em
+ * Configurações). Ausente = sem prazo, nunca trava por data (mesmo padrão
+ * de "campo ausente = sem restrição" do resto do app). Não confundir com
+ * dentroDoPrazoEdicao (em aluno/trabalhos/page.tsx) — aquele trava EDITAR
+ * um trabalho já enviado, este trava ENVIAR um novo. */
 export function dentroDoPrazoEnvio(evento: Evento | undefined): boolean {
+  if (evento?.encerrado) return false;
   if (!evento?.fimEnvioTrabalho) return true;
   return new Date(`${evento.fimEnvioTrabalho}T23:59:59`).getTime() > Date.now();
 }

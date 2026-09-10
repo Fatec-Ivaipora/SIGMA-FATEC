@@ -50,6 +50,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/eventos/$(eventoId)).data.aceitaExternos == true;
     }
 
+    // Encerrar evento (2026-09-10) — interruptor manual do admin, trava
+    // ENVIAR trabalho novo na hora, independente de qualquer data
+    // configurada (ver dentroDoPrazoEnvio em src/lib/data/eventos.ts, que
+    // já checa isso no client — aqui é a mesma trava do lado do servidor).
+    function eventoEncerrado(eventoId) {
+      return get(/databases/$(database)/documents/eventos/$(eventoId)).data.get("encerrado", false) == true;
+    }
+
     // Prazo de edição do trabalho pelo aluno (2026-09-04) — eventos/{id}.
     // prazoEdicaoTrabalho é 23:55 do dia de fim das inscrições (gravado como
     // Timestamp na criação do evento, ver src/app/eventos/page.tsx). Sem
@@ -145,8 +153,11 @@ service cloud.firestore {
       // diretoria) — antes exigia inscricoesEvento status=="pago" pra evento
       // com taxa; isso foi removido daqui de propósito. O pagamento continua
       // obrigatório, só que verificado depois, na hora de liberar o
-      // certificado (ver /api/certificados).
+      // certificado (ver /api/certificados). Evento encerrado (2026-09-10)
+      // bloqueia enviar trabalho novo, mesmo tentando direto sem passar
+      // pela UI.
       allow create: if logado() && meuPapel() == "aluno" && request.resource.data.alunoUid == request.auth.uid &&
+        !eventoEncerrado(request.resource.data.eventoId) &&
         (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId));
       allow update: if logado() && (
         souAdmin() ||
