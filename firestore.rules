@@ -255,20 +255,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // rasCadastrados/{ra} — índice de unicidade de RA (2026-09-04): doc ID é
-    // o próprio RA, criado junto com usuarios/{uid} no mesmo writeBatch no
-    // autocadastro (RF-01). "allow update: if false" é o que garante a
-    // unicidade — se o RA já existe, a escrita vira "update" (não "create")
-    // pras regras do Firestore, e é negada, derrubando o batch inteiro.
-    // Motivo (2026-09-04): um funcionário se cadastrou como aluno usando o
-    // RA de outra pessoa — não havia nenhuma trava contra isso, só validação
-    // de formato do RA.
-    match /rasCadastrados/{ra} {
-      allow read: if logado();
-      allow create: if logado() && request.auth.uid == request.resource.data.uid;
-      allow update, delete: if false;
-    }
-
     // eduboxLancamentos/{eventoId}::{uid} — rastreio de quem já foi lançado
     // no Edubox (2026-09-04), pra não duplicar em execuções repetidas (o
     // relay também deduplica do lado do Postgres deles, isso aqui é só pra

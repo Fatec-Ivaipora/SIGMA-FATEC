@@ -223,8 +223,19 @@ export function Sidebar({
         </div>
       )}
 
+      {/* h-screen, sem sticky (2026-09-10, segunda tentativa): a primeira
+          (sticky + h-screen) deixava um buraco feio embaixo em páginas mais
+          curtas que a viewport, porque o bloco de conteúdo ao lado
+          (overflow-x-hidden) já virava sua própria caixa de rolagem interna
+          (efeito colateral pouco conhecido: travar só o eixo X libera o Y
+          como auto) — então o scroll real acontecia DENTRO do conteúdo, não
+          na página, e o sticky não tinha o que acompanhar. Agora isso é
+          explícito: o conteúdo (ver overflow-x-hidden md:h-screen
+          md:overflow-y-auto em cada página) rola dentro da própria caixa, e
+          o menu — do lado de fora dessa caixa — nunca precisa se mexer,
+          fica com a altura da tela e pronto. */}
       <aside
-        className={`relative hidden flex-none flex-col bg-fatec-navy-900 pt-7 pb-4 transition-[width] duration-150 md:flex ${
+        className={`relative hidden flex-none flex-col overflow-y-auto bg-fatec-navy-900 pt-7 pb-4 transition-[width] duration-150 md:flex md:h-screen ${
           colapsado ? "w-[76px] px-3" : "w-72 px-5"
         }`}
       >

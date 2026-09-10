@@ -159,7 +159,7 @@ export default function TurmaAlunoPage() {
         showAjuda
       />
 
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
         <header className="border-b border-fatec-line bg-white px-6 py-5 md:px-10">
           <Link
             href="/aluno/projeto-integrador"

@@ -114,6 +114,43 @@ export function useInscritosDoEvento(eventoId: string | undefined) {
   return { inscritos, carregando };
 }
 
+/** Inscrições de um conjunto de eventos (relatórios, 2026-09-10) — recebe os
+ * eventoIds já escopados por papel (useEventos já filtra pra organização),
+ * então a query em si nunca precisa saber quem é o usuário. "in" do
+ * Firestore aceita até 30 valores; corta nisso (nenhum evento real desse
+ * projeto chega perto disso hoje). Lista vazia = não busca nada (evita
+ * mandar um "in" vazio, que o Firestore rejeita). */
+export function useInscricoesRelatorio(eventoIds: string[]) {
+  const [inscricoes, setInscricoes] = useState<InscricaoEvento[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const chave = eventoIds.slice(0, 30).join(",");
+
+  useEffect(() => {
+    const ids = chave ? chave.split(",") : [];
+    if (ids.length === 0) {
+      Promise.resolve().then(() => {
+        setInscricoes([]);
+        setCarregando(false);
+      });
+      return;
+    }
+    const q = query(collection(db, "inscricoesEvento"), where("eventoId", "in", ids));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setInscricoes(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InscricaoEvento));
+        setCarregando(false);
+      },
+      () => {
+        setInscricoes([]);
+        setCarregando(false);
+      },
+    );
+  }, [chave]);
+
+  return { inscricoes, carregando };
+}
+
 /** Uids de todo mundo inscrito num evento, qualquer status — usado pra
  * restringir a busca de colega (SubmeterTrabalhoModal) a quem já pelo menos
  * demonstrou interesse no evento (pagamento não é mais pré-requisito).

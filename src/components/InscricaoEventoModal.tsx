@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, ExternalLink, Loader2 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
+
+// Depois que a Asaas confirma um Pix/boleto/cartão, ainda leva em média 1-2
+// min pra notificação (webhook) chegar até nós — tempo real observado em
+// produção (2026-09-10). Enquanto isso, o aluno pode achar que "não
+// funcionou" e ficar tentando de novo. Por isso, assim que a cobrança é
+// gerada, a gente já avisa o tempo esperado E confere sozinho em segundo
+// plano (como Stripe/PagSeguro fazem), sem precisar que ele clique em nada —
+// o botão manual continua existindo só pra quem quiser forçar uma conferida.
+const INTERVALO_VERIFICACAO_MS = 8000;
+const TENTATIVAS_MAXIMAS = 22; // ~3 min de conferida automática
 
 /** Modal de pagamento da inscrição num evento com taxa (2026-08-26, revisado
  * 2026-08-31). Pagamento não bloqueia mais trabalho/convites — a diretoria
@@ -36,11 +46,15 @@ export function InscricaoEventoModal({
   const [gerando, setGerando] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [aindaNaoCaiu, setAindaNaoCaiu] = useState(false);
+  const tentativasAutomaticas = useRef(0);
 
   function fechar() {
     setCpf("");
     setInvoiceUrl(null);
     setErro(null);
+    setAindaNaoCaiu(false);
+    tentativasAutomaticas.current = 0;
     onClose();
   }
 
@@ -66,10 +80,12 @@ export function InscricaoEventoModal({
     }
   }
 
-  async function verificarPagamento() {
+  async function verificarPagamento(silenciosa = false) {
     if (!user) return;
-    setErro(null);
-    setVerificando(true);
+    if (!silenciosa) {
+      setErro(null);
+      setVerificando(true);
+    }
     try {
       const idToken = await user.getIdToken();
       const resposta = await fetch(
@@ -77,17 +93,38 @@ export function InscricaoEventoModal({
         { headers: { Authorization: `Bearer ${idToken}` } },
       );
       const corpo = await resposta.json();
-      if (corpo.status !== "pago") {
-        setErro(
-          "Ainda não identificamos o pagamento. Se você acabou de pagar, aguarde alguns instantes e tente de novo.",
-        );
+      if (corpo.status === "pago") {
+        setAindaNaoCaiu(false);
+      } else if (!silenciosa) {
+        // Não é erro de verdade — é só "ainda não chegou", o normal
+        // enquanto a confirmação (Pix/boleto/cartão) está em trânsito.
+        setAindaNaoCaiu(true);
       }
     } catch {
-      setErro("Não foi possível verificar o pagamento agora.");
+      if (!silenciosa) setErro("Não foi possível verificar o pagamento agora.");
     } finally {
-      setVerificando(false);
+      if (!silenciosa) setVerificando(false);
     }
   }
+
+  // Conferida automática em segundo plano (2026-09-10) — o mesmo endpoint
+  // que o botão manual chama, só que sem aparecer nada de "erro" na tela;
+  // assim que confirmar, useMinhaInscricao (onSnapshot) já atualiza `pago`
+  // sozinho e a tela muda pra "confirmado" sem o aluno precisar fazer nada.
+  useEffect(() => {
+    if (!invoiceUrl || pago) return;
+    tentativasAutomaticas.current = 0;
+    const id = setInterval(() => {
+      tentativasAutomaticas.current += 1;
+      if (tentativasAutomaticas.current > TENTATIVAS_MAXIMAS) {
+        clearInterval(id);
+        return;
+      }
+      verificarPagamento(true);
+    }, INTERVALO_VERIFICACAO_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceUrl, pago]);
 
   const cpfValido = cpf.replace(/\D/g, "").length === 11;
   const podeGerar = temCpf || cpfValido;
@@ -151,9 +188,27 @@ export function InscricaoEventoModal({
                   <ExternalLink className="h-4 w-4" strokeWidth={2} />
                   Abrir página de pagamento
                 </a>
+
+                <div className="flex items-start gap-2 rounded-xl bg-fatec-sky-50 px-4 py-3 text-sm text-fatec-navy-800">
+                  <Clock className="mt-0.5 h-4 w-4 flex-none" strokeWidth={2} />
+                  <p>
+                    Depois de pagar (Pix, boleto ou cartão), a confirmação
+                    pode levar de 1 a 2 minutos. Assim que cair, essa tela
+                    atualiza sozinha — não precisa fechar nem tentar de novo.
+                  </p>
+                </div>
+
+                {aindaNaoCaiu && (
+                  <p className="flex items-center gap-2 rounded-xl bg-fatec-orange-50 px-4 py-3 text-sm text-fatec-orange-700">
+                    <Loader2 className="h-4 w-4 flex-none animate-spin" strokeWidth={2} />
+                    Ainda não identificamos o pagamento. Se você já pagou,
+                    aguarde mais um instante — costuma confirmar sozinho.
+                  </p>
+                )}
+
                 <button
                   type="button"
-                  onClick={verificarPagamento}
+                  onClick={() => verificarPagamento()}
                   disabled={verificando}
                   className="flex w-fit items-center gap-2 rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
                 >
@@ -162,7 +217,7 @@ export function InscricaoEventoModal({
                   ) : (
                     <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
                   )}
-                  {verificando ? "Verificando..." : "Já paguei, verificar"}
+                  {verificando ? "Verificando..." : "Verificar pagamento"}
                 </button>
               </div>
             )}

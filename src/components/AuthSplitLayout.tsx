@@ -57,11 +57,14 @@ export function AuthSplitLayout({
               desktop. Os dois agora aparecem em qualquer tamanho de tela
               (antes só existiam no celular). */}
           <div className="mb-8 flex items-center justify-between">
+            {/* Virou "botão" de verdade (2026-09-10, "tá apagado, principalmente
+                no PC") — antes era só texto cinza sem contorno, quase
+                invisível num fundo branco. */}
             <Link
               href={backHref}
-              className="flex w-fit items-center gap-2 text-sm font-medium text-fatec-muted transition-colors hover:text-fatec-navy-800"
+              className="flex w-fit items-center gap-1.5 rounded-full border border-fatec-line px-3.5 py-1.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:border-fatec-navy-200 hover:bg-fatec-navy-50"
             >
-              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+              <ArrowLeft className="h-4 w-4" strokeWidth={2} />
               Voltar
             </Link>
             <Link href="/" className="md:hidden">

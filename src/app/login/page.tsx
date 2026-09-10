@@ -109,12 +109,12 @@ export default function LoginPage() {
         )}
 
         <div className="flex justify-end">
-          <a
-            href="#"
+          <Link
+            href="/recuperar-senha"
             className="text-sm font-medium text-fatec-sky-600 hover:text-fatec-navy-800"
           >
             Esqueci minha senha
-          </a>
+          </Link>
         </div>
 
         <button

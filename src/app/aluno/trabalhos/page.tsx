@@ -73,7 +73,7 @@ export default function AlunoTrabalhosPage() {
         showAjuda
       />
 
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
         <header className="border-b border-fatec-line bg-white px-6 py-5 md:px-10">
           <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">
             Trabalhos
@@ -132,7 +132,7 @@ export default function AlunoTrabalhosPage() {
                       )}
                     </div>
 
-                    <div className="flex flex-none items-center gap-3">
+                    <div className="flex flex-none flex-wrap items-center gap-3">
                       {t.modalidadeApresentacao === "roda_conversa" && (
                         <a
                           href="/materiais/modelo-banner-mac.pdf"

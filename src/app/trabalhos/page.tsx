@@ -508,7 +508,7 @@ export default function TrabalhosAdminPage() {
         userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
       />
 
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
         <header className="flex flex-col gap-4 border-b border-fatec-line bg-white px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
           <div>
             <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">

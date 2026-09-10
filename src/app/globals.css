@@ -61,7 +61,20 @@
   --color-fatec-line: var(--color-fatec-line);
 }
 
+/* Trava global contra scroll/arraste horizontal (2026-09-10, "falta
+   responsividade... tem que ficar arrastando a tela") — várias telas já
+   tinham essa proteção só localmente (overflow-x-hidden num div interno),
+   mas isso não pega tudo: telas públicas/de autenticação (home, login,
+   cadastro, recuperar senha) não tinham nenhuma, e qualquer elemento
+   individual que um dia vaze um pixel além da viewport (barra de rolagem
+   inclusa) arrasta a página inteira pro lado. Aqui no html/body pega
+   qualquer caso, em qualquer tela, de uma vez. */
+html {
+  overflow-x: hidden;
+}
+
 body {
+  overflow-x: hidden;
   background: var(--background);
   color: var(--color-fatec-ink);
   font-family: var(--font-poppins), sans-serif;

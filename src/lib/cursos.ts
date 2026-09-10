@@ -10,6 +10,7 @@ export const CURSOS_FATEC = [
   "Gestão Financeira",
   "Gestão Comercial",
   "Gestão de Recursos Humanos",
+  "Medicina",
   "Medicina Veterinária",
   "Pedagogia",
   "Psicologia",
