@@ -1,13 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { ExternalLink, Loader2, Plus, ScrollText, Trash2, Upload } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  FileCheck,
+  Loader2,
+  Plus,
+  ScrollText,
+  Search,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useEventos } from "@/lib/data/eventos";
+import { useTrabalhos } from "@/lib/data/trabalhos";
+import { useMonitoresDoEvento } from "@/lib/data/monitores";
+import { baixarCertificado } from "@/lib/baixarCertificado";
 import {
   useDeclaracoesAgrupadas,
   criarCategoriaDeclaracao,
@@ -17,6 +32,222 @@ import {
   type CategoriaComDeclaracoes,
   type Declaracao,
 } from "@/lib/data/declaracoes";
+
+// Buscar pessoa + emitir certificado/declaração (2026-09-11) — a coordenação
+// não tinha como emitir o documento de ninguém além de si mesma: a rota
+// pegava sempre o uid de quem chamava a API, então avaliador/moderador/
+// monitor só conseguiam gerar o PRÓPRIO, e orientador (sem conta nenhuma no
+// sistema, só texto livre no trabalho) não tinha rota nenhuma. Corrigido em
+// /api/certificados (uidAlvo pra staff mirar outra pessoa; rota nova pra
+// orientador usando o nome já salvo no trabalho, sem precisar de CPF).
+type CandidatoDocumento = {
+  chaveLista: string;
+  nome: string;
+  rotuloTipo: string;
+  contexto?: string;
+  textoBusca: string;
+  gerar: () => Promise<{ ok: true } | { ok: false; erro: string }>;
+};
+
+function EmitirCertificado({
+  perfil,
+  user,
+}: {
+  perfil: import("@/lib/auth").PerfilUsuario;
+  user: import("firebase/auth").User | null | undefined;
+}) {
+  const { eventos } = useEventos(perfil);
+  const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  const [eventoId, setEventoId] = useState("");
+  const [busca, setBusca] = useState("");
+  const [baixandoChave, setBaixandoChave] = useState<string | null>(null);
+  const [erro, setErro] = useState<{ chave: string; msg: string } | null>(null);
+
+  const { monitores } = useMonitoresDoEvento(eventoId || undefined);
+
+  const candidatos = useMemo<CandidatoDocumento[]>(() => {
+    if (!eventoId || !user) return [];
+    const lista: CandidatoDocumento[] = [];
+
+    const trabalhosDoEvento = trabalhos.filter(
+      (t) => t.eventoId === eventoId && t.status === "aceito",
+    );
+
+    for (const t of trabalhosDoEvento) {
+      const nomes = [t.alunoNome, ...(t.participantesNomes ?? [])];
+      if (t.nomeOrientador) nomes.push(t.nomeOrientador);
+      lista.push({
+        chaveLista: `certificado_${t.id}`,
+        nome: nomes.join(", "),
+        rotuloTipo: "Certificado de apresentação",
+        contexto: t.titulo,
+        textoBusca: nomes.join(" ").toLowerCase(),
+        gerar: () => baixarCertificado(user, { papel: "aluno", trabalhoId: t.id }),
+      });
+
+      if (t.nomeOrientador) {
+        lista.push({
+          chaveLista: `orientador_${t.id}`,
+          nome: t.nomeOrientador,
+          rotuloTipo: "Declaração de orientador(a)",
+          contexto: t.titulo,
+          textoBusca: t.nomeOrientador.toLowerCase(),
+          gerar: () => baixarCertificado(user, { papel: "orientador", trabalhoId: t.id }),
+        });
+      }
+    }
+
+    const avaliadores = new Map<string, string>();
+    const moderadores = new Map<string, string>();
+    for (const t of trabalhosDoEvento) {
+      if (t.avaliadorUid && t.avaliadorNome) avaliadores.set(t.avaliadorUid, t.avaliadorNome);
+      if (t.moderadorUid && t.moderadorNome) moderadores.set(t.moderadorUid, t.moderadorNome);
+    }
+    for (const [uid, nome] of avaliadores) {
+      lista.push({
+        chaveLista: `avaliador_${uid}`,
+        nome,
+        rotuloTipo: "Declaração de avaliador(a)",
+        textoBusca: nome.toLowerCase(),
+        gerar: () =>
+          baixarCertificado(user, { papel: "avaliador", eventoId, uidAlvo: uid }),
+      });
+    }
+    for (const [uid, nome] of moderadores) {
+      lista.push({
+        chaveLista: `moderador_${uid}`,
+        nome,
+        rotuloTipo: "Declaração de moderador(a)",
+        textoBusca: nome.toLowerCase(),
+        gerar: () =>
+          baixarCertificado(user, { papel: "moderador", eventoId, uidAlvo: uid }),
+      });
+    }
+    for (const m of monitores) {
+      lista.push({
+        chaveLista: `monitor_${m.uid}`,
+        nome: m.nome,
+        rotuloTipo: "Declaração de monitor(a)",
+        textoBusca: m.nome.toLowerCase(),
+        gerar: () =>
+          baixarCertificado(user, { papel: "monitor", eventoId, uidAlvo: m.uid }),
+      });
+    }
+
+    return lista;
+  }, [eventoId, trabalhos, monitores, user]);
+
+  const termo = busca.trim().toLowerCase();
+  const resultados = termo
+    ? candidatos.filter((c) => c.textoBusca.includes(termo))
+    : candidatos;
+
+  async function gerar(candidato: CandidatoDocumento) {
+    setErro(null);
+    setBaixandoChave(candidato.chaveLista);
+    const resultado = await candidato.gerar();
+    if (!resultado.ok) setErro({ chave: candidato.chaveLista, msg: resultado.erro });
+    setBaixandoChave(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="max-w-2xl text-sm text-fatec-muted">
+        Emite na hora o certificado/declaração de qualquer pessoa do evento —
+        pra reenviar quando alguém perde o próprio, ou pra entregar pro
+        orientador (que não tem conta no sistema, então nunca recebe
+        automaticamente).
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <select
+            value={eventoId}
+            onChange={(e) => setEventoId(e.target.value)}
+            className="w-full min-w-[240px] appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
+          >
+            <option value="">Selecione o evento</option>
+            {eventos.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.nome}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+            strokeWidth={1.75}
+          />
+        </div>
+
+        <div className="relative min-w-[240px] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+            strokeWidth={1.75}
+          />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            disabled={!eventoId}
+            placeholder="Buscar por nome — aluno, avaliador, moderador, monitor ou orientador"
+            className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50"
+          />
+        </div>
+      </div>
+
+      {!eventoId && (
+        <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+          Selecione um evento pra começar a buscar.
+        </p>
+      )}
+
+      {eventoId && (
+        <div className="flex flex-col gap-2">
+          {resultados.map((c) => (
+            <div
+              key={c.chaveLista}
+              className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-fatec-orange-600">
+                  <FileCheck className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {c.rotuloTipo}
+                </p>
+                <p className="truncate text-sm font-medium text-fatec-navy-900">{c.nome}</p>
+                {c.contexto && (
+                  <p className="truncate text-xs text-fatec-muted">{c.contexto}</p>
+                )}
+                {erro?.chave === c.chaveLista && (
+                  <p className="mt-1 text-xs text-red-600">{erro.msg}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => gerar(c)}
+                disabled={baixandoChave === c.chaveLista}
+                className="flex flex-none items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+              >
+                {baixandoChave === c.chaveLista ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+                ) : (
+                  <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                )}
+                Baixar PDF
+              </button>
+            </div>
+          ))}
+          {resultados.length === 0 && (
+            <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+              {candidatos.length === 0
+                ? "Nenhum trabalho aceito, monitor ou avaliador/moderador designado nesse evento ainda."
+                : "Nenhum resultado pra essa busca."}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FormNovaDeclaracao({ categoriaId }: { categoriaId: string }) {
   const [nome, setNome] = useState("");
@@ -136,7 +367,13 @@ function CardCategoria({
 }
 
 export default function DeclaracoesAdminPage() {
-  const { perfil, carregando } = useRequireAuth(["admin"]);
+  // Organização ganhou acesso aqui em 2026-09-11 (antes era só admin) — a
+  // aba nova "Emitir certificado" faz sentido pra ela também (mesmo escopo
+  // por evento que já tem no resto do app); a biblioteca de upload manual
+  // (aba antiga) passa a ficar visível pra organização também, sem problema
+  // nenhum — é só um repositório de PDF, não expõe nada sensível.
+  const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
+  const [aba, setAba] = useState<"biblioteca" | "emitir">("biblioteca");
   const categorias = useDeclaracoesAgrupadas();
   const [novaCategoria, setNovaCategoria] = useState("");
   const [criando, setCriando] = useState(false);
@@ -177,7 +414,7 @@ export default function DeclaracoesAdminPage() {
         navItems={NAV_ADMIN}
         activeHref="/declaracoes"
         userName={perfil.nome}
-        userRoleLabel="Admin"
+        userRoleLabel={perfil.papel === "admin" ? "Admin" : "Organização"}
         userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
       />
 
@@ -187,46 +424,77 @@ export default function DeclaracoesAdminPage() {
             Declarações
           </h1>
           <p className="text-sm text-fatec-muted">
-            Biblioteca de declarações antigas, organizada por categoria (ex.:
-            um ano) — aparece como menu na home pública, sem precisar de login.
+            {aba === "biblioteca"
+              ? "Biblioteca de declarações antigas, organizada por categoria (ex.: um ano) — aparece como menu na home pública, sem precisar de login."
+              : "Emite na hora o certificado/declaração de qualquer pessoa do evento, em nome dela."}
           </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAba("biblioteca")}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                aba === "biblioteca"
+                  ? "bg-fatec-navy-900 text-white"
+                  : "bg-fatec-navy-50 text-fatec-muted hover:text-fatec-navy-900"
+              }`}
+            >
+              Biblioteca
+            </button>
+            <button
+              type="button"
+              onClick={() => setAba("emitir")}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                aba === "emitir"
+                  ? "bg-fatec-navy-900 text-white"
+                  : "bg-fatec-navy-50 text-fatec-muted hover:text-fatec-navy-900"
+              }`}
+            >
+              Emitir certificado
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          <div className="mb-6 flex max-w-md gap-2">
-            <input
-              type="text"
-              value={novaCategoria}
-              onChange={(e) => setNovaCategoria(e.target.value)}
-              placeholder="Nova categoria — ex.: 2025"
-              className="flex-1 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
-            />
-            <button
-              type="button"
-              onClick={criarCategoria}
-              disabled={!novaCategoria.trim() || criando}
-              className="flex flex-none items-center gap-1.5 rounded-xl bg-fatec-navy-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-navy-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              Categoria
-            </button>
-          </div>
+          {aba === "biblioteca" ? (
+            <>
+              <div className="mb-6 flex max-w-md gap-2">
+                <input
+                  type="text"
+                  value={novaCategoria}
+                  onChange={(e) => setNovaCategoria(e.target.value)}
+                  placeholder="Nova categoria — ex.: 2025"
+                  className="flex-1 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
+                />
+                <button
+                  type="button"
+                  onClick={criarCategoria}
+                  disabled={!novaCategoria.trim() || criando}
+                  className="flex flex-none items-center gap-1.5 rounded-xl bg-fatec-navy-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-navy-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Plus className="h-4 w-4" strokeWidth={2} />
+                  Categoria
+                </button>
+              </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {categorias.map((categoria) => (
-              <CardCategoria
-                key={categoria.id}
-                categoria={categoria}
-                onExcluirCategoria={setExcluindoCategoria}
-                onExcluirDeclaracao={setExcluindoDeclaracao}
-              />
-            ))}
-            {categorias.length === 0 && (
-              <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted lg:col-span-2">
-                Nenhuma categoria criada ainda.
-              </p>
-            )}
-          </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {categorias.map((categoria) => (
+                  <CardCategoria
+                    key={categoria.id}
+                    categoria={categoria}
+                    onExcluirCategoria={setExcluindoCategoria}
+                    onExcluirDeclaracao={setExcluindoDeclaracao}
+                  />
+                ))}
+                {categorias.length === 0 && (
+                  <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted lg:col-span-2">
+                    Nenhuma categoria criada ainda.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <EmitirCertificado perfil={perfil} user={user} />
+          )}
         </div>
       </div>
 

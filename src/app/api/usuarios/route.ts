@@ -1,6 +1,20 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { ROTA_POR_PAPEL } from "@/lib/auth";
+
+const LABEL_PAPEL: Record<string, string> = {
+  avaliador: "avaliador(a)",
+  orientador: "orientador(a)",
+  moderador: "moderador(a)",
+};
+
+function listarLabels(papeis: string[]): string {
+  const labels = papeis.map((p) => LABEL_PAPEL[p]);
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(", ")} e ${labels[labels.length - 1]}`;
+}
 
 type AtribuicaoEvento = { eventoId: string; areasTematicas?: string[] };
 
@@ -97,6 +111,33 @@ export async function POST(request: Request) {
       nome: body.nome.trim(),
       email: body.email.trim(),
     });
+  }
+
+  // Avisa quem foi cadastrado como avaliador/orientador/moderador
+  // (2026-09-11, pedido explícito) — junta o papel primário com os extras
+  // de papeisAvaliacao num Set, pra não mandar dois e-mails se alguém for
+  // criado já com "também atua como" marcado. Melhor esforço — falha de
+  // e-mail nunca deve derrubar a criação da conta, que já aconteceu acima.
+  const papeisDeAvaliacao = new Set<string>();
+  if (body.papel in LABEL_PAPEL) papeisDeAvaliacao.add(body.papel);
+  for (const p of body.papeisAvaliacao ?? []) papeisDeAvaliacao.add(p);
+  if (papeisDeAvaliacao.size > 0) {
+    try {
+      const labels = listarLabels(Array.from(papeisDeAvaliacao));
+      const rota = ROTA_POR_PAPEL[body.papel];
+      await enviarEmail({
+        to: body.email.trim(),
+        subject: `Você foi cadastrado(a) como ${labels} no SIGMA`,
+        html: modeloEmail(
+          `<p>Você foi cadastrado(a) como <strong>${labels}</strong> no SIGMA, o sistema de submissão e avaliação de trabalhos acadêmicos da Fatec Ivaiporã.</p>
+           <p>A coordenação vai te passar a senha temporária de acesso — no primeiro login, o sistema pede pra você trocar por uma senha sua.</p>`,
+          { texto: "Entrar no SIGMA", href: `${URL_SISTEMA}${rota}` },
+          body.nome.trim(),
+        ),
+      });
+    } catch {
+      // melhor esforço — não derruba a criação da conta.
+    }
   }
 
   return NextResponse.json({ uid, senhaTemporaria: senha });

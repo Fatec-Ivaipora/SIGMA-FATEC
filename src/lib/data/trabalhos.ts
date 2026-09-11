@@ -90,6 +90,12 @@ export type Trabalho = {
   // sozinho; a organização decide o momento clicando "Liberar certificado"
   // na aba Resultado Final (ver trabalhos/page.tsx).
   certificadoLiberado?: boolean;
+  // Top 3 da área temática (2026-09-11) — "aceito" sozinho só significa que
+  // o trabalho participou/foi validado; "premiado" é quem de fato ficou
+  // entre os 3 melhores da área (edital 6.6, "certificado de
+  // reconhecimento"). Decide se o aluno baixa Certificado (premiado) ou
+  // Declaração (aceito, mas não premiado) — ver /api/certificados.
+  premiado?: boolean;
   atualizadoEm?: unknown;
 };
 

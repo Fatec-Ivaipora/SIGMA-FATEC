@@ -32,6 +32,24 @@ const FUNDO_APRESENTACAO = {
   format: "png" as const,
 };
 
+// Assinaturas digitalizadas (2026-09-11) — só o rabisco, recortado da foto
+// original (que também tinha linha + nome + cargo impressos junto) pra
+// sobrepor a própria linha/nome/cargo que a gente já desenha embaixo, sem
+// duplicar nada. Se a pessoa que assina mudar, troca só o arquivo aqui —
+// nome e cargo continuam vindo dos dados do evento.
+const ASSINATURA_JOAO = {
+  data: fs.readFileSync(
+    path.join(process.cwd(), "public", "certificados", "assinatura-joao.jpg"),
+  ),
+  format: "jpg" as const,
+};
+const ASSINATURA_RONI = {
+  data: fs.readFileSync(
+    path.join(process.cwd(), "public", "certificados", "assinatura-roni.jpg"),
+  ),
+  format: "jpg" as const,
+};
+
 const cores = {
   navy900: "#0a2c47",
   navy800: "#0e3a5e",
@@ -97,11 +115,24 @@ const estiloApresentacao = StyleSheet.create({
   assinaturas: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 80,
+    gap: 50,
   },
   assinatura: {
     alignItems: "center",
-    width: 220,
+    // Alargado (2026-09-11) — 220 era estreito demais pro cargo mais longo
+    // ("Coordenador(a) da Pesquisa e Formação Científica"), quebrava em 2
+    // linhas e desalinhava o par (o outro lado, "Diretor Acadêmico", cabe
+    // numa linha só). 290 cabe os dois cargos numa linha, mantendo o par
+    // nivelado.
+    width: 290,
+  },
+  // Altura fixa, não largura (2026-09-11) — as duas assinaturas têm
+  // proporções diferentes; travar a largura igual deixava alturas
+  // diferentes, empurrando a linha de cada lado pra uma posição diferente
+  // (o par ficava "torto"). Com a altura igual, a linha cai no mesmo lugar
+  // nos dois lados, a largura de cada uma varia livre conforme a proporção.
+  imagemAssinatura: {
+    height: 48,
   },
   linhaAssinatura: {
     borderTopWidth: 1,
@@ -136,6 +167,7 @@ export function CertificadoApresentacaoPDF({
   registroNumero,
   diretorNome,
   coordenadorNome,
+  premiado,
 }: {
   nomes: string[];
   eventoNome: string;
@@ -144,6 +176,12 @@ export function CertificadoApresentacaoPDF({
   registroNumero: number;
   diretorNome: string;
   coordenadorNome: string;
+  // Top 3 da área ganha CERTIFICADO ("certificamos", tom de reconhecimento,
+  // edital 6.6); quem participou sem ficar entre os 3 primeiros ganha
+  // DECLARAÇÃO ("declaramos", só comprova participação) — 2026-09-11, mesmo
+  // PDF/estrutura pros dois, só muda essa palavra. Ver trabalho.premiado em
+  // src/lib/data/trabalhos.ts.
+  premiado: boolean;
 }) {
   const plural = nomes.length > 1;
   return (
@@ -151,7 +189,9 @@ export function CertificadoApresentacaoPDF({
       <Page size="A4" orientation="landscape" style={estiloApresentacao.page}>
         <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
         <View style={estiloApresentacao.conteudo}>
-          <Text style={estiloApresentacao.rotulo}>Certificamos que</Text>
+          <Text style={estiloApresentacao.rotulo}>
+            {premiado ? "Certificamos que" : "Declaramos que"}
+          </Text>
           <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes)}</Text>
           <Text style={estiloApresentacao.corpo}>
             {plural ? "participaram" : "participou"} da{" "}
@@ -166,6 +206,7 @@ export function CertificadoApresentacaoPDF({
           </Text>
           <View style={estiloApresentacao.assinaturas}>
             <View style={estiloApresentacao.assinatura}>
+              <Image src={ASSINATURA_RONI} style={estiloApresentacao.imagemAssinatura} />
               <View style={estiloApresentacao.linhaAssinatura} />
               <Text style={estiloApresentacao.nomeAssinatura}>
                 {diretorNome.toUpperCase()}
@@ -175,6 +216,7 @@ export function CertificadoApresentacaoPDF({
               </Text>
             </View>
             <View style={estiloApresentacao.assinatura}>
+              <Image src={ASSINATURA_JOAO} style={estiloApresentacao.imagemAssinatura} />
               <View style={estiloApresentacao.linhaAssinatura} />
               <Text style={estiloApresentacao.nomeAssinatura}>
                 {coordenadorNome.toUpperCase()}
@@ -268,6 +310,14 @@ const estiloDeclaracao = StyleSheet.create({
     alignSelf: "center",
     width: 260,
   },
+  // Altura fixa, não largura (2026-09-11) — as duas assinaturas têm
+  // proporções diferentes; travar a largura igual deixava alturas
+  // diferentes, empurrando a linha de cada lado pra uma posição diferente
+  // (o par ficava "torto"). Com a altura igual, a linha cai no mesmo lugar
+  // nos dois lados, a largura de cada uma varia livre conforme a proporção.
+  imagemAssinatura: {
+    height: 48,
+  },
   linhaAssinatura: {
     borderTopWidth: 1,
     borderTopColor: cores.ink,
@@ -351,6 +401,7 @@ export function DeclaracaoPDF({
         </Text>
 
         <View style={estiloDeclaracao.assinatura}>
+          <Image src={ASSINATURA_RONI} style={estiloDeclaracao.imagemAssinatura} />
           <View style={estiloDeclaracao.linhaAssinatura} />
           <Text style={estiloDeclaracao.nomeAssinatura}>
             {diretorNome.toUpperCase()}

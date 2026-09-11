@@ -51,3 +51,21 @@ export function notificarAtribuicao(
 export function notificarConviteAceito(user: User, trabalhoId: string) {
   void chamar(user, "/api/trabalhos/convite-aceito", { trabalhoId });
 }
+
+// Avisa quem já tem conta que ganhou mais um papel de avaliação (2026-09-11)
+// — ex.: já era avaliador, o admin marcou o checkbox "também atua como
+// moderador". Chamado só na hora de ADICIONAR um papel (não ao desmarcar) —
+// ver o onChange do checkbox em src/app/usuarios/page.tsx. A conta nova
+// (criada do zero) já recebe esse aviso embutido na criação, direto em
+// /api/usuarios — essa rota aqui é só pra quem já existia.
+export function notificarNovoPapel(user: User, uid: string, papel: "avaliador" | "orientador" | "moderador") {
+  void chamar(user, "/api/mail/novo-papel", { uid, papel });
+}
+
+// Alerta de segurança (2026-09-11): avisa TODOS os autores (feed + e-mail)
+// quando um admin edita o trabalho deles por fora do fluxo normal — nunca
+// silencioso, mesmo que o admin esteja agindo de boa-fé. Ver
+// /api/trabalhos/alterado-admin.
+export function notificarAlteracaoAdmin(user: User, trabalhoId: string, destinatariosUids: string[]) {
+  void chamar(user, "/api/trabalhos/alterado-admin", { trabalhoId, destinatariosUids });
+}

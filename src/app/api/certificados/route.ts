@@ -84,20 +84,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const papel = url.searchParams.get("papel") as Papel | null;
 
-  if (papel === "orientador") {
-    return NextResponse.json(
-      {
-        erro:
-          "Declaração de orientador ainda não é gerada automaticamente — o orientador é só um campo de texto livre no trabalho, sem conta vinculada no sistema.",
-      },
-      { status: 400 },
-    );
-  }
   if (
     papel !== "aluno" &&
     papel !== "avaliador" &&
     papel !== "moderador" &&
-    papel !== "monitor"
+    papel !== "monitor" &&
+    papel !== "orientador"
   ) {
     return NextResponse.json({ erro: "Papel inválido." }, { status: 400 });
   }
@@ -105,6 +97,75 @@ export async function GET(request: Request) {
   const db = getAdminDb();
   const chamadorSnap = await db.doc(`usuarios/${uid}`).get();
   const chamador = chamadorSnap.data();
+
+  // Orientador nunca é auto-atendimento (2026-09-11) — é só texto livre no
+  // trabalho, sem conta vinculada, então só admin/organização emite, sempre
+  // a partir de um trabalho de verdade (nunca aceita o nome vindo solto do
+  // client, sempre lê trabalho.nomeOrientador do Firestore).
+  if (papel === "orientador") {
+    const trabalhoId = url.searchParams.get("trabalhoId");
+    if (!trabalhoId) {
+      return NextResponse.json({ erro: "trabalhoId é obrigatório." }, { status: 400 });
+    }
+    const trabalhoSnap = await db.doc(`trabalhos/${trabalhoId}`).get();
+    const trabalho = trabalhoSnap.data();
+    if (!trabalho) {
+      return NextResponse.json({ erro: "Trabalho não encontrado." }, { status: 404 });
+    }
+    const ehStaffDoEvento =
+      chamador?.papel === "admin" ||
+      (chamador?.papel === "organizacao" &&
+        (chamador?.eventosPermitidos ?? []).includes(trabalho.eventoId));
+    if (!ehStaffDoEvento) {
+      return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });
+    }
+    if (!trabalho.nomeOrientador) {
+      return NextResponse.json(
+        { erro: "Esse trabalho não tem orientador cadastrado." },
+        { status: 400 },
+      );
+    }
+    if (trabalho.status !== "aceito") {
+      return NextResponse.json(
+        { erro: "Esse trabalho ainda não teve o resultado final aceito." },
+        { status: 400 },
+      );
+    }
+
+    const eventoSnap = await db.doc(`eventos/${trabalho.eventoId}`).get();
+    const evento = eventoSnap.data();
+    if (!evento) {
+      return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
+    }
+    const faltando = faltandoDadosEvento(evento, papel);
+    if (faltando.length > 0) {
+      return NextResponse.json(
+        {
+          erro: `O evento "${evento.nome}" ainda não tem os seguintes dados de certificado configurados: ${faltando.join(", ")}. Peça pro admin preencher em Eventos → Certificado.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const buffer = await renderToBuffer(
+      DeclaracaoPDF({
+        nome: trabalho.nomeOrientador as string,
+        papel: "orientador",
+        eventoNome: evento.nome as string,
+        dataRealizacao: evento.dataRealizacao as string,
+        cargaHoraria: evento.cargaHoraria as number,
+        diretorNome: evento.nomeDiretorAcademico as string,
+        dataAssinatura: hoje,
+      }),
+    );
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="declaracao-orientador-${slug(trabalho.nomeOrientador as string)}.pdf"`,
+      },
+    });
+  }
 
   // Certificado de apresentação (aluno) — específico de um trabalho.
   if (papel === "aluno") {
@@ -193,6 +254,7 @@ export async function GET(request: Request) {
     ];
     if (trabalho.nomeOrientador) nomes.push(trabalho.nomeOrientador as string);
 
+    const premiado = trabalho.premiado === true;
     const buffer = await renderToBuffer(
       CertificadoApresentacaoPDF({
         nomes,
@@ -202,13 +264,15 @@ export async function GET(request: Request) {
         registroNumero: numero,
         diretorNome: evento.nomeDiretorAcademico as string,
         coordenadorNome: evento.nomeCoordenadorPesquisa as string,
+        premiado,
       }),
     );
 
+    const prefixoArquivo = premiado ? "certificado" : "declaracao";
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="certificado-${slug(trabalho.alunoNome as string)}.pdf"`,
+        "Content-Disposition": `attachment; filename="${prefixoArquivo}-${slug(trabalho.alunoNome as string)}.pdf"`,
       },
     });
   }
@@ -225,8 +289,13 @@ export async function GET(request: Request) {
       chamador?.papel === "admin" ||
       (chamador?.papel === "organizacao" &&
         (chamador?.eventosPermitidos ?? []).includes(eventoId));
+    // uidAlvo (2026-09-11) — admin/organização emitindo em nome de outra
+    // pessoa (tela de Declarações → "Emitir certificado"), não pra si
+    // mesmo. Só staff pode mirar outro uid; qualquer um continua vendo só
+    // o próprio.
+    const uidAlvo = ehStaff ? (url.searchParams.get("uidAlvo") ?? uid) : uid;
 
-    const monitorSnap = await db.doc(`monitoresEvento/${eventoId}::${uid}`).get();
+    const monitorSnap = await db.doc(`monitoresEvento/${eventoId}::${uidAlvo}`).get();
     const monitor = monitorSnap.data();
     if (!monitor) {
       return NextResponse.json(
@@ -292,6 +361,8 @@ export async function GET(request: Request) {
     chamador?.papel === "admin" ||
     (chamador?.papel === "organizacao" &&
       (chamador?.eventosPermitidos ?? []).includes(eventoId));
+  // uidAlvo (2026-09-11) — mesmo mecanismo do monitor acima, ver comentário lá.
+  const uidAlvo = ehStaff ? (url.searchParams.get("uidAlvo") ?? uid) : uid;
 
   const campoUid = papel === "avaliador" ? "avaliadorUid" : "moderadorUid";
   const campoNome = papel === "avaliador" ? "avaliadorNome" : "moderadorNome";
@@ -299,7 +370,7 @@ export async function GET(request: Request) {
   const trabalhosSnap = await db
     .collection("trabalhos")
     .where("eventoId", "==", eventoId)
-    .where(campoUid, "==", uid)
+    .where(campoUid, "==", uidAlvo)
     .where("status", "==", "aceito")
     .get();
 

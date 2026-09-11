@@ -56,6 +56,14 @@ const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: st
     fundo: "bg-fatec-navy-50",
   },
   pagamento: { icone: Wallet, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+  // Destaque proposital em âmbar (2026-09-11) — é um aviso de segurança
+  // (alguém da coordenação mexeu no trabalho por fora do fluxo normal),
+  // precisa chamar mais atenção que uma atualização de rotina.
+  trabalho_alterado_admin: {
+    icone: AlertTriangle,
+    cor: "bg-amber-100 text-amber-700",
+    fundo: "bg-amber-50",
+  },
 };
 
 /** "9 de set., 14:32" — formato compacto pro feed (Timestamp do Firestore,

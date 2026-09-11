@@ -19,6 +19,7 @@ import {
   atualizarPapeisAvaliacaoUsuario,
   type UsuarioRegistro,
 } from "@/lib/data/usuarios";
+import { notificarNovoPapel } from "@/lib/notificarEmail";
 
 const FILTROS: { label: string; papel: Papel | "todos" }[] = [
   { label: "Todos", papel: "todos" },
@@ -610,10 +611,12 @@ export default function UsuariosPage() {
                     checked={!!editando.papeisAvaliacao?.includes(p)}
                     onChange={() => {
                       const atuais = editando.papeisAvaliacao ?? [editando.papel as PapelAvaliacao];
-                      const novos = atuais.includes(p)
-                        ? atuais.filter((x) => x !== p)
-                        : [...atuais, p];
+                      const ganhando = !atuais.includes(p);
+                      const novos = ganhando ? [...atuais, p] : atuais.filter((x) => x !== p);
                       atualizarPapeisAvaliacaoUsuario(editando.uid, editando.papel, novos);
+                      // Avisa por e-mail só ao GANHAR um papel (2026-09-11) —
+                      // desmarcar não notifica ninguém.
+                      if (ganhando && user) notificarNovoPapel(user, editando.uid, p);
                       setEditando({ ...editando, papeisAvaliacao: novos });
                     }}
                     className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"

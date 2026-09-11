@@ -15,7 +15,13 @@ export type TipoAtividade =
   | "nao_aceito"
   | "convite_aceito"
   | "pagamento"
-  | "atribuicao";
+  | "atribuicao"
+  // Admin corrigiu um trabalho por fora do fluxo normal (2026-09-11) —
+  // avisa TODOS os autores, sempre, mesmo sem eles pedirem nada: é uma
+  // transparência de segurança (ver /api/trabalhos/alterado-admin), pra
+  // ninguém conseguir mexer no trabalho de outra pessoa sem que isso deixe
+  // rastro visível pra quem é dono dele.
+  | "trabalho_alterado_admin";
 
 /** Grava uma linha no feed pessoal de alguém — só server-side (Admin SDK),
  * nunca chamado do client. "Melhor esforço": erro aqui nunca deve derrubar

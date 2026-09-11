@@ -1,20 +1,40 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronDown, Send, Minus, Plus, Check, X, Award, ListChecks, Scale } from "lucide-react";
+import {
+  Search,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpDown,
+  Send,
+  Minus,
+  Plus,
+  Check,
+  X,
+  Award,
+  ListChecks,
+  Scale,
+} from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DetalheTrabalhoModal } from "@/components/DetalheTrabalhoModal";
+import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
-import { useTrabalhos, type TrabalhoStatus, type Trabalho } from "@/lib/data/trabalhos";
+import { useTrabalhos, type TrabalhoStatus, type Trabalho, atualizarTrabalho } from "@/lib/data/trabalhos";
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
-import { notificarAtribuicao, notificarStatusTrabalho } from "@/lib/notificarEmail";
+import {
+  notificarAtribuicao,
+  notificarStatusTrabalho,
+  notificarConviteColega,
+  notificarAlteracaoAdmin,
+} from "@/lib/notificarEmail";
 
 type Etapa =
   | "submissao"
@@ -50,6 +70,17 @@ const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> =
   resultado: "moderador",
 };
 
+// Status que significam "já passou pela avaliação" — usado pro pódio por
+// área considerar todo mundo que já tem nota, mesmo quem já saiu de
+// "avaliado" (ver analiseResultadoPorArea).
+const STATUS_JA_AVALIADO: TrabalhoStatus[] = [
+  "avaliado",
+  "aguardando_apresentacao",
+  "apresentado",
+  "aceito",
+  "nao_aceito",
+];
+
 function formatarData(valor: unknown): string {
   if (!valor || typeof valor !== "object" || !("toDate" in valor)) return "—";
   return (valor as { toDate(): Date }).toDate().toLocaleDateString("pt-BR");
@@ -76,7 +107,7 @@ function CelulaSituacaoPagamento({ trabalho, evento }: { trabalho: Trabalho; eve
   const pago = inscricao?.status === "pago";
   return (
     <span
-      className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+      className={`inline-flex w-fit items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
         pago ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
       }`}
     >
@@ -101,6 +132,67 @@ export default function TrabalhosAdminPage() {
   // organização não tinha como saber quem precisa da apresentação pra
   // desempatar.
   const [soEmpatados, setSoEmpatados] = useState(false);
+
+  // Ordenação por nota (2026-09-11, pedido explícito) — clicar no cabeçalho
+  // alterna maior→menor / menor→maior; null = ordem padrão (como veio do
+  // Firestore). É UMA SÓ ordenação mesmo em Resultado Final, onde a tabela
+  // mostra nota av e nota apr em colunas separadas (transparência de onde
+  // veio o resultado — ver trabalhosExibidos) mas ambas ordenam pelo mesmo
+  // critério: quem tem as duas notas ordena pela SOMA (é o placar real de
+  // quem passou por desempate); quem só tem av ordena só por ela. Ordenar
+  // cada coluna separadamente foi tentado e revertido (2026-09-11): dá
+  // ranking capenga, ex. 25 av + 24 apr (total 49) aparecia atrás de 10 av +
+  // 25 apr (total 35) se você olhasse só a coluna apr.
+  const [direcaoOrdenacaoNota, setDirecaoOrdenacaoNota] = useState<"desc" | "asc" | null>(null);
+  const alternarOrdenacaoNota = () =>
+    setDirecaoOrdenacaoNota((atual) => (atual === "desc" ? "asc" : "desc"));
+
+  // Ver detalhes / editar um trabalho (2026-09-11) — clicar no título da
+  // tabela abre o resumo completo; "Editar" (só admin) troca pro mesmo
+  // wizard de submissão em modo edição, pra corrigir casos excepcionais
+  // (prazo perdido, orientador errado, colega esquecido etc — admin já tem
+  // update liberado em firestore.rules, sem trava de prazo).
+  const [trabalhoDetalhe, setTrabalhoDetalhe] = useState<Trabalho | null>(null);
+  const [trabalhoEditando, setTrabalhoEditando] = useState<Trabalho | null>(null);
+
+  // Mesma lógica de src/app/aluno/trabalhos/page.tsx#salvarEdicao (convite
+  // pendente só pra colega novo, reenvia pra avaliação se estava em
+  // "revisao") — admin corrigindo em casos excepcionais segue as mesmas
+  // regras de consistência, só que sem a trava de prazo (essa já não existe
+  // pro update dele em firestore.rules).
+  async function salvarEdicaoAdmin(trabalho: Trabalho, dados: DadosSubmissao) {
+    const uidsAntigos = new Set(trabalho.participantesUids ?? []);
+    const novosConvites = dados.participantesUids.filter((uid) => !uidsAntigos.has(uid));
+    const convitesPendentes = Array.from(
+      new Set([
+        ...(trabalho.convitesPendentes ?? []).filter((uid) =>
+          dados.participantesUids.includes(uid),
+        ),
+        ...novosConvites,
+      ]),
+    );
+    await atualizarTrabalho(trabalho.id, {
+      ...dados,
+      convitesPendentes,
+      ...(trabalho.status === "revisao"
+        ? { status: "aguardando_avaliacao" as const, comentarioRevisao: null }
+        : {}),
+      atualizadoEm: serverTimestamp(),
+    });
+    if (user) {
+      novosConvites.forEach((colegaUid) => notificarConviteColega(user, trabalho.id, colegaUid));
+
+      // Alerta de segurança (2026-09-11, pedido explícito): TODOS os
+      // autores de antes e depois da edição ficam sabendo que um admin
+      // mexeu no trabalho — inclusive quem acabou de ser removido agora
+      // mesmo, pra não sumir sem explicação nenhuma.
+      const destinatarios = Array.from(
+        new Set([trabalho.alunoUid, ...uidsAntigos, ...dados.participantesUids]),
+      );
+      notificarAlteracaoAdmin(user, trabalho.id, destinatarios);
+    }
+    setTrabalhoEditando(null);
+  }
 
   // Pré-seleciona o evento em destaque assim que a lista carrega, só na
   // primeira vez (2026-08-31) — evita ter que escolher toda vez o evento que
@@ -129,6 +221,7 @@ export default function TrabalhosAdminPage() {
   >([]);
   const [modoManual, setModoManual] = useState(false);
   const [menuLoteAberto, setMenuLoteAberto] = useState(false);
+  const [menuResultadoAberto, setMenuResultadoAberto] = useState(false);
 
   // Seleção não sobrevive troca de etapa (2026-08-25 -> agora tem 2 etapas
   // selecionáveis, Submissão e Resultado, então isso passa a importar de
@@ -136,6 +229,8 @@ export default function TrabalhosAdminPage() {
   function setEtapa(nova: Etapa) {
     setEtapaBruta(nova);
     setSelecionados(new Set());
+    setDirecaoOrdenacaoNota(null);
+    setMenuResultadoAberto(false);
   }
 
   const todosLabel =
@@ -150,29 +245,88 @@ export default function TrabalhosAdminPage() {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
   }, [eventos, eventoId]);
 
-  // Ids de trabalhos empatados: mesma notaAvaliador que pelo menos outro
-  // trabalho, dentro do mesmo evento + área temática — calculado sobre TODOS
-  // os trabalhos (não só os já filtrados), pra não depender de busca/etapa
-  // ativa na hora de decidir quem empatou de verdade.
-  const idsEmpatados = useMemo(() => {
-    const porGrupo = new Map<string, Map<number, string[]>>();
+  // Análise de ranking por área temática (2026-09-11, substitui o "empate"
+  // ingênuo de antes, que marcava qualquer nota repetida — mesmo empatados
+  // em 8º lugar, o que não tinha nada a ver com o pódio). Só interessa
+  // empate na FRONTEIRA do top 3 (edital 6.6): quem tira nota acima do
+  // corte já é premiado direto; quem tira abaixo já não é, sem precisar de
+  // apresentação nenhuma; só quem empata bem na 3ª vaga (ou disputa ela)
+  // precisa ir pro moderador desempatar.
+  //
+  // IMPORTANTE (bug real, achado testando em 2026-09-11): o pódio da área
+  // tem que ser calculado sobre TODO MUNDO que já foi avaliado ali, mesmo
+  // quem já saiu de "avaliado" (porque já foi aceito/premiado antes). Se
+  // filtrássemos só por status === "avaliado", clicar "Aceitar sem empate"
+  // tira os não-empatados da lista e o cálculo seguinte recalcula o corte
+  // só com quem sobrou — aí um trio empatado na 3ª vaga "esquece" que já
+  // tinha 2 trabalhos melhores aceitos antes dele e vira "cabe todo mundo,
+  // sem empate" por engano. Por isso o pool aqui é qualquer trabalho que já
+  // passou pela avaliação (tem nota), não só quem ainda está pendurado.
+  type AnaliseArea = {
+    premiadosDiretos: string[];
+    aceitosDiretos: string[];
+    empatados: string[];
+  };
+  const analiseResultadoPorArea = useMemo(() => {
+    const porGrupo = new Map<string, Trabalho[]>();
     for (const t of trabalhos) {
-      if (typeof t.notaAvaliador !== "number") continue;
+      if (!STATUS_JA_AVALIADO.includes(t.status) || typeof t.notaAvaliador !== "number") continue;
       const chave = `${t.eventoId}::${t.areaTematica}`;
-      const porNota = porGrupo.get(chave) ?? new Map<number, string[]>();
-      porGrupo.set(chave, porNota);
-      const ids = porNota.get(t.notaAvaliador) ?? [];
-      ids.push(t.id);
-      porNota.set(t.notaAvaliador, ids);
+      const lista = porGrupo.get(chave) ?? [];
+      lista.push(t);
+      porGrupo.set(chave, lista);
     }
-    const empatados = new Set<string>();
-    for (const porNota of porGrupo.values()) {
-      for (const ids of porNota.values()) {
-        if (ids.length > 1) ids.forEach((id) => empatados.add(id));
+    const resultado = new Map<string, AnaliseArea>();
+    for (const [chave, lista] of porGrupo) {
+      const ordenados = [...lista].sort(
+        (a, b) => (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0),
+      );
+      // Área com 3 ou menos trabalhos: todo mundo cabe no pódio, sem disputa.
+      if (ordenados.length <= 3) {
+        resultado.set(chave, {
+          premiadosDiretos: ordenados.map((t) => t.id),
+          aceitosDiretos: [],
+          empatados: [],
+        });
+        continue;
+      }
+      // Nota de quem está na 3ª posição depois de ordenar — não "o 3º valor
+      // distinto" (testado e corrigido, 2026-09-11: com nota repetida os
+      // dois viram coisas diferentes. Ex.: 25, 20, 20, 15 — o 3º valor
+      // distinto seria 15, mas quem está na 3ª posição tem nota 20; usar o
+      // valor distinto errado tratava 15 como fronteira do pódio quando na
+      // real o pódio (25+20+20) já estava fechado sem disputa nenhuma).
+      const corteNota = ordenados[2].notaAvaliador as number;
+      const acimaCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) > corteNota);
+      const noCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) === corteNota);
+      const abaixoCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) < corteNota);
+      const vagasRestantes = 3 - acimaCorte.length;
+      if (noCorte.length <= vagasRestantes) {
+        // Cabe todo mundo do corte nas vagas que sobraram — não é empate de verdade.
+        resultado.set(chave, {
+          premiadosDiretos: [...acimaCorte, ...noCorte].map((t) => t.id),
+          aceitosDiretos: abaixoCorte.map((t) => t.id),
+          empatados: [],
+        });
+      } else {
+        // Mais gente empatada na fronteira do que vaga sobrando — precisa desempate.
+        resultado.set(chave, {
+          premiadosDiretos: acimaCorte.map((t) => t.id),
+          aceitosDiretos: abaixoCorte.map((t) => t.id),
+          empatados: noCorte.map((t) => t.id),
+        });
       }
     }
-    return empatados;
+    return resultado;
   }, [trabalhos]);
+
+  const idsEmpatados = useMemo(() => {
+    const empatados = new Set<string>();
+    for (const analise of analiseResultadoPorArea.values()) {
+      analise.empatados.forEach((id) => empatados.add(id));
+    }
+    return empatados;
+  }, [analiseResultadoPorArea]);
 
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -189,6 +343,37 @@ export default function TrabalhosAdminPage() {
       return bateEtapa && bateEvento && bateArea && bateEmpate && bateBusca;
     });
   }, [trabalhos, busca, eventoId, areaFiltro, etapa, soEmpatados, idsEmpatados]);
+
+  // Lista exibida na tabela — igual a trabalhosFiltrados, só que reordenada
+  // por nota quando o usuário clica no cabeçalho (ver direcaoOrdenacaoNota
+  // acima). Mantida separada de trabalhosFiltrados de propósito: a ordem "de
+  // chegada" continua sendo usada pra dividir trabalhos entre
+  // avaliadores/moderadores de forma estável, e não deve mudar só porque a
+  // organização reordenou a tabela pra olhar as notas.
+  const trabalhosExibidos = useMemo(() => {
+    if (!direcaoOrdenacaoNota) return trabalhosFiltrados;
+    // Resultado Final ordena pela SOMA (av + apr) — é o placar real de quem
+    // passou por desempate; quem só tem av (venceu sem precisar de
+    // apresentação) ordena só por ela.
+    const valorDe = (t: Trabalho) =>
+      etapa === "resultado_final"
+        ? typeof t.notaModerador === "number"
+          ? (t.notaAvaliador ?? 0) + t.notaModerador
+          : t.notaAvaliador
+        : t.notaAvaliador;
+    const sinal = direcaoOrdenacaoNota === "desc" ? -1 : 1;
+    return [...trabalhosFiltrados].sort((a, b) => {
+      const va = valorDe(a);
+      const vb = valorDe(b);
+      const na = typeof va === "number";
+      const nb = typeof vb === "number";
+      // Quem não tem nota nenhuma fica sempre por último, nas duas direções.
+      if (na && nb) return sinal * (va - vb);
+      if (na) return -1;
+      if (nb) return 1;
+      return 0;
+    });
+  }, [trabalhosFiltrados, direcaoOrdenacaoNota, etapa]);
 
   // Orientador pode ser alocado como avaliador de um evento (2026-08-25, RF-46).
   const avaliadoresDisponiveis = useMemo(
@@ -436,13 +621,25 @@ export default function TrabalhosAdminPage() {
   }
 
   /** Etapa Resultado Final (2026-08-26) — organização confirma aceite,
-   * fecha a pendência 8.2 (RF-19). */
-  async function decidirResultado(id: string, aceitar: boolean) {
+   * fecha a pendência 8.2 (RF-19). Redesenhado em 2026-09-11: quem chega
+   * aqui já passou por apresentação porque empatou na fronteira do top 3 —
+   * "aceitar" sozinho não significa mais "ganhou", significa só "participou
+   * de verdade". `premiado` marca quem de fato ficou com a vaga que sobrou
+   * no pódio (decide Certificado x Declaração na hora de baixar). "Recusar"
+   * continua existindo só pra reprovação de verdade (raro), nunca é o
+   * destino padrão de quem perdeu o desempate. */
+  async function decidirResultado(
+    id: string,
+    decisao: "premiar" | "aceitar" | "recusar",
+  ) {
     await updateDoc(doc(db, "trabalhos", id), {
-      status: aceitar ? "aceito" : "nao_aceito",
+      status: decisao === "recusar" ? "nao_aceito" : "aceito",
+      premiado: decisao === "premiar",
       atualizadoEm: serverTimestamp(),
     });
-    if (user) notificarStatusTrabalho(user, id, aceitar ? "aceito" : "nao_aceito");
+    if (user) {
+      notificarStatusTrabalho(user, id, decisao === "recusar" ? "nao_aceito" : "aceito");
+    }
   }
 
   /** Libera o certificado/declaração pro aluno/avaliador/moderador verem na
@@ -477,15 +674,78 @@ export default function TrabalhosAdminPage() {
     await batch.commit();
   }
 
+  // Resolve de uma vez toda área que NÃO tem empate na fronteira do top 3
+  // (2026-09-11) — pega analiseResultadoPorArea (já filtrado pro evento
+  // selecionado) e aceita direto: premiadosDiretos vira aceito+premiado,
+  // aceitosDiretos vira só aceito. Quem está com empate (analise.empatados)
+  // fica de fora, esperando a apresentação — continua indo por "Enviar para
+  // apresentação" do jeito que já funciona.
+  const podeAceitarSemEmpate = etapa === "resultado" && eventoId !== "todos";
+
+  // analiseResultadoPorArea agora olha o pódio inteiro da área (ver comentário
+  // acima), então premiadosDiretos/aceitosDiretos podem incluir trabalhos que
+  // já foram resolvidos antes — aqui só interessa quem ainda está esperando
+  // decisão (status "avaliado" de verdade).
+  const idsAindaAvaliado = useMemo(
+    () => new Set(trabalhos.filter((t) => t.status === "avaliado").map((t) => t.id)),
+    [trabalhos],
+  );
+
+  const resumoAceiteSemEmpate = useMemo(() => {
+    if (!podeAceitarSemEmpate) return { premiados: 0, aceitos: 0 };
+    let premiados = 0;
+    let aceitos = 0;
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (!chave.startsWith(`${eventoId}::`)) continue;
+      premiados += analise.premiadosDiretos.filter((id) => idsAindaAvaliado.has(id)).length;
+      aceitos += analise.aceitosDiretos.filter((id) => idsAindaAvaliado.has(id)).length;
+    }
+    return { premiados, aceitos };
+  }, [analiseResultadoPorArea, eventoId, podeAceitarSemEmpate, idsAindaAvaliado]);
+
+  async function aceitarSemEmpate() {
+    if (eventoId === "todos") return;
+    const batch = writeBatch(db);
+    const idsNotificar: string[] = [];
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (!chave.startsWith(`${eventoId}::`)) continue;
+      for (const id of analise.premiadosDiretos) {
+        if (!idsAindaAvaliado.has(id)) continue;
+        batch.update(doc(db, "trabalhos", id), {
+          status: "aceito",
+          premiado: true,
+          atualizadoEm: serverTimestamp(),
+        });
+        idsNotificar.push(id);
+      }
+      for (const id of analise.aceitosDiretos) {
+        if (!idsAindaAvaliado.has(id)) continue;
+        batch.update(doc(db, "trabalhos", id), {
+          status: "aceito",
+          premiado: false,
+          atualizadoEm: serverTimestamp(),
+        });
+        idsNotificar.push(id);
+      }
+    }
+    if (idsNotificar.length === 0) return;
+    await batch.commit();
+    if (user) idsNotificar.forEach((id) => notificarStatusTrabalho(user, id, "aceito"));
+  }
+
   // Aceita em lote os selecionados que estão "apresentado" (2026-08-31,
   // função em lote pra não precisar clicar ✓ um por um em eventos grandes —
   // chegaram a ter 600+ trabalhos na MAC). Ignora silenciosamente quem foi
-  // selecionado mas já não está mais aguardando decisão.
+  // selecionado mas já não está mais aguardando decisão. Sempre premiado:false
+  // (2026-09-11) — premiar é decisão individual, deliberada, por linha
+  // ("Premiar" no lugar do ✓ antigo); o lote é só pra aceitar em massa quem
+  // já não vai ficar com a vaga do pódio.
   async function aceitarTodosSelecionados() {
     const batch = writeBatch(db);
     for (const t of selecionadosElegiveisParaAceite) {
       batch.update(doc(db, "trabalhos", t.id), {
         status: "aceito",
+        premiado: false,
         atualizadoEm: serverTimestamp(),
       });
     }
@@ -642,86 +902,143 @@ export default function TrabalhosAdminPage() {
               </button>
             </div>
 
-            {ETAPA_PARA_PAPEL_ALVO[etapa] && (
-              <button
-                type="button"
-                disabled={selecionados.size === 0}
-                onClick={() => abrirModalEnviar(ETAPA_PARA_PAPEL_ALVO[etapa]!)}
-                className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
-              >
-                <Send className="h-4 w-4" strokeWidth={1.75} />
-                {ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
-                  ? "Enviar para avaliação"
-                  : "Enviar para apresentação"}
-                {selecionados.size > 0 && ` (${selecionados.size})`}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {podeAceitarSemEmpate ? (
+                <div className="relative flex-none">
+                  <button
+                    type="button"
+                    onClick={() => setMenuResultadoAberto((v) => !v)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                  >
+                    <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    Ações do resultado
+                    <ChevronDown className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  </button>
 
-            {podeLiberarCertificados && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setMenuLoteAberto((v) => !v)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
-                >
-                  <ListChecks className="h-4 w-4" strokeWidth={1.75} />
-                  Funções em lote
-                  <ChevronDown className="h-4 w-4" strokeWidth={1.75} />
-                </button>
+                  {menuResultadoAberto && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setMenuResultadoAberto(false)}
+                      />
+                      <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-fatec-line bg-white p-1.5 shadow-lg">
+                        <button
+                          type="button"
+                          disabled={
+                            resumoAceiteSemEmpate.premiados + resumoAceiteSemEmpate.aceitos === 0
+                          }
+                          onClick={() => {
+                            aceitarSemEmpate();
+                            setMenuResultadoAberto(false);
+                          }}
+                          title="Resolve de uma vez toda área sem empate na fronteira do top 3 — os 3 melhores viram Aceito+Premiado, o resto vira só Aceito. Quem está empatado fica de fora, esperando ir pra apresentação."
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Check className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Aceitar sem empate
+                          {resumoAceiteSemEmpate.premiados + resumoAceiteSemEmpate.aceitos > 0 &&
+                            ` (${resumoAceiteSemEmpate.premiados + resumoAceiteSemEmpate.aceitos})`}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selecionados.size === 0}
+                          onClick={() => {
+                            abrirModalEnviar("moderador");
+                            setMenuResultadoAberto(false);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Enviar para apresentação
+                          {selecionados.size > 0 && ` (${selecionados.size})`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                ETAPA_PARA_PAPEL_ALVO[etapa] && (
+                  <button
+                    type="button"
+                    disabled={selecionados.size === 0}
+                    onClick={() => abrirModalEnviar(ETAPA_PARA_PAPEL_ALVO[etapa]!)}
+                    className="flex flex-none items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+                  >
+                    <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    {ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
+                      ? "Enviar para avaliação"
+                      : "Enviar para apresentação"}
+                    {selecionados.size > 0 && ` (${selecionados.size})`}
+                  </button>
+                )
+              )}
 
-                {menuLoteAberto && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setMenuLoteAberto(false)}
-                    />
-                    <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-fatec-line bg-white p-1.5 shadow-lg">
-                      <button
-                        type="button"
-                        disabled={selecionadosElegiveisParaAceite.length === 0}
-                        onClick={() => {
-                          aceitarTodosSelecionados();
-                          setMenuLoteAberto(false);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
-                      >
-                        <Check className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                        Aceitar todos selecionados
-                        {selecionadosElegiveisParaAceite.length > 0 &&
-                          ` (${selecionadosElegiveisParaAceite.length})`}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={
-                          trabalhosPendentesDeLiberacao.length === 0 &&
-                          monitoresPendentesDeLiberacao.length === 0
-                        }
-                        onClick={() => {
-                          liberarTodosCertificados();
-                          setMenuLoteAberto(false);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
-                      >
-                        <Award className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                        Emitir certificados
-                        {trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length >
-                          0 &&
-                          ` (${trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length})`}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+              {podeLiberarCertificados && (
+                <div className="relative flex-none">
+                  <button
+                    type="button"
+                    onClick={() => setMenuLoteAberto((v) => !v)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                  >
+                    <ListChecks className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    Funções em lote
+                    <ChevronDown className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  </button>
+
+                  {menuLoteAberto && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setMenuLoteAberto(false)}
+                      />
+                      <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-fatec-line bg-white p-1.5 shadow-lg">
+                        <button
+                          type="button"
+                          disabled={selecionadosElegiveisParaAceite.length === 0}
+                          onClick={() => {
+                            aceitarTodosSelecionados();
+                            setMenuLoteAberto(false);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Check className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Aceitar todos selecionados
+                          {selecionadosElegiveisParaAceite.length > 0 &&
+                            ` (${selecionadosElegiveisParaAceite.length})`}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            trabalhosPendentesDeLiberacao.length === 0 &&
+                            monitoresPendentesDeLiberacao.length === 0
+                          }
+                          onClick={() => {
+                            liberarTodosCertificados();
+                            setMenuLoteAberto(false);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Award className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Emitir certificados
+                          {trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length >
+                            0 &&
+                            ` (${trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length})`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-4 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-fatec-line text-xs uppercase tracking-[-0.01em] text-fatec-muted">
                     {mostrarCheckbox && (
-                      <th className="w-10 px-6 py-3">
+                      <th className="w-10 px-3 py-2">
                         <input
                           type="checkbox"
                           aria-label="Selecionar todos"
@@ -731,39 +1048,88 @@ export default function TrabalhosAdminPage() {
                         />
                       </th>
                     )}
-                    <th className="px-6 py-3 font-semibold">Trabalho</th>
-                    <th className="px-6 py-3 font-semibold">Evento</th>
-                    <th className="px-6 py-3 font-semibold">Área temática</th>
+                    <th className="px-3 py-2 font-semibold">Trabalho</th>
+                    <th className="px-3 py-2 font-semibold">Evento</th>
+                    <th className="px-3 py-2 font-semibold">Área temática</th>
                     {etapa !== "submissao" && (
-                      <th className="px-6 py-3 font-semibold">Avaliador</th>
+                      <th className="px-3 py-2 font-semibold">Avaliador</th>
                     )}
                     {(etapa === "apresentacao" || etapa === "resultado_final") && (
-                      <th className="px-6 py-3 font-semibold">Moderador</th>
+                      <th className="px-3 py-2 font-semibold">Moderador</th>
                     )}
-                    <th className="px-6 py-3 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
                     {etapa === "resultado" && (
-                      <th className="px-6 py-3 font-semibold">Nota avaliador (/25)</th>
-                    )}
-                    {etapa === "resultado_final" && (
-                      <th className="px-6 py-3 font-semibold">Nota final (/50)</th>
-                    )}
-                    <th className="px-6 py-3 font-semibold">Atualizado</th>
-                    <th className="px-6 py-3 font-semibold">Situação</th>
-                    {etapa === "resultado_final" && (
-                      <th className="px-6 py-3 font-semibold">
-                        <span className="sr-only">Ações</span>
+                      <th className="px-3 py-2 text-center font-semibold">
+                        <button
+                          type="button"
+                          onClick={alternarOrdenacaoNota}
+                          className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
+                        >
+                          Nota av (/25)
+                          {direcaoOrdenacaoNota === "desc" ? (
+                            <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                          ) : direcaoOrdenacaoNota === "asc" ? (
+                            <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+                          )}
+                        </button>
                       </th>
+                    )}
+                    {etapa === "resultado_final" && (
+                      <>
+                        <th className="px-3 py-2 text-center font-semibold" title="Nota da avaliação">
+                          <button
+                            type="button"
+                            onClick={alternarOrdenacaoNota}
+                            className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
+                          >
+                            Nota av (/25)
+                            {direcaoOrdenacaoNota === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : direcaoOrdenacaoNota === "asc" ? (
+                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : (
+                              <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            )}
+                          </button>
+                        </th>
+                        <th
+                          className="px-3 py-2 text-center font-semibold"
+                          title="Nota da apresentação — só existe pra quem precisou de desempate. Ordena junto com a nota av, pela soma das duas."
+                        >
+                          <button
+                            type="button"
+                            onClick={alternarOrdenacaoNota}
+                            className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
+                          >
+                            Nota apr (/25)
+                            {direcaoOrdenacaoNota === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : direcaoOrdenacaoNota === "asc" ? (
+                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : (
+                              <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            )}
+                          </button>
+                        </th>
+                      </>
+                    )}
+                    <th className="px-3 py-2 font-semibold">Atualizado</th>
+                    <th className="px-3 py-2 font-semibold">Situação</th>
+                    {etapa === "resultado_final" && (
+                      <th className="border-l border-fatec-line px-4 py-2 font-semibold">Ações</th>
                     )}
                   </tr>
                 </thead>
                 <tbody>
-                  {trabalhosFiltrados.map((t) => (
+                  {trabalhosExibidos.map((t) => (
                     <tr
                       key={t.id}
                       className="border-b border-fatec-line last:border-0 hover:bg-fatec-navy-50/60"
                     >
                       {mostrarCheckbox && (
-                        <td className="px-6 py-4 align-top">
+                        <td className="px-3 py-2.5 align-top">
                           <input
                             type="checkbox"
                             checked={selecionados.has(t.id)}
@@ -772,62 +1138,89 @@ export default function TrabalhosAdminPage() {
                           />
                         </td>
                       )}
-                      <td className="max-w-[300px] px-6 py-4 align-top">
-                        <p className="line-clamp-2 font-medium leading-snug text-fatec-navy-900">
-                          {t.titulo}
-                        </p>
+                      <td className="max-w-[300px] px-3 py-2.5 align-top">
+                        <button
+                          type="button"
+                          onClick={() => setTrabalhoDetalhe(t)}
+                          className="text-left"
+                        >
+                          <p className="line-clamp-2 font-medium leading-snug text-fatec-navy-900 hover:text-fatec-sky-600 hover:underline">
+                            {t.titulo}
+                          </p>
+                        </button>
                         <p className="mt-0.5 truncate text-xs text-fatec-muted">
                           {t.alunoNome}
+                          {(t.participantesNomes?.length ?? 0) > 0 &&
+                            ` +${t.participantesNomes!.length}`}
                         </p>
                       </td>
-                      <td className="px-6 py-4 align-top text-fatec-ink">
+                      <td className="px-3 py-2.5 align-top text-fatec-ink">
                         {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
                       </td>
-                      <td className="px-6 py-4 align-top text-fatec-ink">
+                      <td className="px-3 py-2.5 align-top text-fatec-ink">
                         {t.areaTematica}
                       </td>
                       {etapa !== "submissao" && (
-                        <td className="px-6 py-4 align-top text-fatec-ink">
+                        <td className="px-3 py-2.5 align-top text-fatec-ink">
                           {t.avaliadorNome ?? "—"}
                         </td>
                       )}
                       {(etapa === "apresentacao" || etapa === "resultado_final") && (
-                        <td className="px-6 py-4 align-top text-fatec-ink">
+                        <td className="px-3 py-2.5 align-top text-fatec-ink">
                           {t.moderadorNome ?? "—"}
                         </td>
                       )}
-                      <td className="px-6 py-4 align-top">
+                      <td className="px-3 py-2.5 align-top">
                         <StatusBadge status={t.status} />
                       </td>
                       {etapa === "resultado" && (
-                        <td className="px-6 py-4 align-top font-semibold text-fatec-navy-900">
+                        <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
                           {t.notaAvaliador ?? "—"}
                         </td>
                       )}
                       {etapa === "resultado_final" && (
-                        <td className="px-6 py-4 align-top font-semibold text-fatec-navy-900">
-                          {typeof t.notaAvaliador === "number" && typeof t.notaModerador === "number"
-                            ? t.notaAvaliador + t.notaModerador
-                            : "—"}
-                        </td>
+                        <>
+                          <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
+                            {t.notaAvaliador ?? "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
+                            {t.notaModerador ?? "—"}
+                          </td>
+                        </>
                       )}
-                      <td className="whitespace-nowrap px-6 py-4 align-top text-fatec-muted">
+                      <td className="whitespace-nowrap px-3 py-2.5 align-top text-fatec-muted">
                         {formatarData(t.atualizadoEm)}
                       </td>
-                      <td className="px-6 py-4 align-top">
+                      <td className="whitespace-nowrap px-3 py-2.5 align-top">
                         <CelulaSituacaoPagamento
                           trabalho={t}
                           evento={eventos.find((e) => e.id === t.eventoId)}
                         />
                       </td>
                       {etapa === "resultado_final" && (
-                        <td className="px-6 py-4 align-top">
+                        <td className="border-l border-fatec-line px-4 py-3 align-top">
+                          {/* Empatou, voltou da apresentação, ainda sem decisão
+                              (2026-09-11): "Premiar" pra quem fica com a vaga do
+                              pódio que sobrou, "Aceitar" pra quem participou mas
+                              não ficou com ela (nunca é "recusado" só por
+                              perder o desempate) — "Recusar" fica separado,
+                              só pra reprovação de verdade. */}
                           {t.status === "apresentado" && (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1">
                               <button
                                 type="button"
-                                aria-label="Aceitar"
-                                onClick={() => decidirResultado(t.id, true)}
+                                aria-label="Premiar"
+                                title="Premiar — fica com a vaga do pódio, ganha Certificado"
+                                onClick={() => decidirResultado(t.id, "premiar")}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-fatec-orange-600 transition-colors hover:bg-fatec-orange-50"
+                              >
+                                <Award className="h-4 w-4" strokeWidth={2} />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Aceitar sem prêmio"
+                                title="Aceitar — participou, ganha Declaração"
+                                onClick={() => decidirResultado(t.id, "aceitar")}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-emerald-50"
                               >
                                 <Check className="h-4 w-4" strokeWidth={2} />
@@ -835,29 +1228,44 @@ export default function TrabalhosAdminPage() {
                               <button
                                 type="button"
                                 aria-label="Recusar"
-                                onClick={() => decidirResultado(t.id, false)}
+                                title="Recusar — só pra reprovação de verdade, não pra quem só perdeu o desempate"
+                                onClick={() => decidirResultado(t.id, "recusar")}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition-colors hover:bg-rose-50"
                               >
                                 <X className="h-4 w-4" strokeWidth={2} />
                               </button>
                             </div>
                           )}
-                          {t.status === "aceito" && perfil?.papel === "admin" && (
-                            t.certificadoLiberado ? (
-                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-                                <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
-                                Certificado liberado
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => liberarCertificado(t.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-fatec-line px-2.5 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                          {t.status === "aceito" && (
+                            <div className="flex flex-col items-start gap-2">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  t.premiado
+                                    ? "bg-fatec-orange-100 text-fatec-orange-700"
+                                    : "bg-fatec-navy-50 text-fatec-muted"
+                                }`}
                               >
-                                <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
-                                Liberar certificado
-                              </button>
-                            )
+                                {t.premiado && <Award className="h-3 w-3" strokeWidth={2} />}
+                                {t.premiado ? "Premiado" : "Aceito"}
+                              </span>
+                              {perfil?.papel === "admin" && (
+                                t.certificadoLiberado ? (
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                                    <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                    Certificado liberado
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => liberarCertificado(t.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-fatec-line px-2.5 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                                  >
+                                    <Award className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                    Liberar certificado
+                                  </button>
+                                )
+                              )}
+                            </div>
                           )}
                         </td>
                       )}
@@ -868,7 +1276,7 @@ export default function TrabalhosAdminPage() {
                     <tr>
                       <td
                         colSpan={9}
-                        className="px-6 py-10 text-center text-sm text-fatec-muted"
+                        className="px-4 py-8 text-center text-sm text-fatec-muted"
                       >
                         Nenhum trabalho nesta etapa.
                       </td>
@@ -1030,6 +1438,46 @@ export default function TrabalhosAdminPage() {
           </button>
         </div>
       </Modal>
+
+      <DetalheTrabalhoModal
+        trabalho={trabalhoDetalhe}
+        evento={eventos.find((e) => e.id === trabalhoDetalhe?.eventoId)}
+        onClose={() => setTrabalhoDetalhe(null)}
+        onEditar={
+          perfil?.papel === "admin"
+            ? () => {
+                setTrabalhoEditando(trabalhoDetalhe);
+                setTrabalhoDetalhe(null);
+              }
+            : undefined
+        }
+      />
+
+      {trabalhoEditando && (
+        <SubmeterTrabalhoModal
+          open={!!trabalhoEditando}
+          eventoId={trabalhoEditando.eventoId}
+          temTaxa={!!eventos.find((e) => e.id === trabalhoEditando.eventoId)?.valorInscricao}
+          eventoNome={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.nome ?? ""}
+          areasDisponiveis={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicas ?? []}
+          areasComplexas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicasComplexas ?? []}
+          meuUid={user?.uid}
+          modoEdicao
+          valoresIniciais={{
+            titulo: trabalhoEditando.titulo,
+            resumo: trabalhoEditando.resumo,
+            areaTematica: trabalhoEditando.areaTematica,
+            modalidadeApresentacao: trabalhoEditando.modalidadeApresentacao,
+            nomeOrientador: trabalhoEditando.nomeOrientador,
+            participantes: (trabalhoEditando.participantesUids ?? []).map((uid, i) => ({
+              uid,
+              nome: trabalhoEditando.participantesNomes?.[i] ?? uid,
+            })),
+          }}
+          onClose={() => setTrabalhoEditando(null)}
+          onSubmit={(dados) => salvarEdicaoAdmin(trabalhoEditando, dados)}
+        />
+      )}
     </main>
   );
 }
