@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { LogoLockup } from "@/components/LogoLockup";
+import { Logo } from "@/components/Logo";
 import { DeclaracoesMenu } from "@/components/DeclaracoesMenu";
 
 /** Cabeçalho compartilhado das páginas públicas (2026-09-04 — baseado num
@@ -26,7 +27,21 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-fatec-navy-900">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-12 md:py-6">
-        <Link href="/" className="flex-none" onClick={() => setAberto(false)}>
+        {/* Par de logos (2026-09-19, pedido do usuário — quer que fique
+            claro que o SIGMA é parte da Fatec, sitewide, não só numa seção
+            específica). Fatec vem primeiro (2026-09-19, "a Fatec vem antes
+            do Sigma") — divisor fino separando as duas, padrão comum de
+            "instituição | produto". Fatec com mt (2026-09-19, pedido de
+            "baixar um pouco") — ela tem menos "peso" visual embaixo que a
+            lockup do Sigma, ficava com aparência desalinhada centralizada
+            igual. */}
+        <Link
+          href="/"
+          className="flex flex-none items-center gap-3 md:gap-4"
+          onClick={() => setAberto(false)}
+        >
+          <Logo className="mt-2 h-8 w-auto md:mt-3 md:h-10" />
+          <span aria-hidden className="h-10 w-px bg-white/20 md:h-12" />
           <LogoLockup className="h-16 w-auto md:h-20" variant="branco" />
         </Link>
 

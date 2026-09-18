@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Mail, MapPin, Phone } from "lucide-react";
+import { ArrowRight, CalendarDays, CalendarOff, Mail, MapPin, Phone } from "lucide-react";
 import { InstagramIcon } from "@/components/icons/InstagramIcon";
 import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -18,11 +18,20 @@ const CONTATOS = {
   telefoneVestibular: { label: "(43) 99660-0220", href: "tel:+5543996600220", nota: "Vestibular" },
 };
 
+// Número do prédio (45) incluído (2026-09-19) — sem ele o Google geocodifica
+// pra um ponto genérico da rua inteira em vez do prédio exato, o que deixava
+// o pino do mapa mal posicionado. Mesmo endereço já usado nos certificados
+// oficiais (src/lib/certificadosPdf.tsx) e no site institucional.
 const ENDERECO_FATEC =
-  "FATEC IVAIPORÃ, 86870-000, AVENIDA BRASIL, CENTRO, Ivaiporã, Paraná";
-const MAPA_EMBED_SRC = `https://maps.google.com/maps?q=${encodeURIComponent(
-  ENDERECO_FATEC,
-)}&z=16&output=embed`;
+  "FATEC IVAIPORÃ, 86870-000, AVENIDA BRASIL, 45, CENTRO, Ivaiporã, Paraná";
+// Google Maps Embed API oficial (2026-09-19) — antes usava o truque não
+// documentado maps.google.com/maps?q=...&output=embed (sem chave, sem
+// garantia de uptime, sem controle de centralização do pino). Precisa da
+// Maps Embed API habilitada no projeto do Google Cloud da
+// NEXT_PUBLIC_GOOGLE_MAPS_API_KEY (ver .env.local).
+const MAPA_EMBED_SRC = `https://www.google.com/maps/embed/v1/place?key=${
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+}&q=${encodeURIComponent(ENDERECO_FATEC)}&zoom=17`;
 
 type EventoDestaque = {
   id: string;
@@ -56,120 +65,121 @@ export default function HomePage() {
     <main className="flex flex-1 flex-col">
       <SiteHeader mostrarEvento={!!eventoDestaque} />
 
-      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-16 md:px-12 md:pb-24 md:pt-20">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-32 left-0 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
-        />
+      {/* Herói padrão (2026-09-19, volta condicional — some quando tem
+          evento em destaque pra não duplicar/empilhar com o banner dele,
+          mas sem evento nenhum a página não pode ficar vazia logo após o
+          cabeçalho). */}
+      {!eventoDestaque && (
+        <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-16 md:px-12 md:pb-24 md:pt-20">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -bottom-32 left-0 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
+          />
 
-        <div className="relative mx-auto flex max-w-3xl flex-col items-start gap-6">
-          <h1 className="text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white md:text-5xl">
-            Cadastre seu trabalho acadêmico
-          </h1>
+          <div className="relative mx-auto flex max-w-3xl flex-col items-start gap-6">
+            <h1 className="text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white md:text-5xl">
+              Cadastre seu trabalho acadêmico
+            </h1>
 
-          <p className="max-w-xl text-base leading-relaxed text-fatec-navy-50/90 md:text-lg">
-            Envie, acompanhe a avaliação e receba o certificado do seu
-            trabalho na Fatec Ivaiporã.
-          </p>
+            <p className="max-w-xl text-base leading-relaxed text-fatec-navy-50/90 md:text-lg">
+              Envie, acompanhe a avaliação e receba o certificado do seu
+              trabalho na Fatec Ivaiporã.
+            </p>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <Link
-              href="/login"
-              className="group inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-fatec-orange-500/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
-            >
-              Entrar no sistema
-              <ArrowRight
-                className="h-4.5 w-4.5 transition-transform group-hover:translate-x-0.5"
-                strokeWidth={2}
-              />
-            </Link>
-            <a
-              href="#como-funciona"
-              className="text-base font-semibold text-fatec-navy-50 underline decoration-white/30 underline-offset-4 transition-colors hover:decoration-white"
-            >
-              Ver como funciona
-            </a>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                href="/login"
+                className="group inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-fatec-orange-500/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
+              >
+                Entrar no sistema
+                <ArrowRight
+                  className="h-4.5 w-4.5 transition-transform group-hover:translate-x-0.5"
+                  strokeWidth={2}
+                />
+              </Link>
+              <a
+                href="#como-funciona"
+                className="text-base font-semibold text-fatec-navy-50 underline decoration-white/30 underline-offset-4 transition-colors hover:decoration-white"
+              >
+                Ver como funciona
+              </a>
+            </div>
           </div>
+        </section>
+      )}
+
+      {/* Mini aviso (2026-09-19, pedido do usuário) — só some pra quando um
+          evento virar destaque de novo; enquanto isso, deixa claro que a
+          ausência do banner é esperada, não um bug/tela quebrada. */}
+      {!eventoDestaque && (
+        <div className="border-b border-fatec-line bg-fatec-navy-50 px-6 py-4 md:px-12">
+          <p className="mx-auto flex max-w-3xl items-center gap-2 text-sm text-fatec-muted">
+            <CalendarOff className="h-4 w-4 flex-none" strokeWidth={1.75} />
+            Nenhum evento em destaque no momento — fique de olho, novidades em breve.
+          </p>
         </div>
-      </section>
+      )}
 
       {/* RF-29 / RN-11: evento em destaque, marcado manualmente pela organização.
           Some inteiramente da tela quando nenhum evento está marcado como destaque.
-          Full-bleed (2026-09-03, antes era um card com margem/rounded) — a
-          foto ocupa a seção inteira, de ponta a ponta; a descrição sai de
-          cima da imagem e vira uma seção de texto própria logo abaixo. */}
+          Foto + faixa de texto separadas (2026-09-19 — a versão anterior
+          sobrepunha o texto direto na foto com um degradê, mas a imagem do
+          evento já costuma vir com texto próprio desenhado nela, causando
+          escrita em cima de escrita. Agora a foto é só foto, altura fixa
+          (não depende da proporção da imagem, nunca fica gigante em tela
+          larga), e o texto (badge, título, período, CTA) mora numa faixa
+          navy sólida colada embaixo — sem sobrepor nada, sempre legível
+          não importa o que tem na imagem. */}
       {eventoDestaque && (
-        <>
-          <section id="evento-destaque" className="relative scroll-mt-20">
-            <div className="group relative w-full overflow-hidden">
-              {eventoDestaque.imagemDestaqueUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={eventoDestaque.imagemDestaqueUrl}
-                  alt={eventoDestaque.nome}
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-              ) : (
-                <div
-                  aria-hidden
-                  className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
-                >
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 opacity-[0.08]"
-                    style={{
-                      backgroundImage:
-                        "radial-gradient(circle, white 1px, transparent 1px)",
-                      backgroundSize: "24px 24px",
-                    }}
-                  />
-                  <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-                  <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-                </div>
-              )}
+        <section id="evento-destaque" className="scroll-mt-20">
+          <div className="h-[300px] w-full overflow-hidden sm:h-[360px] md:h-[420px]">
+            {eventoDestaque.imagemDestaqueUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={eventoDestaque.imagemDestaqueUrl}
+                alt={eventoDestaque.nome}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div
+                aria-hidden
+                className="relative h-full w-full bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
+              >
+                <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+                <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl" />
+              </div>
+            )}
+          </div>
 
-              {/* Banner full-bleed puramente visual (2026-09-03) — sem nenhum
-                  texto/botão em cima da foto; nome/período/descrição/CTA
-                  ficam todos na seção "Sobre o evento" logo abaixo. Essa div
-                  só existe pra dar altura ao container (a imagem é
-                  absolute inset-0 por cima dela). aspect-[12/5] (2026-09-09,
-                  achado: banner cortando embaixo/pixelado) — antes era altura
-                  fixa (min-h) independente da largura da tela; como a seção é
-                  full-bleed (w-full), em tela larga a proporção real ficava
-                  bem mais "achatada" que os 12:5 do BannerCropModal, cortando
-                  mais imagem do que o admin viu ao enquadrar. Agora a altura
-                  sempre acompanha a mesma proporção do recorte — min-h só
-                  como piso pra celular estreito não ficar baixo demais. */}
-              <div className="aspect-[12/5] min-h-[220px]" />
-            </div>
-          </section>
-
-          <section className="bg-white px-6 py-16 md:px-12 md:py-20">
-            <div className="mx-auto max-w-6xl">
-              <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
-                Sobre o evento
+          <div className="bg-fatec-navy-900 px-6 py-6 md:px-12 md:py-8">
+            <div className="mx-auto max-w-5xl">
+              <span className="inline-flex items-center rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-bold uppercase tracking-[-0.01em] text-white">
+                Em destaque
               </span>
-              <h3 className="mt-2 text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
+              <h3 className="mt-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-white md:text-4xl">
                 {eventoDestaque.nome}
               </h3>
               {eventoDestaque.periodoSubmissao && (
-                <p className="mt-2 flex items-center gap-1.5 text-sm text-fatec-muted">
+                <p className="mt-2 flex items-center gap-1.5 text-sm text-white/85 md:text-base">
                   <CalendarDays className="h-4 w-4 flex-none" strokeWidth={2} />
                   Inscrições: {eventoDestaque.periodoSubmissao}
                 </p>
               )}
+              {/* Descrição (2026-09-19, pedido da organização — agrupada na
+                  mesma faixa navy do resto, não numa seção branca separada
+                  embaixo, pra não virar 2 faixas de cor diferente. */}
               {eventoDestaque.descricao && (
-                <p className="mt-6 whitespace-pre-line text-sm leading-relaxed text-fatec-muted">
+                <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-white/80 md:text-base">
                   {eventoDestaque.descricao}
                 </p>
               )}
               <Link
                 href="/login"
-                className="group/btn mt-8 inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
+                className="group/btn mt-5 inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-black/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
               >
                 Inscreva-se
                 <ArrowRight
@@ -178,10 +188,9 @@ export default function HomePage() {
                 />
               </Link>
             </div>
-          </section>
-        </>
+          </div>
+        </section>
       )}
-
 
       <section
         id="como-funciona"
@@ -202,7 +211,7 @@ export default function HomePage() {
       </section>
 
       <section className="bg-white px-6 py-16 md:px-12 md:py-20">
-        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-10 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-0 md:divide-x md:divide-fatec-line">
+        <div className="mx-auto grid max-w-5xl grid-cols-1 items-center gap-10 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-0 md:divide-x md:divide-fatec-line">
           <div className="flex flex-col gap-3 md:pr-10">
             <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
               Local

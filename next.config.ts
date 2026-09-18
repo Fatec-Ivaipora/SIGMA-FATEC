@@ -38,7 +38,11 @@ const nextConfig: NextConfig = {
               // usa createObjectURL, achado 2026-09-09 ao testar troca de banner).
               "img-src 'self' data: blob: https:",
               "connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com",
-              "frame-src 'self' https://*.firebaseapp.com",
+              // https://www.google.com liberado (2026-09-19) pro iframe do
+              // Google Maps Embed API na home (src/app/page.tsx) — sem
+              // isso o CSP barra o próprio navegador de carregar o mapa,
+              // mostrando "conteúdo bloqueado" mesmo com a chave/API certas.
+              "frame-src 'self' https://*.firebaseapp.com https://www.google.com",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",
