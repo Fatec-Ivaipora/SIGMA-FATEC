@@ -11,7 +11,10 @@ type ChaveCertificado =
   | { papel: "avaliador" | "moderador" | "monitor"; eventoId: string; uidAlvo?: string }
   // Orientador nunca é auto-atendimento — é texto livre no trabalho, sem
   // conta vinculada, só admin/organização emite (ver /api/certificados).
-  | { papel: "orientador"; trabalhoId: string };
+  | { papel: "orientador"; trabalhoId: string }
+  // Certificado de participação (2026-09-22) — evento "simples", sem
+  // trabalho nenhum por trás, só a inscrição do próprio uid nesse evento.
+  | { papel: "participante"; eventoId: string };
 
 /** Busca o PDF autenticado e dispara o download no navegador — usado tanto
  * pelo certificado do aluno (por trabalho) quanto pelas declarações de
@@ -25,7 +28,9 @@ export async function baixarCertificado(
     chave.papel === "aluno" || chave.papel === "orientador"
       ? `trabalhoId=${encodeURIComponent(chave.trabalhoId)}&papel=${chave.papel}`
       : `eventoId=${encodeURIComponent(chave.eventoId)}&papel=${chave.papel}` +
-        (chave.uidAlvo ? `&uidAlvo=${encodeURIComponent(chave.uidAlvo)}` : "");
+        ("uidAlvo" in chave && chave.uidAlvo
+          ? `&uidAlvo=${encodeURIComponent(chave.uidAlvo)}`
+          : "");
 
   const res = await fetch(`/api/certificados?${query}`, {
     headers: { Authorization: `Bearer ${idToken}` },

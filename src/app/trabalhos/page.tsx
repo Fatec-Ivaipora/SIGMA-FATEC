@@ -14,6 +14,8 @@ import {
   Award,
   ListChecks,
   Scale,
+  GraduationCap,
+  Users,
 } from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -27,7 +29,7 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, type TrabalhoStatus, type Trabalho, atualizarTrabalho } from "@/lib/data/trabalhos";
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
-import { useMinhaInscricao } from "@/lib/data/inscricoes";
+import { useMinhaInscricao, useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
 import {
   notificarAtribuicao,
@@ -49,7 +51,7 @@ const ETAPAS: { key: Etapa; label: string }[] = [
   { key: "avaliacao", label: "Avaliação" },
   { key: "revisao", label: "Revisão" },
   { key: "resultado", label: "Resultado" },
-  { key: "apresentacao", label: "Apresentação" },
+  { key: "apresentacao", label: "Desempate" },
   { key: "resultado_final", label: "Resultado Final" },
 ];
 
@@ -113,6 +115,187 @@ function CelulaSituacaoPagamento({ trabalho, evento }: { trabalho: Trabalho; eve
     >
       {pago ? "Pago" : "Não pago"}
     </span>
+  );
+}
+
+function SecaoInscritos({
+  titulo,
+  icone,
+  pessoas,
+  mostrarPago,
+}: {
+  titulo: string;
+  icone: React.ReactNode;
+  pessoas: { uid: string; nome: string; email: string; status: string }[];
+  mostrarPago: boolean;
+}) {
+  return (
+    <div>
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-fatec-navy-900">
+        {icone}
+        {titulo}
+        <span className="font-normal text-fatec-muted">({pessoas.length})</span>
+      </h3>
+      <div className="mt-2 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
+        {pessoas.map((p) => {
+          const pago = p.status === "pago";
+          return (
+            <div key={p.uid} className="flex items-center gap-3 px-4 py-3">
+              <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
+                {(p.nome || "?").slice(0, 2).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-fatec-navy-900">{p.nome}</p>
+                <p className="truncate text-xs text-fatec-muted">{p.email}</p>
+              </div>
+              <span
+                className={`flex-none rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  pago ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {mostrarPago ? (pago ? "Pago" : "Não pago") : "Inscrito"}
+              </span>
+            </div>
+          );
+        })}
+        {pessoas.length === 0 && (
+          <p className="px-4 py-3 text-sm text-fatec-muted">Ninguém encontrado.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Evento "simples" (2026-09-22) não tem trabalho/avaliação — no lugar da
+ * pipeline de ETAPAS, essa tela mostra só quem se inscreveu (mesmo
+ * conteúdo de InscritosEventoModal.tsx, aqui em tela cheia em vez de modal)
+ * e um botão pra liberar o certificado de participação pro evento inteiro
+ * (escrita direta no evento, organização/admin já tem update liberado nas
+ * regras — sem rota nova). */
+function InscritosSimplesView({ evento }: { evento: Evento }) {
+  const { inscritos } = useInscritosDoEvento(evento.id);
+  const [busca, setBusca] = useState("");
+  const [alternando, setAlternando] = useState(false);
+
+  const filtrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return inscritos;
+    return inscritos.filter(
+      (i) => i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo),
+    );
+  }, [inscritos, busca]);
+
+  const daFatec = filtrados.filter((i) => i.vinculoFatec !== false);
+  const externos = filtrados.filter((i) => i.vinculoFatec === false);
+  const pagos = inscritos.filter((i) => i.status === "pago").length;
+
+  async function alternarCertificados() {
+    setAlternando(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        certificadosLiberados: !evento.certificadosLiberados,
+      });
+    } finally {
+      setAlternando(false);
+    }
+  }
+
+  return (
+    <div className="flex-1 px-6 py-8 md:px-10">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm text-fatec-muted">
+            <span className="font-semibold text-fatec-navy-900">{inscritos.length}</span>{" "}
+            {inscritos.length === 1 ? "inscrito" : "inscritos"}
+            {!!evento.valorInscricao && (
+              <>
+                {" — "}
+                <span className="font-semibold text-emerald-700">{pagos} pagos</span>,{" "}
+                <span className="font-semibold text-amber-700">
+                  {inscritos.length - pagos} pendentes
+                </span>
+              </>
+            )}
+            .
+          </div>
+
+          <div className="relative sm:w-72">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+              strokeWidth={1.75}
+            />
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome ou e-mail"
+              className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 rounded-2xl border border-fatec-line bg-white p-5">
+          <span
+            className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
+              evento.certificadosLiberados
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-fatec-navy-50 text-fatec-navy-800"
+            }`}
+          >
+            <Award className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-fatec-navy-900">
+              {evento.certificadosLiberados
+                ? "Certificados de participação liberados"
+                : "Certificados de participação ainda não liberados"}
+            </p>
+            <p className="mt-0.5 text-sm text-fatec-muted">
+              {evento.valorInscricao
+                ? "Vale pra quem pagou a inscrição."
+                : "Vale pra todo mundo que se inscreveu (evento gratuito)."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={alternarCertificados}
+            disabled={alternando}
+            className={`flex flex-none items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              evento.certificadosLiberados
+                ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
+            }`}
+          >
+            {evento.certificadosLiberados ? (
+              <>
+                <X className="h-4 w-4" strokeWidth={2} />
+                Cancelar liberação
+              </>
+            ) : (
+              <>
+                <Check className="h-4 w-4" strokeWidth={2} />
+                Liberar certificados
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <SecaoInscritos
+            titulo="Alunos da Fatec"
+            icone={<GraduationCap className="h-4 w-4" strokeWidth={1.75} />}
+            pessoas={daFatec}
+            mostrarPago={!!evento.valorInscricao}
+          />
+          <SecaoInscritos
+            titulo="Externos"
+            icone={<Users className="h-4 w-4" strokeWidth={1.75} />}
+            pessoas={externos}
+            mostrarPago={!!evento.valorInscricao}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -235,6 +418,12 @@ export default function TrabalhosAdminPage() {
 
   const todosLabel =
     perfil?.papel === "admin" ? "Todos os eventos" : "Todos os meus eventos";
+
+  // Evento "simples" (2026-09-22) não tem trabalho/avaliação nenhuma — essa
+  // tela vira só uma lista de inscritos + liberar certificado, ver o early
+  // return logo depois do guard de carregando abaixo.
+  const eventoSelecionado =
+    eventoId !== "todos" ? eventos.find((e) => e.id === eventoId) : undefined;
 
   const areasParaFiltro = useMemo(() => {
     if (eventoId === "todos") {
@@ -758,6 +947,61 @@ export default function TrabalhosAdminPage() {
 
   if (carregando || !perfil) return null;
 
+  // Evento simples (2026-09-22) — sem trabalho/avaliação, mostra a lista de
+  // inscritos em vez de toda a pipeline de ETAPAS abaixo. Cabeçalho e
+  // seletor de evento continuam os mesmos, só o conteúdo muda.
+  if (eventoSelecionado?.tipo === "simples") {
+    return (
+      <main className="flex flex-1 flex-col md:flex-row">
+        <Sidebar
+          navItems={NAV_ADMIN}
+          activeHref="/trabalhos"
+          userName={perfil.nome}
+          userRoleLabel={perfil.papel === "admin" ? "Admin" : "Organização"}
+          userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
+        />
+
+        <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
+          <header className="flex flex-col gap-4 border-b border-fatec-line bg-white px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
+            <div>
+              <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">
+                Trabalhos
+              </h1>
+              <p className="text-sm text-fatec-muted">
+                Esse evento é do tipo “simples” — sem trabalho, só inscrição
+                e certificado de participação.
+              </p>
+            </div>
+
+            <div className="relative">
+              <select
+                value={eventoId}
+                onChange={(e) => {
+                  setEventoId(e.target.value);
+                  setAreaFiltro("Todas as áreas");
+                }}
+                className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
+              >
+                <option value="todos">{todosLabel}</option>
+                {eventos.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.nome}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                strokeWidth={1.75}
+              />
+            </div>
+          </header>
+
+          <InscritosSimplesView evento={eventoSelecionado} />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
@@ -931,7 +1175,7 @@ export default function TrabalhosAdminPage() {
                             aceitarSemEmpate();
                             setMenuResultadoAberto(false);
                           }}
-                          title="Resolve de uma vez toda área sem empate na fronteira do top 3 — os 3 melhores viram Aceito+Premiado, o resto vira só Aceito. Quem está empatado fica de fora, esperando ir pra apresentação."
+                          title="Resolve de uma vez toda área sem empate na fronteira do top 3 — os 3 melhores viram Aceito+Premiado, o resto vira só Aceito. Quem está empatado fica de fora, esperando ir pro desempate."
                           className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
                         >
                           <Check className="h-4 w-4 flex-none" strokeWidth={1.75} />
@@ -949,7 +1193,7 @@ export default function TrabalhosAdminPage() {
                           className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
                         >
                           <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                          Enviar para apresentação
+                          Enviar para desempate
                           {selecionados.size > 0 && ` (${selecionados.size})`}
                         </button>
                       </div>
@@ -967,7 +1211,7 @@ export default function TrabalhosAdminPage() {
                     <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
                     {ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
                       ? "Enviar para avaliação"
-                      : "Enviar para apresentação"}
+                      : "Enviar para desempate"}
                     {selecionados.size > 0 && ` (${selecionados.size})`}
                   </button>
                 )
@@ -1096,14 +1340,14 @@ export default function TrabalhosAdminPage() {
                         </th>
                         <th
                           className="px-3 py-2 text-center font-semibold"
-                          title="Nota da apresentação — só existe pra quem precisou de desempate. Ordena junto com a nota av, pela soma das duas."
+                          title="Nota do desempate — só existe pra quem empatou e precisou dela. Ordena junto com a nota av, pela soma das duas."
                         >
                           <button
                             type="button"
                             onClick={alternarOrdenacaoNota}
                             className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
                           >
-                            Nota apr (/25)
+                            Nota des (/25)
                             {direcaoOrdenacaoNota === "desc" ? (
                               <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
                             ) : direcaoOrdenacaoNota === "asc" ? (
@@ -1292,12 +1536,12 @@ export default function TrabalhosAdminPage() {
       <Modal
         open={modalEnviar}
         onClose={() => setModalEnviar(false)}
-        title={papelAlvoEnvio === "avaliador" ? "Enviar para avaliação" : "Enviar para apresentação"}
+        title={papelAlvoEnvio === "avaliador" ? "Enviar para avaliação" : "Enviar para desempate"}
       >
         <p className="text-sm text-fatec-ink">
           Enviar <span className="font-semibold">{selecionados.size}</span>{" "}
           trabalho(s) selecionado(s) para{" "}
-          {papelAlvoEnvio === "avaliador" ? "avaliação" : "apresentação"}.
+          {papelAlvoEnvio === "avaliador" ? "avaliação" : "desempate"}.
         </p>
 
         {!modoManual && pessoasDaArea.length > 0 ? (
@@ -1461,6 +1705,7 @@ export default function TrabalhosAdminPage() {
           eventoNome={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.nome ?? ""}
           areasDisponiveis={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicas ?? []}
           areasComplexas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicasComplexas ?? []}
+          modalidadesPermitidas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.modalidadesApresentacao}
           meuUid={user?.uid}
           modoEdicao
           valoresIniciais={{

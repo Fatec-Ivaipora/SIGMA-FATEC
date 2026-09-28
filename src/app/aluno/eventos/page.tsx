@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Star } from "lucide-react";
+import { AlertTriangle, CalendarDays, Download, QrCode } from "lucide-react";
+import { baixarCertificado } from "@/lib/baixarCertificado";
+import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
+import { DestaqueEventoBanner } from "@/components/DestaqueEventoBanner";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
@@ -39,6 +41,24 @@ function CardEvento({
   const pago = inscricao?.status === "pago";
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [baixandoCertificado, setBaixandoCertificado] = useState(false);
+  const [erroCertificado, setErroCertificado] = useState<string | null>(null);
+  const [confirmandoPresenca, setConfirmandoPresenca] = useState(false);
+
+  async function handleBaixarCertificado() {
+    if (!user) return;
+    setErroCertificado(null);
+    setBaixandoCertificado(true);
+    try {
+      const resultado = await baixarCertificado(user, {
+        papel: "participante",
+        eventoId: evento.id,
+      });
+      if (!resultado.ok) setErroCertificado(resultado.erro);
+    } finally {
+      setBaixandoCertificado(false);
+    }
+  }
 
   // Inscrições e Submissão em linhas separadas, cores diferentes
   // (2026-09-09, pedido do usuário) — são prazos diferentes (inscrição/
@@ -115,7 +135,55 @@ function CardEvento({
           </button>
         ) : (
           <>
-            {inscrito ? (
+            {evento.tipo === "simples" ? (
+              // Evento simples (2026-09-22) não tem trabalho — chegou até
+              // aqui significa que já está inscrito (e pago, se for o
+              // caso, tratado no chip de baixo).
+              <>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Inscrição confirmada
+                </span>
+                {inscricao?.presencaConfirmada ? (
+                  <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Presença confirmada
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoPresenca(true)}
+                    className="inline-flex w-fit items-center gap-1.5 rounded-full border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
+                    Confirmar presença
+                  </button>
+                )}
+                {/* Mesma regra de /api/certificados (papel "participante",
+                    2026-09-24): presença pelo QR OU liberação da organização. */}
+                {(evento.certificadosLiberados || inscricao?.presencaConfirmada) && (
+                  <button
+                    type="button"
+                    onClick={handleBaixarCertificado}
+                    disabled={baixandoCertificado}
+                    className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                    {baixandoCertificado ? "Gerando..." : "Baixar certificado"}
+                  </button>
+                )}
+                {erroCertificado && (
+                  <p className="w-full text-xs text-rose-600">{erroCertificado}</p>
+                )}
+                <ConfirmarPresencaModal
+                  open={confirmandoPresenca}
+                  eventoId={evento.id}
+                  user={user}
+                  onClose={() => setConfirmandoPresenca(false)}
+                  onConfirmado={() => setConfirmandoPresenca(false)}
+                />
+              </>
+            ) : inscrito ? (
               <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 Trabalho enviado
@@ -188,37 +256,6 @@ export default function AlunoEventosPage() {
     [eventos],
   );
   const jaInscritoDestaque = !!(destaque && trabalhos.some((t) => t.eventoId === destaque.id));
-  const temTaxaDestaque = !!destaque?.valorInscricao;
-  // Busca sempre (não só quando tem taxa) — é a existência desse registro
-  // (mesmo só "interesse") que decide se mostra "Inscreva-se" ou já pula
-  // pra "Inscrever trabalho" (mesma regra do CardEvento abaixo). Bug corrigido
-  // 2026-09-04: antes só buscava pra eventos com taxa, então um aluno que
-  // nunca tinha clicado em nada aparecia direto como "pagamento pendente"
-  // num evento pago — inscricaoDestaque undefined também bate `!== "pago"`.
-  const { inscricao: inscricaoDestaque } = useMinhaInscricao(destaque?.id, user?.uid);
-  const pagamentoPendenteDestaque =
-    temTaxaDestaque && !!inscricaoDestaque && inscricaoDestaque.status !== "pago";
-  const [participandoDestaque, setParticipandoDestaque] = useState(false);
-  const [erroParticiparDestaque, setErroParticiparDestaque] = useState<string | null>(null);
-
-  async function participarDestaque() {
-    if (!user || !destaque) return;
-    setErroParticiparDestaque(null);
-    setParticipandoDestaque(true);
-    try {
-      const idToken = await user.getIdToken();
-      const resposta = await fetch("/api/asaas/interesse", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ eventoId: destaque.id }),
-      });
-      if (!resposta.ok) throw new Error();
-    } catch {
-      setErroParticiparDestaque("Não foi possível registrar. Tente de novo.");
-    } finally {
-      setParticipandoDestaque(false);
-    }
-  }
 
   // O card do destaque já aparece no banner acima — tira ele da grade pra
   // não duplicar (só quando sobra mais gente na grade).
@@ -274,126 +311,26 @@ export default function AlunoEventosPage() {
         <div className="flex-1 px-6 py-8 md:px-10">
           {/* mx-auto no card abaixo (2026-09-10, pedido do usuário) — só
               existe um destaque por vez, faz sentido centralizar em telas
-              largas em vez de ficar grudado na esquerda. */}
+              largas em vez de ficar grudado na esquerda. Banner extraído
+              (2026-09-19) pra DestaqueEventoBanner — também usado em
+              /aluno. */}
           {destaque && (
-            <div className="mx-auto mb-8 max-w-2xl overflow-hidden rounded-2xl border border-fatec-line bg-white shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
-              {/* Redesenhado (2026-09-10, "ficou poluído no celular") —
-                  antes era tudo (2 badges + título + botão) empilhado em
-                  cima da foto escurecida, e no celular isso não cabia mais
-                  desde que virou 2 badges. Agora a foto é só um topo
-                  decorativo curto (sem texto por cima, sem depender de
-                  contraste) e as informações ficam num corpo branco comum
-                  embaixo — mesmo padrão do CardEvento logo abaixo na
-                  página, só que maior/com "Em destaque". */}
-              <div className="relative h-28 sm:h-36 md:h-44">
-                {destaque.imagemDestaqueUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={destaque.imagemDestaqueUrl}
-                    alt={destaque.nome}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : (
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-600"
-                  >
-                    <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-                    <div className="absolute -bottom-20 left-10 h-64 w-64 rounded-full bg-fatec-orange-500/20 blur-3xl" />
-                  </div>
-                )}
-                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-                  <Star className="h-3 w-3" strokeWidth={2} />
-                  Em destaque
-                </span>
-              </div>
-
-              <div className="flex flex-col items-start gap-3 p-5 md:p-6">
-                <div>
-                  <h3 className="text-lg font-bold leading-tight text-fatec-navy-900 md:text-xl">
-                    {destaque.nome}
-                  </h3>
-                  {destaque.periodoSubmissao && (
-                    <p className="mt-1 text-sm text-fatec-muted">
-                      Inscrições: {destaque.periodoSubmissao}
-                    </p>
-                  )}
-                  {destaque.periodoEnvioTrabalho && (
-                    <p className="text-sm font-medium text-fatec-orange-600">
-                      Submissão: {destaque.periodoEnvioTrabalho}
-                    </p>
-                  )}
-                </div>
-
-                {!inscricaoDestaque ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={participarDestaque}
-                      disabled={participandoDestaque}
-                      className="inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
-                    >
-                      {participandoDestaque ? "Registrando..." : "Inscreva-se"}
-                    </button>
-                    {erroParticiparDestaque && (
-                      <p className="-mt-2 text-xs text-rose-600">{erroParticiparDestaque}</p>
-                    )}
-                  </>
-                ) : jaInscritoDestaque && pagamentoPendenteDestaque ? (
-                  <button
-                    type="button"
-                    onClick={() => setInscricaoEventoId(destaque.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-                    Pagamento pendente — pagar agora
-                  </button>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {jaInscritoDestaque ? (
-                      <Link
-                        href="/aluno/trabalhos"
-                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                        Inscrição feita — ver trabalho
-                      </Link>
-                    ) : dentroDoPrazoEnvio(destaque) ? (
-                      <button
-                        type="button"
-                        onClick={() => setModalEventoId(destaque.id)}
-                        className="group/btn inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-                      >
-                        Inscrever trabalho
-                        <ArrowRight
-                          className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
-                          strokeWidth={2}
-                        />
-                      </button>
-                    ) : (
-                      // Prazo de submissão encerrado (2026-09-09, pedido
-                      // do coordenador).
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-4 py-1.5 text-xs font-semibold text-fatec-muted">
-                        Submissão encerrada
-                      </span>
-                    )}
-                    {pagamentoPendenteDestaque && (
-                      <button
-                        type="button"
-                        onClick={() => setInscricaoEventoId(destaque.id)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-                        Pagamento pendente
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            <DestaqueEventoBanner
+              destaque={destaque}
+              user={user}
+              jaInscrito={jaInscritoDestaque}
+              onAbrirTrabalho={setModalEventoId}
+              onAbrirInscricao={setInscricaoEventoId}
+            />
           )}
 
-          <div className="grid max-w-4xl grid-cols-1 gap-3 md:grid-cols-2">
+          {/* justify-center + auto-fit (2026-09-23, achado: com 1 só card na
+              grade, o grid-cols-2 fixo deixava metade da largura vazia à
+              direita, ficando torto embaixo do banner centralizado) — as
+              colunas encolhem pro tamanho do conteúdo e se juntam no meio
+              em vez de esticar em 2 colunas fixas quando sobra pouco
+              card. */}
+          <div className="mx-auto grid max-w-4xl grid-cols-1 justify-center gap-3 sm:grid-cols-[repeat(auto-fit,minmax(280px,340px))]">
             {eventosGrade.map((evento) => (
               <CardEvento
                 key={evento.id}
@@ -424,6 +361,7 @@ export default function AlunoEventosPage() {
           eventoNome={eventoModal.nome}
           areasDisponiveis={eventoModal.areasTematicas ?? []}
           areasComplexas={eventoModal.areasTematicasComplexas ?? []}
+          modalidadesPermitidas={eventoModal.modalidadesApresentacao}
           meuUid={user?.uid}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTrabalho}

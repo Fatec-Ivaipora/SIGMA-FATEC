@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where, type Timestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 
 export type InscricaoEvento = {
@@ -16,6 +16,18 @@ export type InscricaoEvento = {
   // (2026-08-26) — é esse status mínimo que faz a trilha/o fluxo do evento
   // aparecer no card do aluno; sem nenhum doc, só aparece o botão Participar.
   status: "interesse" | "pendente" | "pago";
+  // Gravados por /api/asaas/interesse (criadoEm, sempre) e por qualquer um
+  // dos 3 caminhos que confirmam o pagamento — webhook, /api/asaas/status
+  // ou /api/asaas/manual (pagoEm, só quando status vira "pago").
+  criadoEm?: Timestamp;
+  pagoEm?: Timestamp;
+  // Confirmação de presença por QR (2026-09-23, evento "simples") — gravado
+  // só por /api/inscricoes/confirmar-presenca (Admin SDK; esta collection é
+  // allow write: if false pro client). Junto com evento.certificadosLiberados,
+  // é um dos dois jeitos de liberar o certificado de participação (ver
+  // /api/certificados, papel "participante").
+  presencaConfirmada?: boolean;
+  presencaConfirmadaEm?: Timestamp;
 };
 
 /** Status da própria Etapa 1 (pagamento) do aluno logado num evento. */

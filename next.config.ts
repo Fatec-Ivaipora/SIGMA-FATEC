@@ -25,7 +25,10 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            // camera=(self) (2026-09-23) — confirmação de presença por QR
+            // code (evento simples) precisa da câmera do navegador pra
+            // escanear; microfone/geolocalização continuam bloqueados.
+            value: "camera=(self), microphone=(), geolocation=()",
           },
           {
             key: "Content-Security-Policy",

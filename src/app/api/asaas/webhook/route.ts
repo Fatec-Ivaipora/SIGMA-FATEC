@@ -43,7 +43,17 @@ export async function POST(request: Request) {
   }
 
   const inscricaoRef = db.doc(`inscricoesEvento/${body.payment.externalReference}`);
-  await inscricaoRef.set({ status: "pago", pagoEm: FieldValue.serverTimestamp() }, { merge: true });
+  // Não sobrescreve pagoEm se já tiver uma data (2026-09-28: reativar uma
+  // fila interrompida faz a Asaas reenviar o backlog inteiro — cada evento
+  // reenviado tem um id novo, então passa da idempotência acima, e sem essa
+  // checagem a data de pagamento virava a data da reativação, não a do
+  // pagamento real. Já visto em produção: inscrição paga em 10/09, pagoEm
+  // reescrito pra 24/09 quando a fila voltou a funcionar).
+  const jaTinhaPagoEm = (await inscricaoRef.get()).data()?.pagoEm;
+  await inscricaoRef.set(
+    { status: "pago", ...(jaTinhaPagoEm ? {} : { pagoEm: FieldValue.serverTimestamp() }) },
+    { merge: true },
+  );
 
   // Marca o evento como processado assim que a mudança que importa (status
   // do pagamento) já está gravada — dali em diante só sobra efeito colateral

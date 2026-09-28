@@ -110,6 +110,51 @@ export type Evento = {
   // evento NOVO que trava, não o histórico de quem já participava).
   encerrado?: boolean;
   encerradoEm?: Timestamp;
+  // Modalidades de apresentação aceitas por esse evento (2026-09-17, pedido
+  // da comissão — cada evento tem sua peculiaridade: a X MAC aceita as duas,
+  // a MOPI só uma). Ausente/vazio = evento sem etapa de apresentação (não
+  // ensala, aluno não escolhe modalidade na submissão). 1 item = só aquela
+  // modalidade, auto-selecionada, sem pergunta pro aluno. 2 itens = escolha
+  // livre, como era o comportamento único de antes dessa opção existir. Ver
+  // SubmeterTrabalhoModal (filtra as opções) e /ensalamento (só ensala
+  // trabalhos de eventos com isso preenchido).
+  modalidadesApresentacao?: ("oral" | "roda_conversa")[];
+  // Configuração da grade automática de ensalamento (2026-09-17) — preenchida
+  // direto na aba Ensalamento (não no wizard/Configurações de Eventos, é
+  // específico desse fluxo). Ausente = grade automática ainda não configurada,
+  // botão "Gerar grade automaticamente" fica desabilitado. Mesmo padrão de
+  // prazoEdicaoTrabalho (Timestamp.fromDate calculado no client). Ver
+  // src/lib/data/sessoes.ts.
+  apresentacaoInicio?: Timestamp;
+  apresentacaoFim?: Timestamp;
+  // Só se aplica a modalidade "oral" (fatiada por minuto). "roda_conversa"
+  // usa vagasBannerPorSala abaixo — banner/pôster fica exposto o bloco
+  // inteiro, não é fatiado por tempo (ver montarGradeAutomatica).
+  duracaoApresentacaoMinutos?: number;
+  // Quantos trabalhos cabem ao mesmo tempo numa sala de roda de conversa
+  // (2026-09-28) — todos expostos juntos, o bloco inteiro
+  // (apresentacaoInicio–apresentacaoFim), diferente da oral. Só relevante se
+  // o evento aceita "roda_conversa" em modalidadesApresentacao.
+  vagasBannerPorSala?: number;
+  // Quais salas do catálogo único (coleção salas/, ver src/lib/data/salas.ts,
+  // 2026-09-28) esse evento usa na grade automática — o catálogo é
+  // compartilhado entre todos os eventos, cada um escolhe seu subconjunto
+  // aqui. Ausente/vazio = nenhuma sala escolhida ainda, "Gerar grade" fica
+  // desabilitado (mesmo espírito de apresentacaoInicio acima).
+  salasIds?: string[];
+  // Modelo do evento (2026-09-22, pedido da comissão — nem todo evento tem
+  // trabalho acadêmico, ex. palestra/curso/workshop). Ausente = modelo de
+  // hoje (trabalho, avaliação, ensalamento — todos os campos acima). Nesse
+  // caso, aluno só se inscreve/paga (fluxo já genérico de inscricoesEvento)
+  // e recebe um certificado de participação — nenhum dos campos de trabalho
+  // acima é preenchido. Ver /trabalhos (mostra lista de inscritos em vez das
+  // abas de avaliação) e /api/certificados?papel=participante.
+  tipo?: "simples";
+  // Certificado de participação liberado manualmente pela organização
+  // (2026-09-22) — só usado quando tipo === "simples". Mesmo espírito de
+  // Trabalho.certificadoLiberado, só que por evento inteiro (aqui não tem
+  // trabalho nenhum pra liberar um por um).
+  certificadosLiberados?: boolean;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */

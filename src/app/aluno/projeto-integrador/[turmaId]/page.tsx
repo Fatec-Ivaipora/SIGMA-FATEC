@@ -300,6 +300,7 @@ export default function TurmaAlunoPage() {
           eventoNome={eventoEscolhido.nome}
           areasDisponiveis={eventoEscolhido.areasTematicas ?? []}
           areasComplexas={eventoEscolhido.areasTematicasComplexas ?? []}
+          modalidadesPermitidas={eventoEscolhido.modalidadesApresentacao}
           meuUid={user?.uid}
           valoresIniciais={{ titulo: trabalho?.titulo, resumo: trabalho?.resumo }}
           onClose={() => setModalInscricao(false)}

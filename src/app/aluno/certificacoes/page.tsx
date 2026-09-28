@@ -7,7 +7,11 @@ import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
-import { useMinhaInscricao } from "@/lib/data/inscricoes";
+import {
+  useMinhaInscricao,
+  useMinhasInscricoes,
+  type InscricaoEvento,
+} from "@/lib/data/inscricoes";
 import { useMinhasMonitorias, type MonitorEvento } from "@/lib/data/monitores";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 
@@ -132,12 +136,78 @@ function LinhaCertificadoMonitor({
   );
 }
 
+/** Certificado de participação (2026-09-24) — evento "simples", sem
+ * trabalho. Mesma regra de /api/certificados (papel "participante"):
+ * pagamento em dia (se tem taxa) + presença pelo QR OU liberação da
+ * organização pro evento inteiro. */
+function LinhaCertificadoParticipacao({
+  inscricao,
+  evento,
+  baixando,
+  erro,
+  onBaixar,
+}: {
+  inscricao: InscricaoEvento;
+  evento: Evento;
+  baixando: boolean;
+  erro: string | undefined;
+  onBaixar: () => void;
+}) {
+  const pagamentoPendente = !!evento.valorInscricao && inscricao.status !== "pago";
+  const liberado = !!evento.certificadosLiberados || !!inscricao.presencaConfirmada;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-fatec-line bg-white p-5">
+      <div className="flex items-center gap-4">
+        <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
+          <Award className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-fatec-navy-900">
+            Certificado de participação
+          </p>
+          <p className="text-sm text-fatec-muted">{evento.nome}</p>
+        </div>
+        {pagamentoPendente ? (
+          <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Pagamento pendente
+          </span>
+        ) : liberado ? (
+          <button
+            type="button"
+            onClick={onBaixar}
+            disabled={baixando}
+            className="flex flex-none items-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+          >
+            {baixando ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <Download className="h-4 w-4" strokeWidth={1.75} />
+            )}
+            Baixar certificado
+          </button>
+        ) : (
+          <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-fatec-muted">
+            <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Confirme a presença no evento
+          </span>
+        )}
+      </div>
+      {erro && (
+        <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{erro}</p>
+      )}
+    </div>
+  );
+}
+
 export default function AlunoCertificacoesPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { eventos } = useEventosPublicos();
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
   const monitorias = useMinhasMonitorias(user?.uid);
+  const { inscricoes } = useMinhasInscricoes(user?.uid);
 
   const [baixandoId, setBaixandoId] = useState<string | null>(null);
   const [erroId, setErroId] = useState<{ id: string; msg: string } | null>(null);
@@ -161,8 +231,23 @@ export default function AlunoCertificacoesPage() {
     setBaixandoId(null);
   }
 
+  async function baixarParticipacao(eventoId: string) {
+    if (!user) return;
+    const chaveErro = `participante_${eventoId}`;
+    setErroId(null);
+    setBaixandoId(chaveErro);
+    const resultado = await baixarCertificado(user, { papel: "participante", eventoId });
+    if (!resultado.ok) setErroId({ id: chaveErro, msg: resultado.erro });
+    setBaixandoId(null);
+  }
+
   const aceitos = trabalhos.filter((t) => t.status === "aceito");
-  const nadaAinda = aceitos.length === 0 && monitorias.length === 0;
+  const participacoes = eventos.flatMap((evento) => {
+    const inscricao = evento.tipo === "simples" ? inscricoes.get(evento.id) : undefined;
+    return inscricao ? [{ evento, inscricao }] : [];
+  });
+  const nadaAinda =
+    aceitos.length === 0 && monitorias.length === 0 && participacoes.length === 0;
 
   if (carregando || !perfil) return null;
 
@@ -225,6 +310,18 @@ export default function AlunoCertificacoesPage() {
                     erroId?.id === `monitor_${m.eventoId}` ? erroId.msg : undefined
                   }
                   onBaixar={() => baixarMonitor(m.eventoId)}
+                />
+              ))}
+              {participacoes.map(({ evento, inscricao }) => (
+                <LinhaCertificadoParticipacao
+                  key={inscricao.id}
+                  inscricao={inscricao}
+                  evento={evento}
+                  baixando={baixandoId === `participante_${evento.id}`}
+                  erro={
+                    erroId?.id === `participante_${evento.id}` ? erroId.msg : undefined
+                  }
+                  onBaixar={() => baixarParticipacao(evento.id)}
                 />
               ))}
             </div>

@@ -74,7 +74,9 @@ function PassosSubmissao({ fase }: { fase: 1 | 2 | 3 }) {
 export type DadosSubmissao = {
   titulo: string;
   areaTematica: string;
-  modalidadeApresentacao: "oral" | "roda_conversa";
+  // Ausente = evento sem etapa de apresentação (ver modalidadesPermitidas
+  // abaixo) — trabalho fica sem modalidade, não entra em Ensalamento.
+  modalidadeApresentacao?: "oral" | "roda_conversa";
   resumo: string;
   nomeOrientador: string;
   participantesUids: string[];
@@ -106,6 +108,7 @@ export function SubmeterTrabalhoModal({
   eventoNome,
   areasDisponiveis,
   areasComplexas = [],
+  modalidadesPermitidas = ["oral", "roda_conversa"],
   meuUid,
   valoresIniciais,
   modoEdicao = false,
@@ -128,6 +131,13 @@ export function SubmeterTrabalhoModal({
   // Áreas com sub-área dentro (2026-09-01, ex.: "Projetos Integradores") —
   // selecionar o grupo abre um segundo campo com as sub-áreas.
   areasComplexas?: AreaTematicaComplexa[];
+  // Modalidades que ESSE evento aceita (Evento.modalidadesApresentacao,
+  // 2026-09-17). Ausente = eventos antigos, sem essa configuração —
+  // preserva o comportamento de antes (as duas, escolha livre). Vazio =
+  // evento sem etapa de apresentação nenhuma (esconde o bloco inteiro,
+  // trabalho fica sem modalidadeApresentacao). 1 item = auto-selecionado,
+  // sem pergunta pro aluno.
+  modalidadesPermitidas?: ("oral" | "roda_conversa")[];
   meuUid: string | undefined;
   // Pré-preenche o formulário — usado tanto ao inscrever num evento um
   // trabalho já aprovado pelo orientador numa turma do Projeto Integrador
@@ -161,6 +171,15 @@ export function SubmeterTrabalhoModal({
 }) {
   const areaInicial = separarAreaInicial(valoresIniciais?.areaTematica, areasComplexas);
 
+  // Modalidades que esse evento aceita, já filtradas — 0 = sem etapa de
+  // apresentação (esconde o bloco), 1 = auto-seleciona (esconde o bloco
+  // também, não tem o que escolher), 2 = escolha livre (comportamento
+  // original, bloco aparece normal).
+  const modalidadesFiltradas = MODALIDADES.filter((m) => modalidadesPermitidas.includes(m.valor));
+  const modalidadeInicial = (): "oral" | "roda_conversa" | "" =>
+    valoresIniciais?.modalidadeApresentacao ??
+    (modalidadesFiltradas.length === 1 ? modalidadesFiltradas[0].valor : "");
+
   const [fase, setFase] = useState<1 | 2 | 3>(1);
   const [titulo, setTitulo] = useState(valoresIniciais?.titulo ?? "");
   const [nomeOrientador, setNomeOrientador] = useState(valoresIniciais?.nomeOrientador ?? "");
@@ -168,7 +187,7 @@ export function SubmeterTrabalhoModal({
   const [subArea, setSubArea] = useState(areaInicial.subArea);
   const [modalidadeApresentacao, setModalidadeApresentacao] = useState<
     "oral" | "roda_conversa" | ""
-  >(valoresIniciais?.modalidadeApresentacao ?? "");
+  >(modalidadeInicial());
   const [resumo, setResumo] = useState(valoresIniciais?.resumo ?? "");
   const [buscaColega, setBuscaColega] = useState("");
   const [participantes, setParticipantes] = useState<AlunoParaBusca[]>(
@@ -218,7 +237,10 @@ export function SubmeterTrabalhoModal({
       : ""
     : areaNivel1;
 
-  const fase1Valida = titulo.trim() && areaTematicaFinal && !!modalidadeApresentacao;
+  const fase1Valida =
+    titulo.trim() &&
+    areaTematicaFinal &&
+    (modalidadesFiltradas.length === 0 || !!modalidadeApresentacao);
   const fase2Valida = nomeOrientador.trim();
   const valido = fase1Valida && fase2Valida;
 
@@ -237,18 +259,18 @@ export function SubmeterTrabalhoModal({
     setNomeOrientador(valoresIniciais?.nomeOrientador ?? "");
     setAreaNivel1(areaInicial.areaNivel1);
     setSubArea(areaInicial.subArea);
-    setModalidadeApresentacao(valoresIniciais?.modalidadeApresentacao ?? "");
+    setModalidadeApresentacao(modalidadeInicial());
     setResumo(valoresIniciais?.resumo ?? "");
     setBuscaColega("");
     setParticipantes((valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })));
   }
 
   function enviar() {
-    if (!valido || !modalidadeApresentacao) return;
+    if (!valido) return;
     onSubmit({
       titulo: titulo.trim(),
       areaTematica: areaTematicaFinal,
-      modalidadeApresentacao,
+      ...(modalidadeApresentacao ? { modalidadeApresentacao } : {}),
       resumo: resumo.trim(),
       nomeOrientador: nomeOrientador.trim(),
       participantesUids: participantes.map((p) => p.uid),
@@ -351,13 +373,16 @@ export function SubmeterTrabalhoModal({
           </label>
         )}
 
+        {modalidadesFiltradas.length > 0 && (
         <div className="flex flex-col gap-2">
+          {modalidadesFiltradas.length > 1 && (
+          <>
           <span className="text-sm font-medium text-fatec-navy-900">
             Como o trabalho será apresentado{" "}
             <span className="text-fatec-orange-600">*</span>
           </span>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {MODALIDADES.map((m) => {
+            {modalidadesFiltradas.map((m) => {
               const Icone = m.icone;
               const selecionada = modalidadeApresentacao === m.valor;
               return (
@@ -387,6 +412,8 @@ export function SubmeterTrabalhoModal({
               );
             })}
           </div>
+          </>
+          )}
           {modalidadeApresentacao === "roda_conversa" && (
             <div className="flex flex-col items-start gap-3 rounded-xl bg-fatec-orange-500 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
@@ -414,6 +441,7 @@ export function SubmeterTrabalhoModal({
             </div>
           )}
         </div>
+        )}
         </>
         )}
 

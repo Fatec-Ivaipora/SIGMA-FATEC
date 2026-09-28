@@ -7,7 +7,7 @@ import {
   DeclaracaoPDF,
 } from "@/lib/certificadosPdf";
 
-type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor";
+type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
 function slug(texto: string): string {
   return texto
@@ -89,7 +89,8 @@ export async function GET(request: Request) {
     papel !== "avaliador" &&
     papel !== "moderador" &&
     papel !== "monitor" &&
-    papel !== "orientador"
+    papel !== "orientador" &&
+    papel !== "participante"
   ) {
     return NextResponse.json({ erro: "Papel inválido." }, { status: 400 });
   }
@@ -273,6 +274,96 @@ export async function GET(request: Request) {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${prefixoArquivo}-${slug(trabalho.alunoNome as string)}.pdf"`,
+      },
+    });
+  }
+
+  // Certificado de participação (2026-09-22) — evento "simples", sem
+  // trabalho/avaliação nenhuma por trás, só a própria inscrição da pessoa.
+  // Mesmo espírito do branch "monitor" abaixo (declaração sem trabalho),
+  // só que a fonte é inscricoesEvento em vez de monitoresEvento.
+  if (papel === "participante") {
+    const eventoId = url.searchParams.get("eventoId");
+    if (!eventoId) {
+      return NextResponse.json({ erro: "eventoId é obrigatório." }, { status: 400 });
+    }
+
+    const eventoSnap = await db.doc(`eventos/${eventoId}`).get();
+    const evento = eventoSnap.data();
+    if (!evento) {
+      return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
+    }
+    if (evento.tipo !== "simples") {
+      return NextResponse.json(
+        { erro: "Esse evento não emite certificado de participação." },
+        { status: 400 },
+      );
+    }
+
+    const ehStaff =
+      chamador?.papel === "admin" ||
+      (chamador?.papel === "organizacao" &&
+        (chamador?.eventosPermitidos ?? []).includes(eventoId));
+
+    const inscricaoSnap = await db.doc(`inscricoesEvento/${eventoId}::${uid}`).get();
+    const inscricao = inscricaoSnap.data();
+    if (!inscricao) {
+      return NextResponse.json(
+        { erro: "Você não está inscrito nesse evento." },
+        { status: 400 },
+      );
+    }
+    // Só exige pagamento se o evento tiver valor de inscrição — mesma regra
+    // já usada pro certificado de aluno (linha ~220 acima).
+    if (evento.valorInscricao && inscricao.status !== "pago" && !ehStaff) {
+      return NextResponse.json(
+        {
+          erro:
+            "Sua inscrição nesse evento ainda está com pagamento pendente — o certificado só é liberado depois da confirmação do pagamento.",
+        },
+        { status: 400 },
+      );
+    }
+    // Libera se a própria pessoa confirmou presença (QR, 2026-09-23) OU a
+    // organização apertou "Liberar certificados" pra todo mundo (plano B se
+    // o QR falhar no dia do evento) — confirmado com o usuário.
+    if (!inscricao.presencaConfirmada && !evento.certificadosLiberados && !ehStaff) {
+      return NextResponse.json(
+        {
+          erro:
+            "Confirme sua presença pelo QR do evento, ou aguarde a organização liberar os certificados.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const faltando = faltandoDadosEvento(evento, papel);
+    if (faltando.length > 0) {
+      return NextResponse.json(
+        {
+          erro: `O evento "${evento.nome}" ainda não tem os seguintes dados de certificado configurados: ${faltando.join(", ")}. Peça pro admin preencher em Eventos → Certificado.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const buffer = await renderToBuffer(
+      DeclaracaoPDF({
+        nome: inscricao.nome as string,
+        papel: "participante",
+        eventoNome: evento.nome as string,
+        dataRealizacao: evento.dataRealizacao as string,
+        cargaHoraria: evento.cargaHoraria as number,
+        diretorNome: evento.nomeDiretorAcademico as string,
+        dataAssinatura: hoje,
+      }),
+    );
+
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="certificado-participacao-${slug(inscricao.nome as string)}.pdf"`,
       },
     });
   }

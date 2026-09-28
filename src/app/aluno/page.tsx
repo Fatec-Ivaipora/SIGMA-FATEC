@@ -301,9 +301,11 @@ export default function AlunoPainelPage() {
                     >
                       <div className="min-w-0">
                         <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
-                        <p className="mt-0.5 text-sm text-fatec-muted">
-                          {trabalho ? trabalho.titulo : "Nenhum trabalho enviado ainda"}
-                        </p>
+                        {evento.tipo !== "simples" && (
+                          <p className="mt-0.5 text-sm text-fatec-muted">
+                            {trabalho ? trabalho.titulo : "Nenhum trabalho enviado ainda"}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-none flex-wrap items-center gap-2">
                         {trabalho && (
@@ -328,6 +330,7 @@ export default function AlunoPainelPage() {
                             </button>
                           ))}
                         {!trabalho &&
+                          evento.tipo !== "simples" &&
                           (dentroDoPrazoEnvio(evento) ? (
                             <button
                               type="button"

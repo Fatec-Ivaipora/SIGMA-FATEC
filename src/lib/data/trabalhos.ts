@@ -96,6 +96,10 @@ export type Trabalho = {
   // reconhecimento"). Decide se o aluno baixa Certificado (premiado) ou
   // Declaração (aceito, mas não premiado) — ver /api/certificados.
   premiado?: boolean;
+  // Sessão de apresentação (sala + bloco de horário + modalidade + área) a
+  // que esse trabalho foi designado pela grade automática (2026-09-17) — ver
+  // src/lib/data/sessoes.ts e /ensalamento. Ausente = ainda não ensalado.
+  sessaoId?: string | null;
   atualizadoEm?: unknown;
 };
 

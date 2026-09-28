@@ -1,6 +1,7 @@
 import {
   LayoutGrid,
   FileStack,
+  DoorOpen,
   CalendarRange,
   Tag,
   BarChart3,
@@ -12,6 +13,7 @@ import {
 export const NAV_ADMIN = [
   { label: "Painel", href: "/dashboard", icon: LayoutGrid },
   { label: "Trabalhos", href: "/trabalhos", icon: FileStack },
+  { label: "Ensalamento", href: "/ensalamento", icon: DoorOpen },
   { label: "Eventos", href: "/eventos", icon: CalendarRange },
   { label: "Áreas temáticas", href: "/areas-tematicas", icon: Tag },
   { label: "Declarações", href: "/declaracoes", icon: ScrollText },

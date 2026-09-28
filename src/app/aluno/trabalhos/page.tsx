@@ -189,6 +189,9 @@ export default function AlunoTrabalhosPage() {
           areasComplexas={
             eventos.find((e) => e.id === editando.eventoId)?.areasTematicasComplexas ?? []
           }
+          modalidadesPermitidas={
+            eventos.find((e) => e.id === editando.eventoId)?.modalidadesApresentacao
+          }
           meuUid={user?.uid}
           comentarioRevisao={editando.status === "revisao" ? editando.comentarioRevisao : null}
           valoresIniciais={{

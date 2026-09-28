@@ -38,7 +38,6 @@ import {
   Timestamp,
   updateDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
@@ -77,10 +76,20 @@ const FASES_CRIAR = [
  * sub-área) — modal virou muito longo/bagunçado como formulário único;
  * quebrado em fases pra ficar mais dinâmico. Puramente visual, não
  * clicável — navegação é só pelos botões Voltar/Próximo no rodapé. */
-function PassosCriarEvento({ fase }: { fase: 1 | 2 | 3 | 4 }) {
+function PassosCriarEvento({
+  fase,
+  tipoForm,
+}: {
+  fase: 1 | 2 | 3 | 4;
+  tipoForm: "academico" | "simples" | null;
+}) {
+  // Evento simples pula "Áreas temáticas" — indicador visual acompanha
+  // (2026-09-22), senão fica um passo sobrando que nunca é visitado.
+  const fasesVisiveis =
+    tipoForm === "simples" ? FASES_CRIAR.filter((f) => f.numero !== 2) : FASES_CRIAR;
   return (
     <div className="mb-1 flex items-center gap-2">
-      {FASES_CRIAR.map((f) => (
+      {fasesVisiveis.map((f) => (
         <div key={f.numero} className="flex flex-1 items-center gap-2">
           <div className="flex flex-1 flex-col gap-1.5">
             <span
@@ -283,7 +292,8 @@ function CardEventoAdmin({
   onEncerrarEvento: () => void;
 }) {
   const temTaxa = !!evento.valorInscricao;
-  const { inscritos } = useInscritosDoEvento(temTaxa ? evento.id : undefined);
+  const simples = evento.tipo === "simples";
+  const { inscritos } = useInscritosDoEvento(temTaxa || simples ? evento.id : undefined);
   const inscritosPagos = inscritos.filter((i) => i.status === "pago").length;
 
   // Duas linhas, uma embaixo da outra (2026-09-09, pedido do coordenador) —
@@ -354,22 +364,28 @@ function CardEventoAdmin({
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-fatec-line pt-4 text-xs text-fatec-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <FileStack className="h-3.5 w-3.5" strokeWidth={1.75} />
-          {totalTrabalhos} trabalhos
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Tag className="h-3.5 w-3.5" strokeWidth={1.75} />
-          {(evento.areasTematicas ?? []).length} áreas
-        </span>
-        {temTaxa && (
+        {/* Evento simples (2026-09-24) não tem trabalho nem área temática —
+            no lugar, mostra os inscritos mesmo sendo gratuito. */}
+        {!simples && (
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <FileStack className="h-3.5 w-3.5" strokeWidth={1.75} />
+              {totalTrabalhos} trabalhos
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5" strokeWidth={1.75} />
+              {(evento.areasTematicas ?? []).length} áreas
+            </span>
+          </>
+        )}
+        {(temTaxa || simples) && (
           <button
             type="button"
             onClick={onAbrirInscritos}
             className="inline-flex items-center gap-1.5 font-semibold text-fatec-sky-600 transition-colors hover:text-fatec-navy-800"
           >
             <Users className="h-3.5 w-3.5" strokeWidth={1.75} />
-            {inscritos.length} inscritos ({inscritosPagos} pagos)
+            {inscritos.length} inscritos{temTaxa && ` (${inscritosPagos} pagos)`}
           </button>
         )}
       </div>
@@ -395,16 +411,21 @@ function CardEventoAdmin({
         <MenuAcoesEvento
           pendencia={!!onAbrirEdubox && !evento.codigoEdubox}
           itens={[
-            ...(!evento.destaque
-              ? [{ icone: Star, cor: "navy" as const, label: "Marcar destaque", onClick: onMarcarDestaque }]
-              : []),
+            {
+              icone: Star,
+              cor: "navy" as const,
+              label: evento.destaque ? "Remover destaque" : "Marcar destaque",
+              onClick: onMarcarDestaque,
+            },
             {
               icone: Globe,
               cor: "navy",
               label: evento.aceitaExternos ? "Não aceitar externos" : "Aceitar externos",
               onClick: onAlternarAceitaExternos,
             },
-            { icone: Tag, cor: "navy", label: "Áreas temáticas", href: "/areas-tematicas" },
+            ...(!simples
+              ? [{ icone: Tag, cor: "navy" as const, label: "Áreas temáticas", href: "/areas-tematicas" }]
+              : []),
             ...(onAbrirEdubox
               ? [
                   {
@@ -428,7 +449,12 @@ export default function EventosPage() {
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
 
   const [modalCriar, setModalCriar] = useState(false);
-  const [faseCriar, setFaseCriar] = useState<1 | 2 | 3 | 4>(1);
+  const [faseCriar, setFaseCriar] = useState<0 | 1 | 2 | 3 | 4>(0);
+  // Tipo de evento (2026-09-22) — escolhido na fase 0, decide se o wizard
+  // pula a fase "Áreas temáticas" (só existe pra trabalho acadêmico). null
+  // só antes de escolher; o footer trata isso como "não avança" (mesma
+  // ideia de nome vazio na fase 1).
+  const [tipoForm, setTipoForm] = useState<"academico" | "simples" | null>(null);
   const [modalInscritosId, setModalInscritosId] = useState<string | null>(null);
   const [modalInscricaoExtraId, setModalInscricaoExtraId] = useState<string | null>(null);
   const [modalMonitoresId, setModalMonitoresId] = useState<string | null>(null);
@@ -453,6 +479,9 @@ export default function EventosPage() {
   }>({ aberto: false, grupo: null });
   const [destaqueNoForm, setDestaqueNoForm] = useState(false);
   const [aceitaExternosNoForm, setAceitaExternosNoForm] = useState(false);
+  const [modalidadesApresentacaoForm, setModalidadesApresentacaoForm] = useState<
+    ("oral" | "roda_conversa")[]
+  >([]);
   const [valorInscricao, setValorInscricao] = useState("");
   const [eventoGratuito, setEventoGratuito] = useState(false);
   const [dataRealizacao, setDataRealizacao] = useState("");
@@ -465,12 +494,16 @@ export default function EventosPage() {
   // inscrição/avaliação depois que o evento já existe (o wizard de criação
   // só permite preencher uma vez, e às vezes sai errado ou precisa mudar).
   const [modalConfigId, setModalConfigId] = useState<string | null>(null);
+  const configSimples = eventos.find((e) => e.id === modalConfigId)?.tipo === "simples";
   const [nomeConfig, setNomeConfig] = useState("");
   const [descricaoConfig, setDescricaoConfig] = useState("");
   const [inicioInscricoesConfig, setInicioInscricoesConfig] = useState("");
   const [fimInscricoesConfig, setFimInscricoesConfig] = useState("");
   const [inicioEnvioTrabalhoConfig, setInicioEnvioTrabalhoConfig] = useState("");
   const [fimEnvioTrabalhoConfig, setFimEnvioTrabalhoConfig] = useState("");
+  const [modalidadesApresentacaoConfig, setModalidadesApresentacaoConfig] = useState<
+    ("oral" | "roda_conversa")[]
+  >([]);
   const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
@@ -584,13 +617,15 @@ export default function EventosPage() {
     setAreasComplexasForm([]);
     setDestaqueNoForm(false);
     setAceitaExternosNoForm(false);
+    setModalidadesApresentacaoForm([]);
     setValorInscricao("");
     setEventoGratuito(false);
     setDataRealizacao("");
     setCargaHoraria("");
     setNomeDiretorAcademico("");
     setNomeCoordenadorPesquisa("");
-    setFaseCriar(1);
+    setFaseCriar(0);
+    setTipoForm(null);
   }
 
   function abrirModalConfig(evento: Evento) {
@@ -601,6 +636,7 @@ export default function EventosPage() {
     setFimInscricoesConfig(evento.fimInscricoes ?? "");
     setInicioEnvioTrabalhoConfig(evento.inicioEnvioTrabalho ?? "");
     setFimEnvioTrabalhoConfig(evento.fimEnvioTrabalho ?? "");
+    setModalidadesApresentacaoConfig(evento.modalidadesApresentacao ?? []);
   }
 
   async function salvarConfig() {
@@ -629,6 +665,11 @@ export default function EventosPage() {
         prazoEdicaoTrabalho: fimInscricoesConfig
           ? Timestamp.fromDate(new Date(`${fimInscricoesConfig}T23:55:00`))
           : deleteField(),
+        // Sempre grava a lista, mesmo vazia (2026-09-24) — campo ausente é
+        // lido como "evento antigo, as duas modalidades" pelo
+        // SubmeterTrabalhoModal, então apagar o campo fazia "nenhuma
+        // marcada" virar "as duas" pro aluno.
+        modalidadesApresentacao: modalidadesApresentacaoConfig,
       });
       setModalConfigId(null);
     } finally {
@@ -883,15 +924,11 @@ export default function EventosPage() {
     setBannerParaCortar(null);
   }
 
-  async function marcarDestaque(eventoId: string) {
-    const batch = writeBatch(db);
-    for (const e of eventos) {
-      if (e.destaque && e.id !== eventoId) {
-        batch.update(doc(db, "eventos", e.id), { destaque: false });
-      }
-    }
-    batch.update(doc(db, "eventos", eventoId), { destaque: true });
-    await batch.commit();
+  // Liga/desliga o destaque só desse evento (2026-09-24) — antes marcar um
+  // desmarcava todos os outros (RN-10, um destaque por vez). Agora a home
+  // mostra vários em carrossel, então cada evento tem o próprio interruptor.
+  async function alternarDestaque(evento: Evento) {
+    await updateDoc(doc(db, "eventos", evento.id), { destaque: !evento.destaque });
   }
 
   async function alternarAceitaExternos(eventoId: string, atual: boolean) {
@@ -912,7 +949,12 @@ export default function EventosPage() {
   }
 
   async function criarEvento() {
-    if (!nome.trim() || areasTematicasForm.length === 0 || !valorValido) return;
+    if (
+      !nome.trim() ||
+      (tipoForm === "academico" && areasTematicasForm.length === 0) ||
+      !valorValido
+    )
+      return;
     setCriando(true);
     try {
       const eventoRef = await addDoc(collection(db, "eventos"), {
@@ -934,9 +976,19 @@ export default function EventosPage() {
         ...(fimEnvioTrabalho ? { fimEnvioTrabalho } : {}),
         destaque: destaqueNoForm,
         aceitaExternos: aceitaExternosNoForm,
-        areasTematicas: areasTematicasForm,
-        ...(areasComplexasForm.length > 0
-          ? { areasTematicasComplexas: areasComplexasForm }
+        ...(tipoForm === "simples" ? { tipo: "simples" as const } : {}),
+        // Lista vazia gravada de propósito (2026-09-24) — ver o mesmo
+        // comentário em salvarConfig: ausente = "as duas" (evento antigo).
+        modalidadesApresentacao: modalidadesApresentacaoForm,
+        // areasTematicas fica de fora por completo pra evento simples
+        // (2026-09-22) — não tem trabalho, então não tem área temática.
+        ...(tipoForm === "academico"
+          ? {
+              areasTematicas: areasTematicasForm,
+              ...(areasComplexasForm.length > 0
+                ? { areasTematicasComplexas: areasComplexasForm }
+                : {}),
+            }
           : {}),
         ...(!eventoGratuito ? { valorInscricao: Number(valorInscricao) } : {}),
         // Prazo de edição do trabalho pelo aluno (2026-09-04): 23:55 do dia
@@ -1013,7 +1065,7 @@ export default function EventosPage() {
                 key={evento.id}
                 evento={evento}
                 totalTrabalhos={trabalhosPorEvento.get(evento.id) ?? 0}
-                onMarcarDestaque={() => marcarDestaque(evento.id)}
+                onMarcarDestaque={() => alternarDestaque(evento)}
                 onAlternarAceitaExternos={() =>
                   alternarAceitaExternos(evento.id, !!evento.aceitaExternos)
                 }
@@ -1041,7 +1093,51 @@ export default function EventosPage() {
 
       <Modal open={modalCriar} onClose={fecharCriar} title="Criar evento" size="lg">
         <form className="flex flex-col gap-5">
-          <PassosCriarEvento fase={faseCriar} />
+          {faseCriar !== 0 && <PassosCriarEvento fase={faseCriar} tipoForm={tipoForm} />}
+
+          {faseCriar === 0 && (
+          <>
+          <p className="text-sm text-fatec-muted">
+            Que tipo de evento é esse?
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTipoForm("academico");
+                setFaseCriar(1);
+              }}
+              className="flex flex-col items-start gap-2 rounded-xl border border-fatec-line bg-white p-5 text-left transition-colors hover:border-fatec-sky-600 hover:bg-fatec-navy-50"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
+                <FileStack className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <span className="font-semibold text-fatec-navy-900">Acadêmico completo</span>
+              <span className="text-xs text-fatec-muted">
+                Submissão de trabalho, avaliação, notas, ensalamento e
+                certificado de apresentação — como a X MAC.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTipoForm("simples");
+                setFaseCriar(1);
+              }}
+              className="flex flex-col items-start gap-2 rounded-xl border border-fatec-line bg-white p-5 text-left transition-colors hover:border-fatec-sky-600 hover:bg-fatec-navy-50"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
+                <Ticket className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <span className="font-semibold text-fatec-navy-900">Evento simples</span>
+              <span className="text-xs text-fatec-muted">
+                Só inscrição, pagamento e certificado de participação — pra
+                palestra, curso ou workshop, sem trabalho acadêmico.
+              </span>
+            </button>
+          </div>
+          </>
+          )}
 
           {faseCriar === 1 && (
           <>
@@ -1266,6 +1362,8 @@ export default function EventosPage() {
             </label>
           </div>
 
+          {tipoForm === "academico" && (
+          <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
@@ -1294,6 +1392,8 @@ export default function EventosPage() {
               novo pra esse evento.
             </span>
           </div>
+          </>
+          )}
 
           <label className="flex items-center gap-2.5">
             <input
@@ -1306,6 +1406,40 @@ export default function EventosPage() {
               Aceitar inscrição de participantes externos (não alunos da Fatec)
             </span>
           </label>
+
+          {tipoForm === "academico" && (
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Modalidades de apresentação
+            </span>
+            <span className="text-xs text-fatec-muted">
+              Nenhuma marcada = evento sem etapa de apresentação (não ensala,
+              aluno não escolhe modalidade). Só 1 marcada = ela é escolhida
+              sozinha, sem perguntar pro aluno.
+            </span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
+              {(["oral", "roda_conversa"] as const).map((modalidade) => (
+                <label key={modalidade} className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={modalidadesApresentacaoForm.includes(modalidade)}
+                    onChange={(e) =>
+                      setModalidadesApresentacaoForm((prev) =>
+                        e.target.checked
+                          ? [...prev, modalidade]
+                          : prev.filter((m) => m !== modalidade),
+                      )
+                    }
+                    className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span className="text-sm font-medium text-fatec-navy-900">
+                    {modalidade === "oral" ? "Apresentação Oral" : "Roda de Conversa"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          )}
           </>
           )}
 
@@ -1423,23 +1557,42 @@ export default function EventosPage() {
           </>
           )}
 
+          {/* Fase 0 (escolha de tipo) não tem footer — os dois cards já
+              selecionam e avançam sozinhos. Fases 1-4 (2026-09-22): "Voltar"/
+              "Próximo" pulam a fase 2 (Áreas temáticas) quando o evento é
+              simples, senão fica um passo vazio no meio do caminho. */}
+          {faseCriar > 0 && (
           <div className="mt-1 flex items-center justify-between border-t border-fatec-line pt-5">
             {faseCriar > 1 ? (
               <button
                 type="button"
-                onClick={() => setFaseCriar((f) => (f - 1) as 1 | 2 | 3 | 4)}
+                onClick={() =>
+                  setFaseCriar((f) =>
+                    (f === 3 && tipoForm === "simples" ? 1 : f - 1) as 0 | 1 | 2 | 3 | 4,
+                  )
+                }
                 className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
               >
                 Voltar
               </button>
             ) : (
-              <span />
+              <button
+                type="button"
+                onClick={() => setFaseCriar(0)}
+                className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+              >
+                Voltar
+              </button>
             )}
 
             {faseCriar < 4 ? (
               <button
                 type="button"
-                onClick={() => setFaseCriar((f) => (f + 1) as 1 | 2 | 3 | 4)}
+                onClick={() =>
+                  setFaseCriar((f) =>
+                    (f === 1 && tipoForm === "simples" ? 3 : f + 1) as 0 | 1 | 2 | 3 | 4,
+                  )
+                }
                 disabled={
                   (faseCriar === 1 && !nome.trim()) ||
                   (faseCriar === 2 && areasTematicasForm.length === 0)
@@ -1452,13 +1605,19 @@ export default function EventosPage() {
               <button
                 type="button"
                 onClick={criarEvento}
-                disabled={!nome.trim() || areasTematicasForm.length === 0 || !valorValido || criando}
+                disabled={
+                  !nome.trim() ||
+                  (tipoForm === "academico" && areasTematicasForm.length === 0) ||
+                  !valorValido ||
+                  criando
+                }
                 className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
               >
                 {criando ? "Criando..." : "Criar evento"}
               </button>
             )}
           </div>
+          )}
         </form>
       </Modal>
 
@@ -1564,8 +1723,10 @@ export default function EventosPage() {
       >
         <div className="flex flex-col gap-5">
           <p className="text-sm text-fatec-muted">
-            Nome, período de inscrição e período de submissão de trabalho —
-            dá pra corrigir aqui a qualquer momento, mesmo depois do evento
+            {configSimples
+              ? "Nome, descrição e período de inscrição"
+              : "Nome, período de inscrição e período de submissão de trabalho"}{" "}
+            — dá pra corrigir aqui a qualquer momento, mesmo depois do evento
             já criado.
           </p>
           <label className="flex flex-col gap-1.5">
@@ -1614,6 +1775,10 @@ export default function EventosPage() {
               />
             </label>
           </div>
+          {/* Evento simples (2026-09-24) não tem trabalho — prazo de edição,
+              submissão e modalidades de apresentação não se aplicam. */}
+          {!configSimples && (
+          <>
           <span className="-mt-3 text-xs text-fatec-muted">
             O prazo de edição do trabalho pelo aluno (23:55 do dia de fim das
             inscrições) é recalculado automaticamente ao salvar.
@@ -1646,6 +1811,41 @@ export default function EventosPage() {
             Depois dessa data, o aluno não consegue mais enviar um trabalho
             novo pra esse evento.
           </span>
+
+          <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Modalidades de apresentação
+            </span>
+            <span className="text-xs text-fatec-muted">
+              Nenhuma marcada = evento sem etapa de apresentação (não entra em
+              Ensalamento, aluno não escolhe modalidade). Só 1 marcada = ela é
+              escolhida sozinha, sem perguntar pro aluno.
+            </span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
+              {(["oral", "roda_conversa"] as const).map((modalidade) => (
+                <label key={modalidade} className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={modalidadesApresentacaoConfig.includes(modalidade)}
+                    onChange={(e) =>
+                      setModalidadesApresentacaoConfig((prev) =>
+                        e.target.checked
+                          ? [...prev, modalidade]
+                          : prev.filter((m) => m !== modalidade),
+                      )
+                    }
+                    className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span className="text-sm font-medium text-fatec-navy-900">
+                    {modalidade === "oral" ? "Apresentação Oral" : "Roda de Conversa"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          </>
+          )}
+
           <button
             type="button"
             onClick={salvarConfig}

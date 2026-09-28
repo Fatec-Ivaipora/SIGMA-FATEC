@@ -235,11 +235,17 @@ export function CertificadoApresentacaoPDF({
   );
 }
 
-const PAPEL_TEXTO: Record<"avaliador" | "moderador" | "orientador" | "monitor", string> = {
+const PAPEL_TEXTO: Record<
+  "avaliador" | "moderador" | "orientador" | "monitor" | "participante",
+  string
+> = {
   avaliador: "avaliador(a) dos trabalhos",
   moderador: "moderador(a) dos trabalhos",
   orientador: "orientador(a) de projeto",
   monitor: "monitor(a) de apoio ao evento",
+  // Certificado de participação (2026-09-22) — evento "simples", sem
+  // trabalho por trás, só a inscrição paga (ou gratuita) da pessoa.
+  participante: "participante",
 };
 
 const estiloDeclaracao = StyleSheet.create({
@@ -355,7 +361,7 @@ export function DeclaracaoPDF({
   dataAssinatura,
 }: {
   nome: string;
-  papel: "avaliador" | "moderador" | "orientador" | "monitor";
+  papel: "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
   eventoNome: string;
   dataRealizacao: string;
   cargaHoraria: number;

@@ -26,6 +26,95 @@ Vercel, deploy automático a cada push em `main`
 projeto Firebase já criado — o produto se chama SIGMA, não o projeto).
 Domínio de produção: `https://sigma.fatecivaipora.com.br`.
 
+## Comece por aqui (ordem de leitura pra quem chega agora)
+
+1. **Este arquivo inteiro** — é o único doc mantido em dia a cada push.
+2. `git status` + a seção "Em andamento (não commitado)" abaixo — pode ter
+   trabalho pela metade no working tree que ainda não entrou no histórico.
+3. `PRODUCT.md` e `regras do app/requisitos.md` só pra entender o *porquê*
+   das regras de negócio (RF/RN). **Estão defasados em vários pontos** —
+   quando baterem de frente com este arquivo ou com o código, o código
+   manda. Defasagens já conhecidas:
+   - Dizem Next.js 15 → é Next.js **16** (ver `AGENTS.md`: APIs mudaram,
+     ler `node_modules/next/dist/docs/` antes de escrever código de Next).
+   - Falam em **Cloud Functions** pra submissão/aceite/certificado → nunca
+     foram criadas. Tudo que precisa de privilégio é **rota `/api/*` do
+     próprio Next com Admin SDK** (ver "Mapa das rotas de API").
+   - Dizem que e-mail/Storage não funcionam (plano Spark) → **já funcionam**
+     (Blaze ativo, extensão Trigger Email instalada, banner no Storage).
+   - Pedem RA no cadastro → **RA foi removido** em 2026-09-10, só CPF.
+   - Pendências 8.1/8.2/8.4/8.10 (template de certificado, aceite final,
+     classificação dos vencedores, orientador-avaliador) → **resolvidas**
+     (ver "O processo de ponta a ponta").
+4. `regras do app/arquitetura_tecnica.md` — modelo de dados original; útil
+   pra `usuarios`/`trabalhos`/`turmas`, mas não tem nada depois de 2026-08-25.
+5. `regras do app/regras_da_aplicação.md` — a transcrição da primeira
+   reunião (a ideia original, em 44 linhas). Bom pra ter o "espírito" do
+   sistema, não os detalhes.
+6. `DESIGN.md` — sistema visual (navy/laranja/sky, Poppins, sem sombra em
+   card, um botão laranja por tela). Seguir em qualquer tela nova.
+
+## O processo de ponta a ponta
+
+É um sistema de **mostra acadêmica** (tipo congresso científico) da Fatec:
+a comissão abre um evento (MAC, MOPI...), alunos se inscrevem/pagam e
+submetem trabalhos, professores avaliam, os melhores de cada área são
+premiados, todo mundo recebe certificado/declaração. Em ordem:
+
+1. **Evento** (Admin, `/eventos`) — nome, descrição, banner, períodos de
+   inscrição/submissão/avaliação, taxa, áreas temáticas (`/areas-tematicas`),
+   se aceita participante externo, modalidades de apresentação (oral e/ou
+   roda de conversa, ou nenhuma), destaque na home. Pode ser **encerrado**
+   (reversível) sem apagar nada. Existe também o **evento "simples"**
+   (`tipo: "simples"` — palestra/curso/workshop, sem trabalho): só
+   inscrição + presença + certificado de participação (ver passo 9).
+2. **Participar** — o aluno clica "Participar" (`/api/asaas/interesse`),
+   o que cria a `inscricoesEvento/{eventoId}::{uid}` em estado de interesse.
+3. **Pagamento** (se o evento tem taxa) — `/api/asaas/cobranca` cria a
+   cobrança no Asaas (Pix/boleto/cartão), `externalReference` =
+   `{eventoId}::{uid}`. Confirmação chega por **3 caminhos**, qualquer um
+   basta: webhook do Asaas (`/api/asaas/webhook` — o único que manda
+   e-mail + feed), sincronização quando o aluno abre a tela
+   (`/api/asaas/status`), ou o admin marca na mão (`/api/asaas/manual`,
+   "Inscrição manual" — pagamento em dinheiro etc.).
+4. **Submissão** — aluno envia o trabalho (título, área, resumo, orientador
+   como texto livre, modalidade, colegas). Colega entra como **convite
+   pendente** até aceitar. Trabalho aprovado no **Projeto Integrador**
+   (turmas do orientador, `/aluno/projeto-integrador`) pode ser inscrito
+   num evento com título/resumo pré-preenchidos.
+5. **Avaliação** — organização/admin, em `/trabalhos`, seleciona em lote e
+   manda pra avaliador(es) da área (com divisão automática). Avaliador dá
+   5 notas de 1-5 (soma 5-25) ou pede **revisão** (volta pro aluno, que
+   corrige título/resumo e reenvia pro mesmo avaliador).
+6. **Resultado por área** (edital 6.6, top 3 por área) — "Aceitar sem
+   empate" resolve em lote; só quem empata na fronteira do pódio vai pra
+   apresentação desempatar. Campo `premiado` separa premiado (certificado)
+   de só aceito (declaração).
+7. **Ensalamento** (`/ensalamento`) — catálogo único de salas (reaproveitado
+   entre eventos, cada evento escolhe seu subconjunto) + grade automática de
+   sessões (sala × horário × área × modalidade), cada trabalho ganha
+   `sessaoId`. Oral é fatiada por minuto; roda de conversa (banner/pôster)
+   usa vagas simultâneas por sala, bloco único — os dois nunca dividem sala.
+8. **Apresentação / Resultado Final** — moderador pontua a apresentação
+   (5 critérios, 5-25); Resultado Final mostra as duas notas em colunas.
+9. **Certificados e declarações** — PDF gerado na hora
+   (`/api/certificados` + `src/lib/certificadosPdf.tsx`), com assinatura
+   real do Diretor e do Coordenador e número de registro sequencial **por
+   evento** (começa em `evento.numeroRegistroInicial`). Tipos: aluno
+   premiado, aluno aceito (declaração), avaliador, orientador, moderador,
+   monitor (`monitoresEvento`), participante de evento simples (liberado
+   por `certificadosLiberados` no evento **ou** por presença confirmada via
+   QR rotativo — `src/lib/qrPresenca.ts`). Admin/organização emitem em nome
+   de qualquer um em `/declaracoes` → "Emitir certificado".
+10. **Edubox** (`/api/edubox/lancar`) — manda todo mundo elegível do evento
+    (inscrito ou com trabalho) pro sistema acadêmico externo via relay, pra
+    evitar cadastro duplicado lá. Reprocessa tudo a cada chamada.
+11. **Relatórios** (`/relatorios`) — inscrições, submissões, pagantes,
+    receita, ranking e nota média por área.
+
+Páginas públicas (sem login): home com evento em destaque + mapa,
+`/editais` (PDFs dos editais), declarações antigas por categoria/ano.
+
 ## Como rodar local
 
 ```bash
@@ -84,7 +173,33 @@ busca de autor sem expor CPF/nascimento), `eventos`, `trabalhos`,
 recente" da tela inicial), `turmas` (Projeto Integrador),
 `eduboxLancamentos` (cache de quem já foi mandado pro Edubox), `mail`
 (fila consumida pela extensão Trigger Email do Firebase — escrever aqui via
-`enviarEmail()` em `src/lib/mail.ts`, nunca direto).
+`enviarEmail()` em `src/lib/mail.ts`, nunca direto), `turmaTrabalhos`
+(trabalhos do Projeto Integrador), `monitoresEvento` (`{eventoId}::{uid}`),
+`webhookEventsProcessados` (idempotência do webhook Asaas, id = id do
+evento Asaas), `salas` e `sessoes` (ensalamento), `eventosQr` (segredo do
+QR de presença — **nunca** legível por client, só pelas rotas via Admin SDK).
+Editais e declarações públicas: ver `src/lib/data/editais.ts` e
+`src/lib/data/declaracoes.ts`.
+
+Todo hook de leitura fica em `src/lib/data/*.ts` (um arquivo por
+coleção/domínio) — procurar lá antes de escrever query nova.
+
+## Mapa das rotas de API (`src/app/api/`)
+
+Todas com Admin SDK, autenticadas por `Authorization: Bearer <idToken>`
+(exceto o webhook, que usa o header `asaas-access-token`).
+
+- `asaas/` — `interesse` (Participar), `cobranca` (cria cobrança),
+  `status` (sincroniza pagamento), `manual` (admin marca pago), `webhook`.
+- `certificados` — gera o PDF de qualquer tipo de certificado/declaração.
+- `edubox/` — `lancar`, `testar-conexao`.
+- `eventos/qr-atual` — código atual do QR de presença (admin/organização).
+- `inscricoes/` — `confirmar-presenca` (aluno escaneia o QR), `uids`.
+- `mail/` — `atribuicao`, `convite-colega`, `convite-turma`, `novo-papel`,
+  `trabalho-status`.
+- `trabalhos/` — `alterado-admin` (avisa autores de edição do admin),
+  `convite-aceito`.
+- `usuarios` — criar/excluir conta (só Admin).
 
 Regras de segurança em `firestore.rules` — sempre publicar manualmente
 depois de mudar (ver acima). Padrão geral: Admin vê/edita tudo; Organização é
@@ -163,6 +278,69 @@ porque não tinha pagamento nenhum pra "denunciar"). Testar o endpoint direto
 `PAYMENT_CREATED` (não em `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`) não grava
 nada, só confirma se a rota está no ar e o token bate.
 
+**Fila do webhook interrompida (o problema que mais volta).** A conta
+Asaas é compartilhada com o Edubox (tem 2 webhooks cadastrados: "Fatec -
+Sigma" e o "Webhook para cobranças" do Edubox — não mexer no do Edubox).
+Depois de várias entregas falhando, o Asaas **interrompe a fila** do nosso
+webhook e para de mandar qualquer coisa; os pagamentos continuam entrando
+pelo `/api/asaas/status` (então ninguém percebe), mas o aluno **não recebe
+o e-mail de confirmação** nem o aviso no feed. Sinal no Firestore: nenhuma
+`atividades` com `tipo: "pagamento"` recente e `webhookEventsProcessados`
+parada. Diagnóstico/reativação pela API (script descartável com
+`loadEnvConfig`, ver regras acima):
+- `GET {ASAAS_BASE_URL}/webhooks` → no item com a URL do SIGMA, olhar
+  `interrupted` e `penalizedRequestsCount`.
+- Reativar: `PUT {ASAAS_BASE_URL}/webhooks/{id}` com `{"interrupted": false}`
+  — mudança na conta de produção, só com o Mateus pedindo.
+- Um teste de ponta a ponta seguro: `POST` no webhook com
+  `PAYMENT_CONFIRMED` + `externalReference` fictício (ID sem `__` —
+  Firestore reserva `__x__`) e `id` fictício, conferir que gravou, apagar
+  os dois docs. Sem `uid`/`email` na inscrição fictícia, não sai e-mail.
+
+**Causa real (confirmada em 2026-09-24 pelo log do painel Asaas):** o
+**token salvo no cadastro do webhook no Asaas não batia com o
+`ASAAS_WEBHOOK_TOKEN` da Vercel** — toda entrega voltava
+`401 {"erro":"Token inválido."}`. A fila é `SEQUENTIALLY`, então travou no
+primeiro evento que falhou (um `PAYMENT_CREATED` de 2026-09-10 15:30, logo
+depois da troca de domínio) e nada depois dele foi entregue — na prática o
+webhook nunca funcionou no domínio novo. Os avisos de pagamento de
+2026-09-10 no feed vieram de `/api/asaas/manual` (que também grava
+`tipo: "pagamento"`), não do webhook. A suspeita de 2026-09-18 (timeout do
+e-mail, que motivou o `dbf4fbd`) estava errada — a mudança continua útil,
+mas não era a causa. **Lição: ao trocar URL ou token do webhook, trocar
+dos dois lados (painel Asaas e Vercel) e testar com o log do painel.**
+O teste de ponta a ponta acima usa o token do `.env.local`, então só prova
+que a Vercel está certa — não prova que o Asaas manda o mesmo token.
+**Status confirmado em 2026-09-28: o webhook voltou a funcionar.** O
+token colado pelo financeiro em 2026-09-24 ficou certo do lado da Asaas —
+a fila entregou 6 eventos ainda no fim daquele mesmo dia (2026-09-24
+~20:16 UTC, `webhookEventsProcessados` foi de 0 pra 6:
+`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`, todos do mesmo `externalReference`
+base `OdZNgwxjhGkSYyrwLyyM`), com `atividades` de pagamento correspondentes
+no mesmo horário (feed + e-mail saíram). Fila hoje: `interrupted: false`,
+`penalizedRequestsCount: 0` (zerou desde o 1 penalizado do dia 24 — a
+Asaas reseta o contador quando a entrega volta a funcionar). 7 inscrições
+com `status: "pago"` no total (2 mais antigas, de 2026-09-10, vieram de
+`/api/asaas/manual`, de antes do conserto). Não é preciso continuar
+verificando isso a cada sessão — só reabrir se algum pagamento futuro não
+gerar e-mail/feed de novo (sinal: `webhookEventsProcessados` parado com
+`inscricoesEvento` pagas subindo).
+
+**Efeito colateral desse reprocessamento (achado em 2026-09-28, corrigido):**
+esse mesmo reenvio do backlog reescreveu `pagoEm` de quem já tinha sido
+confirmado antes pelo `/api/asaas/status` (ex.: Guilherme Henrique Camargo
+Dos Santos, pago de verdade em 10/09, `pagoEm` virou 24/09 — a data da
+reativação da fila, não a do pagamento). Causa: o webhook sempre gravava
+`pagoEm: serverTimestamp()` de novo, sem checar se já existia um. Cada
+evento reenviado do backlog tem um `id` novo, então passa batido pela
+idempotência de `webhookEventsProcessados` (que só barra o mesmo `id`
+chegando duas vezes). Corrigido em `src/app/api/asaas/webhook/route.ts`:
+só grava `pagoEm` se o doc ainda não tiver um. O registro do Guilherme foi
+corrigido na mão (data real puxada de `GET /payments?externalReference=...`
+na Asaas: `confirmedDate`/`paymentDate` 2026-09-10) — os outros 5 do
+reprocessamento de 24/09 não foram conferidos, só reabrir se alguém
+notar outra data de pagamento estranha no modal de Inscritos.
+
 **Edubox:** `src/app/api/edubox/lancar/route.ts` — manda CPF + nome + data
 de nascimento + pagamento + carga horária pro relay deles. **Não usa RA**
 (por isso o RA saiu do cadastro). O relay pode remover uma inscrição de
@@ -196,6 +374,13 @@ ativa no projeto Firebase).
   scroll em telas de PC (2026-09-11) — não tirar essas classes achando que
   são sobra.
 
+## Em andamento
+
+- Na tela **Eventos do aluno** (`/aluno/eventos`), só o primeiro destaque
+  aparece — a home (`/`) já mostra todos os destaques num carrossel
+  (ver "Vários eventos em destaque" no histórico), mas essa tela não foi
+  atualizada junto.
+
 ## Histórico de mudanças
 
 Uma entrada por `git push`, mais recente no topo, curta (o commit em si já
@@ -203,7 +388,45 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
-- **2026-09-11** — Modal de detalhes do trabalho em `/trabalhos` (clicar no
+- **2026-09-28** — Ensalamento vai pro ar: catálogo único de salas
+  (`salas`, antes preso a `eventoId`, agora cadastrado uma vez e
+  reaproveitado por qualquer evento via `evento.salasIds`; catálogo já
+  populado com as 30 salas do campus), grade automática por sala × horário
+  × área × modalidade (`sessoes`, algoritmo first-fit decreasing), modal
+  "Inscritos" redesenhado (lista única com filtro Todos/Alunos/De fora em
+  vez de duas colunas fixas, datas de inscrição/pagamento alinhadas em
+  grid), evento "simples" (sem trabalho, só inscrição/presença/certificado)
+  com presença por QR rotativo (HMAC por janela de 60s), banner de evento
+  em destaque extraído (`DestaqueEventoBanner`) e página inicial mostrando
+  todos os destaques num carrossel (antes só 1 por vez, RN-10). Testado com
+  carga de 300 trabalhos de teste (apagados depois). Dois ajustes vieram
+  desse teste: lista de trabalhos por sessão vem recolhida por padrão (com
+  16-17 trabalhos por sessão virava parede de texto, difícil de ler) e roda
+  de conversa
+  (banner/pôster) ganhou modelo de capacidade próprio — vagas simultâneas
+  por sala, bloco único pro período inteiro, nunca fatiado por minuto como
+  a oral, e nunca dividindo sala com ela (pesquisado o formato padrão desse
+  tipo de sessão antes de implementar). Corrigido de quebra um bug real no
+  webhook Asaas: reprocessar a fila reescrevia `pagoEm` pra data da
+  reativação em vez de manter a data real do pagamento (webhook não
+  checava se já existia um `pagoEm` antes de gravar de novo). `firestore.rules`
+  publicado manualmente no Console pelo Mateus (`salas`, `sessoes`,
+  `eventosQr`).
+- **2026-09-24** *(sem commit de código)* — Diagnóstico da fila do webhook
+  Asaas interrompida — causa: token do webhook no painel Asaas diferente do
+  da Vercel, toda entrega dava 401 desde 2026-09-10 (ver "Fila do webhook
+  interrompida"). Token corrigido no painel pelo financeiro; aguardando a
+  próxima entrega pra confirmar. Este `INFO.md` ganhou "Comece por aqui",
+  "O processo de ponta a ponta", mapa de rotas de API, coleções novas e
+  "Em andamento".
+- **2026-09-18** `2fcec9c` — Home institucional redesenhada: banner do
+  evento em destaque como hero (antes do herói padrão), mapa pelo Google
+  Maps Embed API oficial (CSP libera `google.com` em `frame-src`), logo da
+  Fatec no cabeçalho público.
+- **2026-09-18** `dbf4fbd` — Webhook Asaas: e-mail de confirmação em
+  melhor esforço (não derruba mais a resposta 200) + idempotência por id
+  do evento (`webhookEventsProcessados`).
+- **2026-09-11** `0728dde` — Modal de detalhes do trabalho em `/trabalhos` (clicar no
   título mostra todos os autores + resumo + orientador); botão "Editar"
   (só Admin) corrige trabalho fora do prazo em casos excepcionais, avisando
   automaticamente todos os autores (feed + e-mail) por segurança. E-mail ao

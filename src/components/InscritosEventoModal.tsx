@@ -1,56 +1,60 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GraduationCap, Search, Users } from "lucide-react";
+import { Search } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useInscritosDoEvento, type InscricaoEvento } from "@/lib/data/inscricoes";
 
-function Pessoa({ nome, email, status }: { nome: string; email: string; status: InscricaoEvento["status"] }) {
-  const pago = status === "pago";
+type FiltroVinculo = "todos" | "fatec" | "externo";
+
+const OPCOES_VINCULO: { key: FiltroVinculo; label: string }[] = [
+  { key: "todos", label: "Todos" },
+  { key: "fatec", label: "Alunos" },
+  { key: "externo", label: "De fora" },
+];
+
+function formatarData(valor?: InscricaoEvento["criadoEm"]): string {
+  if (!valor) return "—";
+  return valor.toDate().toLocaleDateString("pt-BR");
+}
+
+const COLUNAS_GRID = "sm:grid-cols-[2rem_minmax(0,1fr)_6rem_6rem_6rem]";
+
+function Pessoa({ pessoa }: { pessoa: InscricaoEvento }) {
+  const pago = pessoa.status === "pago";
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
-        {(nome || "?").slice(0, 2).toUpperCase()}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-fatec-navy-900">{nome}</p>
-        <p className="truncate text-xs text-fatec-muted">{email}</p>
+    <div className={`flex flex-col gap-3 px-4 py-3 sm:grid sm:items-center sm:gap-4 ${COLUNAS_GRID}`}>
+      <div className="flex items-center gap-3 sm:contents">
+        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
+          {(pessoa.nome || "?").slice(0, 2).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2 truncate text-sm font-medium text-fatec-navy-900">
+            {pessoa.nome}
+            {pessoa.vinculoFatec === false && (
+              <span className="rounded-full border border-fatec-line px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-fatec-muted">
+                Externo
+              </span>
+            )}
+          </p>
+          <p className="truncate text-xs text-fatec-muted">{pessoa.email}</p>
+        </div>
+      </div>
+      <div className="pl-11 text-xs text-fatec-muted sm:pl-0">
+        <p className="sm:hidden">Inscrito em</p>
+        <p className="font-medium text-fatec-navy-900">{formatarData(pessoa.criadoEm)}</p>
+      </div>
+      <div className="pl-11 text-xs text-fatec-muted sm:pl-0">
+        <p className="sm:hidden">Pago em</p>
+        <p className="font-medium text-fatec-navy-900">{formatarData(pessoa.pagoEm)}</p>
       </div>
       <span
-        className={`flex-none rounded-full px-2.5 py-1 text-xs font-semibold ${
+        className={`ml-11 w-fit rounded-full px-2.5 py-1 text-center text-xs font-semibold sm:ml-0 sm:w-full ${
           pago ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
         }`}
       >
         {pago ? "Pago" : "Não pago"}
       </span>
-    </div>
-  );
-}
-
-function Secao({
-  titulo,
-  icone,
-  pessoas,
-}: {
-  titulo: string;
-  icone: React.ReactNode;
-  pessoas: { uid: string; nome: string; email: string; status: InscricaoEvento["status"] }[];
-}) {
-  return (
-    <div>
-      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-fatec-navy-900">
-        {icone}
-        {titulo}
-        <span className="font-normal text-fatec-muted">({pessoas.length})</span>
-      </h3>
-      <div className="mt-2 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line">
-        {pessoas.map((p) => (
-          <Pessoa key={p.uid} nome={p.nome} email={p.email} status={p.status} />
-        ))}
-        {pessoas.length === 0 && (
-          <p className="px-4 py-3 text-sm text-fatec-muted">Ninguém encontrado.</p>
-        )}
-      </div>
     </div>
   );
 }
@@ -68,22 +72,27 @@ export function InscritosEventoModal({
 }) {
   const { inscritos } = useInscritosDoEvento(eventoId);
   const [busca, setBusca] = useState("");
+  const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return inscritos;
-    return inscritos.filter(
-      (i) => i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo),
-    );
-  }, [inscritos, busca]);
+    return inscritos
+      .filter((i) => {
+        if (filtroVinculo === "fatec") return i.vinculoFatec !== false;
+        if (filtroVinculo === "externo") return i.vinculoFatec === false;
+        return true;
+      })
+      .filter(
+        (i) => !termo || i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo),
+      )
+      .sort((a, b) => (b.criadoEm?.toMillis() ?? 0) - (a.criadoEm?.toMillis() ?? 0));
+  }, [inscritos, busca, filtroVinculo]);
 
-  const daFatec = filtrados.filter((i) => i.vinculoFatec !== false);
-  const externos = filtrados.filter((i) => i.vinculoFatec === false);
   const pagos = inscritos.filter((i) => i.status === "pago").length;
 
   return (
     <Modal open={open} onClose={onClose} title={`Inscritos — ${eventoNome}`} size="lg">
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm text-fatec-muted">
             <span className="font-semibold text-fatec-navy-900">{inscritos.length}</span>{" "}
@@ -110,17 +119,41 @@ export function InscritosEventoModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Secao
-            titulo="Alunos da Fatec"
-            icone={<GraduationCap className="h-4 w-4" strokeWidth={1.75} />}
-            pessoas={daFatec}
-          />
-          <Secao
-            titulo="Externos"
-            icone={<Users className="h-4 w-4" strokeWidth={1.75} />}
-            pessoas={externos}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          {OPCOES_VINCULO.map((opcao) => (
+            <button
+              key={opcao.key}
+              type="button"
+              onClick={() => setFiltroVinculo(opcao.key)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                filtroVinculo === opcao.key
+                  ? "border-fatec-navy-900 bg-fatec-navy-900 text-white"
+                  : "border-fatec-line bg-fatec-navy-50 text-fatec-muted hover:border-fatec-orange-400"
+              }`}
+            >
+              {opcao.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-fatec-line">
+          <div
+            className={`hidden border-b border-fatec-line bg-fatec-navy-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-fatec-muted sm:grid sm:items-center sm:gap-4 ${COLUNAS_GRID}`}
+          >
+            <span />
+            <span>Nome</span>
+            <span>Inscrito em</span>
+            <span>Pago em</span>
+            <span className="text-center">Status</span>
+          </div>
+          <div className="flex flex-col divide-y divide-fatec-line">
+            {filtrados.map((p) => (
+              <Pessoa key={p.uid} pessoa={p} />
+            ))}
+            {filtrados.length === 0 && (
+              <p className="px-4 py-3 text-sm text-fatec-muted">Ninguém encontrado.</p>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

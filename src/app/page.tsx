@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, CalendarOff, Mail, MapPin, Phone } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  CalendarOff,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  MapPin,
+  Phone,
+} from "lucide-react";
 import { InstagramIcon } from "@/components/icons/InstagramIcon";
-import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Logo } from "@/components/Logo";
 import { FlowCarousel } from "@/components/FlowCarousel";
@@ -39,37 +48,67 @@ type EventoDestaque = {
   descricao?: string;
   periodoSubmissao?: string;
   imagemDestaqueUrl?: string | null;
+  encerrado?: boolean;
 };
 
-export default function HomePage() {
-  const [eventoDestaque, setEventoDestaque] = useState<EventoDestaque | null>(
-    null,
-  );
+// Tempo de cada slide do carrossel de destaques (2026-09-24).
+const INTERVALO_CARROSSEL_MS = 6000;
 
+export default function HomePage() {
+  const [eventosDestaque, setEventosDestaque] = useState<EventoDestaque[]>([]);
+  const [slideAtual, setSlideAtual] = useState(0);
+  const [pausado, setPausado] = useState(false);
+
+  // Vários eventos em destaque ao mesmo tempo (2026-09-24, antes era um só —
+  // RN-10). Evento encerrado fica de fora mesmo marcado como destaque:
+  // "Encerrar evento" promete desligar o banner, e a home antes não olhava
+  // esse campo.
   useEffect(() => {
-    const q = query(
-      collection(db, "eventos"),
-      where("destaque", "==", true),
-      limit(1),
-    );
+    const q = query(collection(db, "eventos"), where("destaque", "==", true));
     return onSnapshot(q, (snap) => {
-      setEventoDestaque(
-        snap.empty
-          ? null
-          : ({ id: snap.docs[0].id, ...snap.docs[0].data() } as EventoDestaque),
+      setEventosDestaque(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as EventoDestaque)
+          .filter((e) => !e.encerrado)
+          .sort((a, b) => a.nome.localeCompare(b.nome)),
       );
     });
   }, []);
 
+  const totalSlides = eventosDestaque.length;
+  // Se um evento sai do destaque enquanto a página está aberta, o índice
+  // pode sobrar — volta pro primeiro em vez de mostrar slide vazio.
+  const indiceVisivel = slideAtual < totalSlides ? slideAtual : 0;
+
+  // Troca sozinho + setas pra trocar na mão (2026-09-24). Pausa com o mouse
+  // em cima ou com foco de teclado dentro (ex.: Tab até o "Inscreva-se"),
+  // pra ninguém perder o slide no meio da leitura/clique. O timer depende do
+  // slide visível, então trocar pela seta reinicia a contagem — o slide
+  // escolhido fica os 6s inteiros na tela.
+  useEffect(() => {
+    if (totalSlides < 2 || pausado) return;
+    const timer = setTimeout(
+      () => setSlideAtual((indiceVisivel + 1) % totalSlides),
+      INTERVALO_CARROSSEL_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [totalSlides, pausado, indiceVisivel]);
+
+  function irPara(delta: number) {
+    setSlideAtual((indiceVisivel + delta + totalSlides) % totalSlides);
+  }
+
+  const temDestaque = totalSlides > 0;
+
   return (
     <main className="flex flex-1 flex-col">
-      <SiteHeader mostrarEvento={!!eventoDestaque} />
+      <SiteHeader mostrarEvento={temDestaque} />
 
       {/* Herói padrão (2026-09-19, volta condicional — some quando tem
           evento em destaque pra não duplicar/empilhar com o banner dele,
           mas sem evento nenhum a página não pode ficar vazia logo após o
           cabeçalho). */}
-      {!eventoDestaque && (
+      {!temDestaque && (
         <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-16 md:px-12 md:pb-24 md:pt-20">
           <div
             aria-hidden
@@ -115,7 +154,7 @@ export default function HomePage() {
       {/* Mini aviso (2026-09-19, pedido do usuário) — só some pra quando um
           evento virar destaque de novo; enquanto isso, deixa claro que a
           ausência do banner é esperada, não um bug/tela quebrada. */}
-      {!eventoDestaque && (
+      {!temDestaque && (
         <div className="border-b border-fatec-line bg-fatec-navy-50 px-6 py-4 md:px-12">
           <p className="mx-auto flex max-w-3xl items-center gap-2 text-sm text-fatec-muted">
             <CalendarOff className="h-4 w-4 flex-none" strokeWidth={1.75} />
@@ -133,62 +172,150 @@ export default function HomePage() {
           (não depende da proporção da imagem, nunca fica gigante em tela
           larga), e o texto (badge, título, período, CTA) mora numa faixa
           navy sólida colada embaixo — sem sobrepor nada, sempre legível
-          não importa o que tem na imagem. */}
-      {eventoDestaque && (
-        <section id="evento-destaque" className="scroll-mt-20">
-          <div className="h-[300px] w-full overflow-hidden sm:h-[360px] md:h-[420px]">
-            {eventoDestaque.imagemDestaqueUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={eventoDestaque.imagemDestaqueUrl}
-                alt={eventoDestaque.nome}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div
-                aria-hidden
-                className="relative h-full w-full bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
-              >
-                <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-                <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl" />
-              </div>
-            )}
+          não importa o que tem na imagem.
+          Carrossel (2026-09-24): com mais de um evento em destaque, os slides
+          ficam empilhados na mesma célula de grid e trocam por opacidade —
+          a altura é sempre a do slide mais alto, então a página não "pula"
+          quando a descrição de um evento é maior que a do outro. */}
+      {temDestaque && (
+        <section
+          id="evento-destaque"
+          aria-roledescription={totalSlides > 1 ? "carrossel" : undefined}
+          aria-label="Eventos em destaque"
+          onMouseEnter={() => setPausado(true)}
+          onMouseLeave={() => setPausado(false)}
+          // Só foco de teclado pausa — clicar na seta com o mouse também dá
+          // foco nela, e aí o carrossel ficaria parado pra sempre depois que
+          // o mouse saísse (o blur só vem quando clica em outro lugar).
+          onFocus={(e) => {
+            if (e.target.matches(":focus-visible")) setPausado(true);
+          }}
+          onBlur={() => setPausado(false)}
+          className="relative scroll-mt-20 bg-fatec-navy-900"
+        >
+          <div className="grid">
+            {eventosDestaque.map((evento, i) => {
+              const ativo = i === indiceVisivel;
+              return (
+                <div
+                  key={evento.id}
+                  aria-hidden={!ativo}
+                  inert={!ativo}
+                  aria-roledescription={totalSlides > 1 ? "slide" : undefined}
+                  aria-label={totalSlides > 1 ? `${i + 1} de ${totalSlides}` : undefined}
+                  className={`[grid-area:1/1] transition-opacity duration-700 motion-reduce:transition-none ${
+                    ativo ? "opacity-100" : "pointer-events-none opacity-0"
+                  }`}
+                >
+                  {/* Entrada do slide (2026-09-24): a foto chega com um zoom
+                      lento de 108% → 100% enquanto aparece, e o texto sobe
+                      um pouco com atraso — dá sensação de movimento sem
+                      deslizar a página inteira pro lado. */}
+                  <div className="h-[300px] w-full overflow-hidden sm:h-[360px] md:h-[420px]">
+                    <div
+                      className={`h-full w-full transition-transform duration-[1600ms] ease-out motion-reduce:transition-none ${
+                        ativo ? "scale-100" : "scale-[1.08]"
+                      }`}
+                    >
+                      {evento.imagemDestaqueUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={evento.imagemDestaqueUrl}
+                          alt={evento.nome}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden
+                          className="relative h-full w-full bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
+                        >
+                          <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+                          <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`px-6 py-6 transition-all duration-700 ease-out motion-reduce:transition-none md:px-12 md:py-8 ${
+                      ativo ? "translate-y-0 opacity-100 delay-200" : "translate-y-3 opacity-0"
+                    }`}
+                  >
+                    <div className="mx-auto max-w-5xl">
+                      <span className="inline-flex items-center rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-bold uppercase tracking-[-0.01em] text-white">
+                        Em destaque
+                      </span>
+                      <h3 className="mt-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-white md:text-4xl">
+                        {evento.nome}
+                      </h3>
+                      {evento.periodoSubmissao && (
+                        <p className="mt-2 flex items-center gap-1.5 text-sm text-white/85 md:text-base">
+                          <CalendarDays className="h-4 w-4 flex-none" strokeWidth={2} />
+                          Inscrições: {evento.periodoSubmissao}
+                        </p>
+                      )}
+                      {/* Descrição (2026-09-19, pedido da organização — agrupada na
+                          mesma faixa navy do resto, não numa seção branca separada
+                          embaixo, pra não virar 2 faixas de cor diferente. */}
+                      {evento.descricao && (
+                        <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-white/80 md:text-base">
+                          {evento.descricao}
+                        </p>
+                      )}
+                      <Link
+                        href="/login"
+                        className="group/btn mt-5 inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-black/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
+                      >
+                        Inscreva-se
+                        <ArrowRight
+                          className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
+                          strokeWidth={2}
+                        />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="bg-fatec-navy-900 px-6 py-6 md:px-12 md:py-8">
-            <div className="mx-auto max-w-5xl">
-              <span className="inline-flex items-center rounded-full bg-fatec-orange-500 px-3 py-1 text-xs font-bold uppercase tracking-[-0.01em] text-white">
-                Em destaque
-              </span>
-              <h3 className="mt-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-white md:text-4xl">
-                {eventoDestaque.nome}
-              </h3>
-              {eventoDestaque.periodoSubmissao && (
-                <p className="mt-2 flex items-center gap-1.5 text-sm text-white/85 md:text-base">
-                  <CalendarDays className="h-4 w-4 flex-none" strokeWidth={2} />
-                  Inscrições: {eventoDestaque.periodoSubmissao}
-                </p>
-              )}
-              {/* Descrição (2026-09-19, pedido da organização — agrupada na
-                  mesma faixa navy do resto, não numa seção branca separada
-                  embaixo, pra não virar 2 faixas de cor diferente. */}
-              {eventoDestaque.descricao && (
-                <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-white/80 md:text-base">
-                  {eventoDestaque.descricao}
-                </p>
-              )}
-              <Link
-                href="/login"
-                className="group/btn mt-5 inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-black/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
+          {/* Setas (2026-09-24, pedido do usuário) — em cima da foto,
+              centralizadas na altura dela (mesmas alturas fixas da foto). */}
+          {totalSlides > 1 && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex h-[300px] items-center justify-between px-3 sm:h-[360px] md:h-[420px] md:px-6">
+              <button
+                type="button"
+                onClick={() => irPara(-1)}
+                aria-label="Evento anterior"
+                className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl bg-fatec-navy-950/55 text-white transition-colors hover:bg-fatec-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Inscreva-se
-                <ArrowRight
-                  className="h-4 w-4 transition-transform group-hover/btn:translate-x-0.5"
-                  strokeWidth={2}
-                />
-              </Link>
+                <ChevronLeft className="h-6 w-6" strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                onClick={() => irPara(1)}
+                aria-label="Próximo evento"
+                className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-xl bg-fatec-navy-950/55 text-white transition-colors hover:bg-fatec-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <ChevronRight className="h-6 w-6" strokeWidth={2} />
+              </button>
             </div>
-          </div>
+          )}
+
+          {/* Bolinhas: só indicador de quantos slides tem e qual está na
+              tela, sem clique — a navegação manual é pelas setas. */}
+          {totalSlides > 1 && (
+            <div aria-hidden className="flex justify-center gap-2 pb-6">
+              {eventosDestaque.map((evento, i) => (
+                <span
+                  key={evento.id}
+                  className={`h-2 rounded-full transition-all duration-500 motion-reduce:transition-none ${
+                    i === indiceVisivel ? "w-6 bg-fatec-orange-500" : "w-2 bg-white/35"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
         </section>
       )}
 

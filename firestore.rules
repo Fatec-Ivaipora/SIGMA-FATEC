@@ -255,6 +255,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // eventosQr/{eventoId} — segredo do código rotativo de confirmação de
+    // presença (2026-09-23, evento "simples") — NUNCA lido por client SDK
+    // nenhum, nem admin/organização: quem sabe o segredo consegue calcular
+    // o código de qualquer janela (passada/futura) offline e forjar
+    // presença. Só as rotas /api/eventos/qr-atual e
+    // /api/inscricoes/confirmar-presenca leem/escrevem isso, via Admin SDK
+    // (que ignora essas regras).
+    match /eventosQr/{id} {
+      allow read, write: if false;
+    }
+
     // eduboxLancamentos/{eventoId}::{uid} — rastreio de quem já foi lançado
     // no Edubox (2026-09-04), pra não duplicar em execuções repetidas (o
     // relay também deduplica do lado do Postgres deles, isso aqui é só pra
@@ -304,6 +315,41 @@ service cloud.firestore {
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
       );
       allow update: if souAdmin();
+    }
+
+    // salas/{id} — catálogo único de salas físicas do campus (só nome),
+    // compartilhado entre todos os eventos (2026-09-28; antes era preso a um
+    // eventoId, tinha que recadastrar a mesma sala em cada evento). Cada
+    // evento escolhe seu subconjunto em evento.salasIds (escrita normal de
+    // /eventos, já coberta pela regra acima). Não é escopado por evento —
+    // por isso o CRUD do catálogo em si fica só com Admin (mesmo espírito de
+    // /usuarios: organização lê tudo, não edita o que não é dela); nenhum
+    // papel de avaliação nem aluno precisa ler isso direto.
+    match /salas/{id} {
+      allow read: if logado() && meuPapel() in ["organizacao", "admin"];
+      allow write: if souAdmin();
+    }
+
+    // sessoes/{id} — bloco de horário numa sala, pra uma área+modalidade,
+    // gerado pela grade automática de /ensalamento (2026-09-17). Mesmo
+    // padrão de /salas — só admin/organização mexem.
+    match /sessoes/{id} {
+      allow read: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
+      allow create: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && request.resource.data.eventoId in meusEventos())
+      );
+      allow update: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
+      allow delete: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
     }
 
     // mail/{autoId} — só a extensão Trigger Email (via Admin SDK) escreve;
