@@ -388,16 +388,34 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-28** *(incidente em produção, corrigido no mesmo dia)* —
+  **Toda rota `/api/*` caiu** depois do push do ensalamento (que ninguém
+  detectou na hora porque ensalamento só usa Firestore direto do client,
+  nunca passa por API). Causa raiz confirmada pelo log de runtime da
+  Vercel: `firebase-admin` 14.4.0 depende de `jwks-rsa`, que depende de
+  `jose@^6` (ESM puro) — `serverExternalPackages` só tinha `firebase-admin`
+  marcado como externo, então o Turbopack ainda empacotava `jwks-rsa`/
+  `jose` por baixo e um `require()` interno quebrava com
+  `ERR_REQUIRE_ESM` em toda invocação, sempre com corpo vazio (por isso
+  nenhuma mensagem de erro aparecia, só "Unexpected end of JSON input" no
+  console do navegador). **Não dá pra baixar a versão do `jose`** — o
+  `jwks-rsa` 4.0.1 já foi escrito pra API do v6, um `override` pra v4
+  quebraria o próprio `jwks-rsa`. Corrigido marcando `jwks-rsa` e `jose`
+  também como `serverExternalPackages` em `next.config.ts` — testado local
+  com `npm run build` + `npm run start` (bate no Admin SDK de verdade,
+  `next dev` não reproduz esse erro, só o bundle de produção). Se voltar a
+  acontecer depois de outro bump de dependência: `npm run build && npm run
+  start`, bater numa rota que usa `getAdminAuth()`/`getAdminDb()` com um
+  token qualquer (não precisa ser válido, só precisa entrar no código que
+  importa o Admin SDK) e conferir se volta JSON ou quebra.
 - **2026-09-28** — `/api/usuarios` (criar conta) ganhou `try/catch` geral:
-  sem isso, qualquer falha inesperada (rede, cold start) virava um 500 sem
-  corpo, e a tela de `/usuarios` travava tentando ler isso como JSON
-  ("Unexpected end of JSON input" no console, sem mensagem nenhuma pro
-  admin). Agora loga a causa real no log da Vercel e devolve erro em JSON;
-  o client também não quebra mais se a resposta não vier em JSON. Não era
-  um bug determinístico de "criar Admin" — as mesmas operações (Auth +
-  Firestore) reproduzidas direto contra a produção funcionaram sem erro,
-  então a causa raiz provável era transitória (ver esse `try/catch` como
-  rede de segurança + melhor diagnóstico se voltar a acontecer).
+  sem isso, qualquer falha inesperada virava um 500 sem corpo, e a tela de
+  `/usuarios` travava tentando ler isso como JSON ("Unexpected end of JSON
+  input" no console, sem mensagem nenhuma pro admin) — foi o sintoma que
+  levou a achar o incidente acima. Agora loga a causa real no log da
+  Vercel e devolve erro em JSON; o client também não quebra mais se a
+  resposta não vier em JSON. Fica como rede de segurança geral, não só
+  pra esse incidente específico.
 - **2026-09-28** — Ensalamento vai pro ar: catálogo único de salas
   (`salas`, antes preso a `eventoId`, agora cadastrado uma vez e
   reaproveitado por qualquer evento via `evento.salasIds`; catálogo já
