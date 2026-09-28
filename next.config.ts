@@ -2,16 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["10.2.3.35"],
-  // firebase-admin (via jwks-rsa -> jose) tem uma dependência ESM que o
+  // firebase-admin tem uma dependência ESM (via jwks-rsa -> jose) que o
   // Turbopack não empacota corretamente pra rota de API serverless na
   // Vercel (ERR_REQUIRE_ESM) — deixa como pacote externo, resolvido pelo
-  // Node em vez de empacotado. Marcar só "firebase-admin" não bastou
-  // (2026-09-28, caiu em produção: toda rota /api/* voltava 500 vazio) —
-  // jwks-rsa e jose continuavam sendo empacotados pelo Turbopack por baixo,
-  // que faz um require() que não entende o pacote ESM puro do jose 6.
-  // Marcando a cadeia inteira como externa, quem resolve é o require/import
-  // nativo do Node em runtime, não o polyfill do Turbopack.
-  serverExternalPackages: ["firebase-admin", "jwks-rsa", "jose"],
+  // Node em vez de empacotado. Isso sozinho NÃO resolve se o jose puxado
+  // for a v6 (ESM puro) — firebase-admin precisa continuar em ^13.x (ver
+  // package.json e o incidente de 2026-09-28 em INFO.md → Histórico de
+  // mudanças) pra puxar jose v4, que é CJS-compatível.
+  serverExternalPackages: ["firebase-admin"],
   // Headers de segurança (2026-09-08, achado no pentest) — a Vercel não
   // adiciona nenhum desses por padrão. frame-ancestors + X-Frame-Options
   // barram clickjacking; nosniff evita MIME-sniffing; Referrer-Policy evita

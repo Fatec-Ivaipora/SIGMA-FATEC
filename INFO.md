@@ -389,25 +389,31 @@ fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
 - **2026-09-28** *(incidente em produção, corrigido no mesmo dia)* —
-  **Toda rota `/api/*` caiu** depois do push do ensalamento (que ninguém
+  **Toda rota `/api/*` caiu** depois do push do ensalamento (ninguém
   detectou na hora porque ensalamento só usa Firestore direto do client,
-  nunca passa por API). Causa raiz confirmada pelo log de runtime da
-  Vercel: `firebase-admin` 14.4.0 depende de `jwks-rsa`, que depende de
-  `jose@^6` (ESM puro) — `serverExternalPackages` só tinha `firebase-admin`
-  marcado como externo, então o Turbopack ainda empacotava `jwks-rsa`/
-  `jose` por baixo e um `require()` interno quebrava com
-  `ERR_REQUIRE_ESM` em toda invocação, sempre com corpo vazio (por isso
-  nenhuma mensagem de erro aparecia, só "Unexpected end of JSON input" no
-  console do navegador). **Não dá pra baixar a versão do `jose`** — o
-  `jwks-rsa` 4.0.1 já foi escrito pra API do v6, um `override` pra v4
-  quebraria o próprio `jwks-rsa`. Corrigido marcando `jwks-rsa` e `jose`
-  também como `serverExternalPackages` em `next.config.ts` — testado local
-  com `npm run build` + `npm run start` (bate no Admin SDK de verdade,
-  `next dev` não reproduz esse erro, só o bundle de produção). Se voltar a
-  acontecer depois de outro bump de dependência: `npm run build && npm run
-  start`, bater numa rota que usa `getAdminAuth()`/`getAdminDb()` com um
-  token qualquer (não precisa ser válido, só precisa entrar no código que
-  importa o Admin SDK) e conferir se volta JSON ou quebra.
+  nunca passa por API). Causa raiz, pelo log de runtime da Vercel:
+  `package.json` tinha `firebase-admin` pinado em `14.4.0` — que depende
+  de `jwks-rsa@^4`, que depende de `jose@^6` (ESM puro, sem suporte a
+  `require()`). Todo `require()` de `firebase-admin/auth` quebrava com
+  `ERR_REQUIRE_ESM`, sempre com corpo vazio (por isso só aparecia
+  "Unexpected end of JSON input" no console, nenhuma mensagem de erro).
+  **Isso já tinha acontecido e sido corrigido antes** (commit `cb499e6`,
+  25/08: "Downgrade firebase-admin to 13.x to fix ERR_REQUIRE_ESM in
+  production") — o push do ensalamento subiu `firebase-admin` de volta pra
+  14.x sem querer (provável `npm install` pegando a versão mais nova) e
+  reintroduziu o mesmo bug. **Marcar `jwks-rsa`/`jose` em
+  `serverExternalPackages` (tentativa inicial) não resolveu** — o
+  `Context.externalImport` do Turbopack quebra igual nesses pacotes ESM
+  independente de estarem marcados como externos; o bug é do mecanismo em
+  si, não de empacotamento. A correção de verdade é a mesma de antes:
+  `firebase-admin` fixado em `^13.10.0` (resolve `jwks-rsa@3` →
+  `jose@4`, CJS-compatível). **Se algum dia atualizar o `firebase-admin`
+  de novo, testar assim antes de subir** (não dá pra confiar só no
+  `npm run dev`, que não reproduz isso — só o bundle de produção):
+  `npm run build && npm run start`, depois `curl` numa rota que usa
+  `getAdminAuth()`/`getAdminDb()` com um token qualquer (não precisa ser
+  válido, só precisa entrar no código que importa o Admin SDK) e conferir
+  que volta JSON em vez de 500 vazio.
 - **2026-09-28** — `/api/usuarios` (criar conta) ganhou `try/catch` geral:
   sem isso, qualquer falha inesperada virava um 500 sem corpo, e a tela de
   `/usuarios` travava tentando ler isso como JSON ("Unexpected end of JSON
