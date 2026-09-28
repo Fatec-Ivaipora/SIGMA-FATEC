@@ -388,6 +388,16 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-28** — `/api/usuarios` (criar conta) ganhou `try/catch` geral:
+  sem isso, qualquer falha inesperada (rede, cold start) virava um 500 sem
+  corpo, e a tela de `/usuarios` travava tentando ler isso como JSON
+  ("Unexpected end of JSON input" no console, sem mensagem nenhuma pro
+  admin). Agora loga a causa real no log da Vercel e devolve erro em JSON;
+  o client também não quebra mais se a resposta não vier em JSON. Não era
+  um bug determinístico de "criar Admin" — as mesmas operações (Auth +
+  Firestore) reproduzidas direto contra a produção funcionaram sem erro,
+  então a causa raiz provável era transitória (ver esse `try/catch` como
+  rede de segurança + melhor diagnóstico se voltar a acontecer).
 - **2026-09-28** — Ensalamento vai pro ar: catálogo único de salas
   (`salas`, antes preso a `eventoId`, agora cadastrado uma vez e
   reaproveitado por qualquer evento via `evento.salasIds`; catálogo já

@@ -158,9 +158,12 @@ export default function UsuariosPage() {
           papeisAvaliacao,
         }),
       });
-      const dados = await resposta.json();
-      if (!resposta.ok) {
-        setErroCriar(dados.erro ?? "Não foi possível criar o usuário.");
+      // 2026-09-28: um 500 inesperado pode vir sem corpo (erro não tratado no
+      // servidor) — .json() direto quebraria com "Unexpected end of JSON
+      // input" e a pessoa não via mensagem nenhuma, só um erro no console.
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok || !dados) {
+        setErroCriar(dados?.erro ?? "Não foi possível criar o usuário. Tente de novo.");
         return;
       }
       setSenhaGerada(dados.senhaTemporaria);
