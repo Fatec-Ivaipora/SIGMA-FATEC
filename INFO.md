@@ -388,6 +388,20 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-29** — `BannerCropModal` mudou a proporção de recorte de 12:5
+  (2,4:1) pra 18:5 (3,6:1). Achado ao cadastrar a Semana Acadêmica de
+  Medicina: o banner saiu cortado (título sumindo) na home. Causa: a caixa
+  do banner em destaque (`src/app/page.tsx`) tem altura fixa em pixel
+  (300/360/420 conforme a tela) mas largura 100% fluida (full-bleed, de
+  propósito, pra nunca ficar gigante em monitor largo) — a proporção real
+  da caixa varia com o tamanho da tela, e em notebook/monitor comum (ex.
+  1512×420) já passa de 3,6:1, bem mais largo que os 2,4:1 que a
+  ferramenta de recorte prometia. 3,6:1 bate melhor com esse caso comum;
+  ainda corta um pouco em monitor ultrawide (>1920px, não dá pra zerar sem
+  abrir mão do "nunca gigante"). **Só vale daqui pra frente** — banners já
+  cadastrados (como o da Semana de Medicina) continuam cortados até
+  alguém reabrir o evento e recortar de novo com a ferramenta atualizada.
+
 - **2026-09-28** *(incidente em produção, corrigido no mesmo dia)* —
   **Toda rota `/api/*` caiu** depois do push do ensalamento (ninguém
   detectou na hora porque ensalamento só usa Firestore direto do client,

@@ -3,13 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "@/components/Modal";
 
-// Mesma proporção do banner de destaque na home/painel do aluno (2026-09-03)
-// — enquadrar aqui, na hora do upload, evita a foto "estourada"/cortada de
-// jeito estranho quando aparece gigante na tela (object-cover sozinho não
-// dava controle nenhum pro admin sobre o que fica visível). Banner virou
+// Enquadrar aqui, na hora do upload, evita a foto "estourada"/cortada de
+// jeito estranho quando aparece na tela (object-cover sozinho não dava
+// controle nenhum pro admin sobre o que fica visível). Banner virou
 // full-bleed (edge a edge, sem card) — output em resolução mais alta que
 // antes pra não ficar borrado em monitor grande.
-const RATIO_W = 12;
+//
+// 18:5 = 3,6:1 (2026-09-29, era 12:5 = 2,4:1) — a caixa da home
+// (src/app/page.tsx) tem ALTURA fixa em pixel (300/360/420 conforme a
+// tela) mas LARGURA 100% fluida (full-bleed, de propósito, pra nunca
+// ficar gigante em monitor largo — ver comentário lá). Isso significa que
+// a proporção REAL da caixa muda com o tamanho da tela: num notebook/
+// monitor comum (ex. 1512×420) já fica em ~3,6:1, bem mais largo que os
+// 2,4:1 antigos — o navegador cortava em cima/embaixo do que o admin já
+// tinha recortado (achado: banner com o título cortado na home depois de
+// cadastrar um evento novo). 3,6:1 bate com esse caso comum e reduz muito
+// o corte; ainda corta um pouco em monitor ultrawide (>1920px), que não
+// dá pra zerar sem abrir mão do "nunca fica gigante" da home.
+const RATIO_W = 18;
 const RATIO_H = 5;
 const VIEWPORT_W = 640;
 const VIEWPORT_H = Math.round((VIEWPORT_W * RATIO_H) / RATIO_W);
