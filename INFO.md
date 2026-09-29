@@ -388,6 +388,21 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-29** — Certificados: Diretor Acadêmico e Coordenador não são
+  mais obrigatórios os dois juntos — evento escolhe 1 ou os 2 (aplica a
+  todo tipo de certificado/declaração, antes só o do aluno exigia os
+  dois). `CertificadoApresentacaoPDF`/`DeclaracaoPDF` (`certificadosPdf.tsx`)
+  só desenham o bloco de quem tiver nome preenchido, num componente
+  `BlocoAssinatura` compartilhado entre os dois. De quebra, **corrigido o
+  título do cargo do Coordenador**: conferido contra o edital oficial da
+  X MAC (alguém questionou o texto), que assina só "Coordenador Comissão
+  de Iniciação Científica" — o sistema tinha "Coordenador(a) da Pesquisa e
+  Formação Científica", que não batia com nenhum documento oficial
+  encontrado (o comentário que justificava essa troca em 04/09 citava a
+  fonte errada — um certificado real antigo que na verdade diz "Presidente
+  da Comissão Organizadora"). `nomeCoordenadorPesquisa` continua sendo o
+  nome do campo no Firestore (só guarda o nome da pessoa, não o cargo),
+  não precisou migrar dado nenhum.
 - **2026-09-29** — Teto de largura do banner de destaque na home subiu de
   `max-w-[1008px]` pra `max-w-[1600px]` (achado ao testar a correção do
   corte, entrada logo abaixo: 1008px é menor que praticamente qualquer

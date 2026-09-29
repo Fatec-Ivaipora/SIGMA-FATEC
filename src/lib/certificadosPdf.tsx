@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
+import type { Style } from "@react-pdf/types";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -56,6 +57,50 @@ const cores = {
   ink: "#142433",
   muted: "#5b6b78",
 };
+
+// Conferido contra o edital oficial da X MAC (2026-09-29, achado depois de
+// alguém questionar o texto) — o edital assina só "Coordenador Comissão de
+// Iniciação Científica" (sem "da" entre as duas primeiras palavras, exatamente
+// como está no documento). Antes tinha "Coordenador(a) da Pesquisa e Formação
+// Científica", que não bate com nenhum documento oficial encontrado (nem esse
+// edital, nem o certificado real antigo, que usa "Presidente da Comissão
+// Organizadora" — o comentário que citava esse certificado como fonte da
+// troca estava errado).
+const CARGO_DIRETOR = "Diretor Acadêmico";
+const CARGO_COORDENADOR = "Coordenador Comissão de Iniciação Científica";
+
+/** Bloco de uma assinatura (imagem + linha + nome + cargo) — compartilhado
+ * entre CertificadoApresentacaoPDF e DeclaracaoPDF (2026-09-29, antes cada um
+ * tinha o próprio JSX repetido). Diretor e Coordenador são opcionais agora
+ * (evento escolhe 1 ou os 2, ver faltandoDadosEvento em
+ * src/app/api/certificados/route.ts) — este componente só é chamado quando o
+ * nome existe, nunca precisa lidar com nome vazio. */
+function BlocoAssinatura({
+  imagem,
+  nome,
+  cargo,
+  estilos,
+}: {
+  imagem: { data: Buffer; format: "jpg" };
+  nome: string;
+  cargo: string;
+  estilos: {
+    assinatura: Style;
+    imagemAssinatura: Style;
+    linhaAssinatura: Style;
+    nomeAssinatura: Style;
+    cargoAssinatura: Style;
+  };
+}) {
+  return (
+    <View style={estilos.assinatura}>
+      <Image src={imagem} style={estilos.imagemAssinatura} />
+      <View style={estilos.linhaAssinatura} />
+      <Text style={estilos.nomeAssinatura}>{nome.toUpperCase()}</Text>
+      <Text style={estilos.cargoAssinatura}>{cargo}</Text>
+    </View>
+  );
+}
 
 const estiloApresentacao = StyleSheet.create({
   page: {
@@ -174,8 +219,11 @@ export function CertificadoApresentacaoPDF({
   dataRealizacao: string;
   tituloTrabalho: string;
   registroNumero: number;
-  diretorNome: string;
-  coordenadorNome: string;
+  // Opcionais (2026-09-29) — o evento escolhe 1 dos dois ou os dois; pelo
+  // menos um é exigido antes de chegar aqui (ver faltandoDadosEvento em
+  // src/app/api/certificados/route.ts), então não dá pra vir os dois vazios.
+  diretorNome?: string;
+  coordenadorNome?: string;
   // Top 3 da área ganha CERTIFICADO ("certificamos", tom de reconhecimento,
   // edital 6.6); quem participou sem ficar entre os 3 primeiros ganha
   // DECLARAÇÃO ("declaramos", só comprova participação) — 2026-09-11, mesmo
@@ -205,26 +253,22 @@ export function CertificadoApresentacaoPDF({
             Ivaiporã, {formatarDataExtenso(dataRealizacao)}.
           </Text>
           <View style={estiloApresentacao.assinaturas}>
-            <View style={estiloApresentacao.assinatura}>
-              <Image src={ASSINATURA_RONI} style={estiloApresentacao.imagemAssinatura} />
-              <View style={estiloApresentacao.linhaAssinatura} />
-              <Text style={estiloApresentacao.nomeAssinatura}>
-                {diretorNome.toUpperCase()}
-              </Text>
-              <Text style={estiloApresentacao.cargoAssinatura}>
-                Diretor Acadêmico
-              </Text>
-            </View>
-            <View style={estiloApresentacao.assinatura}>
-              <Image src={ASSINATURA_JOAO} style={estiloApresentacao.imagemAssinatura} />
-              <View style={estiloApresentacao.linhaAssinatura} />
-              <Text style={estiloApresentacao.nomeAssinatura}>
-                {coordenadorNome.toUpperCase()}
-              </Text>
-              <Text style={estiloApresentacao.cargoAssinatura}>
-                Coordenador(a) da Pesquisa e Formação Científica
-              </Text>
-            </View>
+            {diretorNome && (
+              <BlocoAssinatura
+                imagem={ASSINATURA_RONI}
+                nome={diretorNome}
+                cargo={CARGO_DIRETOR}
+                estilos={estiloApresentacao}
+              />
+            )}
+            {coordenadorNome && (
+              <BlocoAssinatura
+                imagem={ASSINATURA_JOAO}
+                nome={coordenadorNome}
+                cargo={CARGO_COORDENADOR}
+                estilos={estiloApresentacao}
+              />
+            )}
           </View>
         </View>
         <Text fixed style={estiloApresentacao.registro}>
@@ -311,9 +355,17 @@ const estiloDeclaracao = StyleSheet.create({
     textAlign: "center",
     marginBottom: 46,
   },
+  // Linha com 1 ou 2 blocos, centralizada (2026-09-29 — antes só existia
+  // "assinatura" singular, sempre 1 assinatura só; mesmo padrão de
+  // estiloApresentacao.assinaturas agora que a declaração também pode ter
+  // as duas).
+  assinaturas: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 50,
+  },
   assinatura: {
     alignItems: "center",
-    alignSelf: "center",
     width: 260,
   },
   // Altura fixa, não largura (2026-09-11) — as duas assinaturas têm
@@ -358,6 +410,7 @@ export function DeclaracaoPDF({
   dataRealizacao,
   cargaHoraria,
   diretorNome,
+  coordenadorNome,
   dataAssinatura,
 }: {
   nome: string;
@@ -365,7 +418,11 @@ export function DeclaracaoPDF({
   eventoNome: string;
   dataRealizacao: string;
   cargaHoraria: number;
-  diretorNome: string;
+  // Opcionais (2026-09-29) — mesmo espírito de CertificadoApresentacaoPDF:
+  // o evento escolhe 1 dos dois ou os dois, pelo menos um é exigido antes
+  // de chegar aqui.
+  diretorNome?: string;
+  coordenadorNome?: string;
   dataAssinatura: string;
 }) {
   return (
@@ -406,15 +463,23 @@ export function DeclaracaoPDF({
           Ivaiporã, {formatarDataExtenso(dataAssinatura)}
         </Text>
 
-        <View style={estiloDeclaracao.assinatura}>
-          <Image src={ASSINATURA_RONI} style={estiloDeclaracao.imagemAssinatura} />
-          <View style={estiloDeclaracao.linhaAssinatura} />
-          <Text style={estiloDeclaracao.nomeAssinatura}>
-            {diretorNome.toUpperCase()}
-          </Text>
-          <Text style={estiloDeclaracao.cargoAssinatura}>
-            Diretor Acadêmico
-          </Text>
+        <View style={estiloDeclaracao.assinaturas}>
+          {diretorNome && (
+            <BlocoAssinatura
+              imagem={ASSINATURA_RONI}
+              nome={diretorNome}
+              cargo={CARGO_DIRETOR}
+              estilos={estiloDeclaracao}
+            />
+          )}
+          {coordenadorNome && (
+            <BlocoAssinatura
+              imagem={ASSINATURA_JOAO}
+              nome={coordenadorNome}
+              cargo={CARGO_COORDENADOR}
+              estilos={estiloDeclaracao}
+            />
+          )}
         </View>
 
         <Text style={estiloDeclaracao.rodape}>

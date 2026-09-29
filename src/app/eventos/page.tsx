@@ -303,8 +303,14 @@ function CardEventoAdmin({
   const periodoInscricao = evento.periodoSubmissao && `Inscrições: ${evento.periodoSubmissao}`;
   const periodoEnvio = evento.periodoEnvioTrabalho && `Submissão: ${evento.periodoEnvioTrabalho}`;
 
-  const certificadoConfigurado =
-    !!(evento.dataRealizacao && evento.cargaHoraria && evento.nomeDiretorAcademico);
+  // Diretor e Coordenador não são mais os dois obrigatórios juntos
+  // (2026-09-29) — o evento escolhe 1 dos dois ou os dois, ver
+  // faltandoDadosEvento em src/app/api/certificados/route.ts.
+  const certificadoConfigurado = !!(
+    evento.dataRealizacao &&
+    evento.cargaHoraria &&
+    (evento.nomeDiretorAcademico || evento.nomeCoordenadorPesquisa)
+  );
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-fatec-line bg-white p-6">
@@ -1538,7 +1544,7 @@ export default function EventosPage() {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
-                  Coordenador(a) da Pesquisa
+                  Coordenador(a) da Comissão de Iniciação Científica
                 </span>
                 <input
                   type="text"
@@ -1550,8 +1556,10 @@ export default function EventosPage() {
               </label>
             </div>
             <p className="text-xs text-fatec-muted">
-              Pode deixar em branco e preencher depois — sem isso, os
-              certificados desse evento não podem ser gerados.
+              Pode preencher só um dos dois, ou os dois — o certificado sai
+              só com quem estiver preenchido. Pode deixar os dois em branco
+              e preencher depois, mas sem nenhum dos dois os certificados
+              desse evento não podem ser gerados.
             </p>
           </div>
           </>
@@ -1865,7 +1873,10 @@ export default function EventosPage() {
         <div className="flex flex-col gap-5">
           <p className="text-sm text-fatec-muted">
             Usados pra gerar o certificado de apresentação e as declarações de
-            avaliador/moderador/orientador desse evento.
+            avaliador/moderador/orientador desse evento. Diretor e
+            Coordenador não são obrigatórios os dois juntos — preencha só um
+            ou os dois; o certificado sai assinado só por quem estiver
+            preenchido.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
@@ -1907,7 +1918,7 @@ export default function EventosPage() {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
-              Coordenador(a) da Pesquisa e Formação Científica
+              Coordenador(a) da Comissão de Iniciação Científica
             </span>
             <input
               type="text"

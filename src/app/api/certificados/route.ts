@@ -53,16 +53,20 @@ async function obterNumeroRegistro(
   });
 }
 
-function faltandoDadosEvento(
-  evento: FirebaseFirestore.DocumentData,
-  papel: Papel,
-): string[] {
+// papel não entra mais nessa checagem (2026-09-29) — antes exigia Diretor
+// sempre + Coordenador só pro certificado de aluno (os dois obrigatórios
+// juntos ali). Agora o evento escolhe 1 dos dois ou os dois — mesma regra
+// pra qualquer papel, só precisa ter pelo menos um nome preenchido. Ver
+// CertificadoApresentacaoPDF/DeclaracaoPDF em src/lib/certificadosPdf.tsx,
+// que já sabem renderizar com 1 ou 2 assinaturas.
+function faltandoDadosEvento(evento: FirebaseFirestore.DocumentData): string[] {
   const faltando: string[] = [];
   if (!evento.dataRealizacao) faltando.push("data de realização");
   if (!evento.cargaHoraria) faltando.push("carga horária");
-  if (!evento.nomeDiretorAcademico) faltando.push("nome do Diretor Acadêmico");
-  if (papel === "aluno" && !evento.nomeCoordenadorPesquisa) {
-    faltando.push("nome do Coordenador(a) da Pesquisa e Formação Científica");
+  if (!evento.nomeDiretorAcademico && !evento.nomeCoordenadorPesquisa) {
+    faltando.push(
+      "nome de quem assina o certificado (Diretor Acadêmico e/ou Coordenador da Comissão de Iniciação Científica)",
+    );
   }
   return faltando;
 }
@@ -138,7 +142,7 @@ export async function GET(request: Request) {
     if (!evento) {
       return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
     }
-    const faltando = faltandoDadosEvento(evento, papel);
+    const faltando = faltandoDadosEvento(evento);
     if (faltando.length > 0) {
       return NextResponse.json(
         {
@@ -156,7 +160,8 @@ export async function GET(request: Request) {
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
         cargaHoraria: evento.cargaHoraria as number,
-        diretorNome: evento.nomeDiretorAcademico as string,
+        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
+        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
         dataAssinatura: hoje,
       }),
     );
@@ -233,7 +238,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const faltando = faltandoDadosEvento(evento, papel);
+    const faltando = faltandoDadosEvento(evento);
     if (faltando.length > 0) {
       return NextResponse.json(
         {
@@ -263,8 +268,8 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         tituloTrabalho: trabalho.titulo as string,
         registroNumero: numero,
-        diretorNome: evento.nomeDiretorAcademico as string,
-        coordenadorNome: evento.nomeCoordenadorPesquisa as string,
+        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
+        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
         premiado,
       }),
     );
@@ -337,7 +342,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const faltando = faltandoDadosEvento(evento, papel);
+    const faltando = faltandoDadosEvento(evento);
     if (faltando.length > 0) {
       return NextResponse.json(
         {
@@ -355,7 +360,8 @@ export async function GET(request: Request) {
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
         cargaHoraria: evento.cargaHoraria as number,
-        diretorNome: evento.nomeDiretorAcademico as string,
+        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
+        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
         dataAssinatura: hoje,
       }),
     );
@@ -409,7 +415,7 @@ export async function GET(request: Request) {
     if (!evento) {
       return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
     }
-    const faltando = faltandoDadosEvento(evento, papel);
+    const faltando = faltandoDadosEvento(evento);
     if (faltando.length > 0) {
       return NextResponse.json(
         {
@@ -427,7 +433,8 @@ export async function GET(request: Request) {
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
         cargaHoraria: evento.cargaHoraria as number,
-        diretorNome: evento.nomeDiretorAcademico as string,
+        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
+        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
         dataAssinatura: hoje,
       }),
     );
@@ -492,7 +499,7 @@ export async function GET(request: Request) {
   if (!evento) {
     return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
   }
-  const faltando = faltandoDadosEvento(evento, papel);
+  const faltando = faltandoDadosEvento(evento);
   if (faltando.length > 0) {
     return NextResponse.json(
       {
@@ -513,7 +520,8 @@ export async function GET(request: Request) {
       eventoNome: evento.nome as string,
       dataRealizacao: evento.dataRealizacao as string,
       cargaHoraria: evento.cargaHoraria as number,
-      diretorNome: evento.nomeDiretorAcademico as string,
+      diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
+      coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
       dataAssinatura: hoje,
     }),
   );

@@ -77,11 +77,19 @@ export type Evento = {
   // bloqueada (ver /api/certificados) — o aviso pede pra completar aqui antes.
   dataRealizacao?: string;
   cargaHoraria?: number;
+  // Diretor e Coordenador não são mais obrigatórios os dois juntos
+  // (2026-09-29) — evento escolhe 1 dos dois ou os dois; pelo menos um é
+  // exigido (ver faltandoDadosEvento em src/app/api/certificados/route.ts).
   nomeDiretorAcademico?: string;
-  // Renomeado de nomePresidenteComissao (2026-09-04) — o cargo no
-  // certificado mudou de "Presidente da Comissão Organizadora" pra
-  // "Coordenador(a) da Pesquisa e Formação Científica" (documento oficial
-  // atualizado, ver CERTIFICADOS APRESENTAÇÃO - PARA IMPRESSÃO-C.ORIENTADOR).
+  // Campo se chama "Pesquisa" por causa do nome original (nomePresidenteComissao
+  // → renomeado em 2026-09-04), mas o cargo exibido no certificado é
+  // "Coordenador Comissão de Iniciação Científica" (2026-09-29, conferido
+  // contra o edital oficial da X MAC — achado que o texto anterior,
+  // "Coordenador(a) da Pesquisa e Formação Científica", não batia com
+  // nenhum documento oficial; o comentário antigo aqui citava um certificado
+  // real como fonte da troca, mas esse certificado usa "Presidente da
+  // Comissão Organizadora", nem uma coisa nem outra — engano de sessão
+  // anterior). Ver CARGO_COORDENADOR em src/lib/certificadosPdf.tsx.
   nomeCoordenadorPesquisa?: string;
   // Número do primeiro certificado desse evento no "REGISTRO SOB O N°" —
   // definido pela organização/comissão (documento próprio deles, fora do
