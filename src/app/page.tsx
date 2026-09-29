@@ -180,10 +180,17 @@ export default function HomePage() {
           cortava em cima/embaixo do que já tinha sido recortado. Agora
           `aspect-[12/5]` mantém a proporção sempre igual à do recorte
           (nunca corta de surpresa, em nenhum tamanho de tela) e
-          `max-w-[1008px]` (= altura máxima antiga de 420px × 12/5) evita
-          virar gigante em monitor muito largo — a partir daí a foto para
-          de esticar e fica centralizada, com o navy de fundo sobrando nas
-          laterais em vez de esticar/cortar a imagem.
+          `max-w-[1600px]` evita virar gigante em monitor muito largo —
+          a partir daí a foto para de esticar e fica centralizada, com o
+          navy de fundo sobrando nas laterais (proposital — "Navy owns
+          every structural region at full institutional strength" no
+          DESIGN.md; nada de gradiente/blur decorativo pra disfarçar,
+          contrariaria o sistema visual). 1600px foi escolhido de
+          propósito (2026-09-29, ajuste depois do primeiro teste com
+          1008px — cortava em praticamente todo notebook/monitor comum,
+          1280-1536px, deixando a barra lateral visível quase sempre) pra
+          cobrir esse intervalo inteiro sem pillarbox; só dispara em
+          monitor de verdade largo (≥1920px) ou ultrawide.
           Carrossel (2026-09-24): com mais de um evento em destaque, os slides
           ficam empilhados na mesma célula de grid e trocam por opacidade —
           a altura é sempre a do slide mais alto, então a página não "pula"
@@ -222,7 +229,7 @@ export default function HomePage() {
                       lento de 108% → 100% enquanto aparece, e o texto sobe
                       um pouco com atraso — dá sensação de movimento sem
                       deslizar a página inteira pro lado. */}
-                  <div className="mx-auto aspect-[12/5] w-full max-w-[1008px] overflow-hidden">
+                  <div className="mx-auto aspect-[12/5] w-full max-w-[1600px] overflow-hidden">
                     <div
                       className={`h-full w-full transition-transform duration-[1600ms] ease-out motion-reduce:transition-none ${
                         ativo ? "scale-100" : "scale-[1.08]"

@@ -388,6 +388,17 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-29** — Teto de largura do banner de destaque na home subiu de
+  `max-w-[1008px]` pra `max-w-[1600px]` (achado ao testar a correção do
+  corte, entrada logo abaixo: 1008px é menor que praticamente qualquer
+  notebook/monitor comum, então a barra navy nas laterais aparecia quase
+  sempre, não só em tela muito larga como planejado). Consultado o
+  `DESIGN.md` do projeto pra decidir como preencher a lateral quando ainda
+  aparece (monitor ≥1920px/ultrawide): nada de gradiente/blur decorativo
+  ali, contrariaria o sistema visual ("navy ocupa região estrutural em
+  força total", gradiente/blur banidos exceto no scrim do modal) — só
+  navy sólido mesmo, e o teto mais alto (banner até ~667px de altura) faz
+  isso ser raro na prática.
 - **2026-09-29** — **Correção de verdade do corte de banner** (a entrada
   logo abaixo, de mais cedo hoje, tinha um efeito colateral ruim — deixa
   aqui documentado pra não repetir). Trocar a proporção do recorte pra
