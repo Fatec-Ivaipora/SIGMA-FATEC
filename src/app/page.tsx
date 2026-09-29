@@ -168,11 +168,22 @@ export default function HomePage() {
           Foto + faixa de texto separadas (2026-09-19 — a versão anterior
           sobrepunha o texto direto na foto com um degradê, mas a imagem do
           evento já costuma vir com texto próprio desenhado nela, causando
-          escrita em cima de escrita. Agora a foto é só foto, altura fixa
-          (não depende da proporção da imagem, nunca fica gigante em tela
-          larga), e o texto (badge, título, período, CTA) mora numa faixa
-          navy sólida colada embaixo — sem sobrepor nada, sempre legível
-          não importa o que tem na imagem.
+          escrita em cima de escrita. Agora a foto é só foto, e o texto
+          (badge, título, período, CTA) mora numa faixa navy sólida colada
+          embaixo — sem sobrepor nada, sempre legível não importa o que tem
+          na imagem.
+          Proporção 12:5, igual ao recorte no cadastro do evento
+          (BannerCropModal) — 2026-09-29, corrigido depois de um banner
+          saindo cortado na home: antes a caixa tinha altura fixa em pixel
+          + largura 100% fluida, então em tela larga a proporção real
+          ficava bem mais larga que o recorte prometia, e o navegador
+          cortava em cima/embaixo do que já tinha sido recortado. Agora
+          `aspect-[12/5]` mantém a proporção sempre igual à do recorte
+          (nunca corta de surpresa, em nenhum tamanho de tela) e
+          `max-w-[1008px]` (= altura máxima antiga de 420px × 12/5) evita
+          virar gigante em monitor muito largo — a partir daí a foto para
+          de esticar e fica centralizada, com o navy de fundo sobrando nas
+          laterais em vez de esticar/cortar a imagem.
           Carrossel (2026-09-24): com mais de um evento em destaque, os slides
           ficam empilhados na mesma célula de grid e trocam por opacidade —
           a altura é sempre a do slide mais alto, então a página não "pula"
@@ -211,7 +222,7 @@ export default function HomePage() {
                       lento de 108% → 100% enquanto aparece, e o texto sobe
                       um pouco com atraso — dá sensação de movimento sem
                       deslizar a página inteira pro lado. */}
-                  <div className="h-[300px] w-full overflow-hidden sm:h-[360px] md:h-[420px]">
+                  <div className="mx-auto aspect-[12/5] w-full max-w-[1008px] overflow-hidden">
                     <div
                       className={`h-full w-full transition-transform duration-[1600ms] ease-out motion-reduce:transition-none ${
                         ativo ? "scale-100" : "scale-[1.08]"

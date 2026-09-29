@@ -9,18 +9,18 @@ import { Modal } from "@/components/Modal";
 // full-bleed (edge a edge, sem card) — output em resolução mais alta que
 // antes pra não ficar borrado em monitor grande.
 //
-// 18:5 = 3,6:1 (2026-09-29, era 12:5 = 2,4:1) — a caixa da home
-// (src/app/page.tsx) tem ALTURA fixa em pixel (300/360/420 conforme a
-// tela) mas LARGURA 100% fluida (full-bleed, de propósito, pra nunca
-// ficar gigante em monitor largo — ver comentário lá). Isso significa que
-// a proporção REAL da caixa muda com o tamanho da tela: num notebook/
-// monitor comum (ex. 1512×420) já fica em ~3,6:1, bem mais largo que os
-// 2,4:1 antigos — o navegador cortava em cima/embaixo do que o admin já
-// tinha recortado (achado: banner com o título cortado na home depois de
-// cadastrar um evento novo). 3,6:1 bate com esse caso comum e reduz muito
-// o corte; ainda corta um pouco em monitor ultrawide (>1920px), que não
-// dá pra zerar sem abrir mão do "nunca fica gigante" da home.
-const RATIO_W = 18;
+// 12:5 = 2,4:1 — igual à caixa do banner em destaque na home
+// (src/app/page.tsx, `aspect-[12/5]`) e no painel do aluno
+// (DestaqueEventoBanner). Chegou a subir pra 18:5 por um dia (2026-09-29)
+// tentando compensar um descompasso de proporção na home, mas isso só
+// trocou "corta na tela" por "corta na própria ferramenta de recorte"
+// (18:5 é panorâmico demais pra foto normal de pessoa/evento — no zoom
+// mínimo já cortava rosto/título por falta de altura sobrando). O
+// descompasso real era a caixa da home não respeitar nenhuma proporção
+// fixa em tela larga — corrigido lá (`aspect-[12/5]` + `max-w-[1008px]`
+// em vez de altura fixa + largura 100% fluida), então aqui volta pro
+// 12:5 original, que sempre bateu certo com foto de pessoa/evento comum.
+const RATIO_W = 12;
 const RATIO_H = 5;
 const VIEWPORT_W = 640;
 const VIEWPORT_H = Math.round((VIEWPORT_W * RATIO_H) / RATIO_W);

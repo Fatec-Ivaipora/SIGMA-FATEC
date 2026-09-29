@@ -388,6 +388,24 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-29** — **Correção de verdade do corte de banner** (a entrada
+  logo abaixo, de mais cedo hoje, tinha um efeito colateral ruim — deixa
+  aqui documentado pra não repetir). Trocar a proporção do recorte pra
+  18:5 só empurrou o corte pra dentro da própria ferramenta: 18:5 é
+  panorâmico demais pra foto normal de pessoa/evento, então no zoom
+  mínimo já faltava altura e cortava o mesmo jeito. A causa raiz era
+  outra: a caixa do banner (home em `src/app/page.tsx` e o card menor em
+  `DestaqueEventoBanner.tsx`) tinha **altura fixa em pixel + largura 100%
+  fluida** — nenhuma proporção fixa, então a proporção real mudava com o
+  tamanho da tela e nunca batia com o que a ferramenta de recorte
+  prometia. Corrigido nas duas: `aspect-[12/5]` (mesma proporção do
+  `BannerCropModal`, que voltou pra 12:5 original) garante que a
+  proporção nunca muda, em nenhuma largura de tela — zero corte de
+  surpresa. Na home, `max-w-[1008px]` (= 420px de altura máxima × 12/5)
+  segura o "nunca fica gigante" em monitor muito largo: acima disso a
+  foto para de esticar e fica centralizada, com o navy de fundo sobrando
+  nas laterais em vez de crescer ou cortar. **Banners já cadastrados
+  continuam com o corte antigo** até reabrir o evento e recortar de novo.
 - **2026-09-29** — `BannerCropModal` mudou a proporção de recorte de 12:5
   (2,4:1) pra 18:5 (3,6:1). Achado ao cadastrar a Semana Acadêmica de
   Medicina: o banner saiu cortado (título sumindo) na home. Causa: a caixa

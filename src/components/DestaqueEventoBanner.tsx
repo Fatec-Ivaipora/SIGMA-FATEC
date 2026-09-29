@@ -78,7 +78,11 @@ export function DestaqueEventoBanner({
 
   return (
     <div className="mx-auto mb-8 max-w-2xl overflow-hidden rounded-2xl border border-fatec-line bg-white shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
-      <div className="relative h-28 sm:h-36 md:h-44">
+      {/* aspect-[12/5] (2026-09-29, era h-28/h-36/h-44 fixo) — bate com o
+          recorte do BannerCropModal (12:5); altura fixa cortava a foto de
+          jeito diferente do que o admin via ao recortar, mesmo bug achado
+          na home. */}
+      <div className="relative aspect-[12/5]">
         {destaque.imagemDestaqueUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
