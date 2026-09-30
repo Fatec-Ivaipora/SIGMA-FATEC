@@ -1,4 +1,4 @@
-import { LayoutGrid, FileStack, CalendarRange, Award } from "lucide-react";
+import { LayoutGrid, FileStack, CalendarRange, Award, QrCode } from "lucide-react";
 // GraduationCap fica sem uso enquanto "Projeto Integrador" está comentado
 // abaixo — volta a ser necessário quando o item for reativado.
 
@@ -22,11 +22,22 @@ export const NAV_ALUNO = [
 // avisar o aluno que tem evento aberto sem precisar entrar na tela; quem
 // chama já filtrou os eventos por vinculoFatec (ver eventosParaAluno).
 // Casa por href (não por label) pra não depender do texto exibido.
-export function navAlunoPara(vinculoFatec: boolean | undefined, temEventoAtivo = false) {
-  const itens = vinculoFatec === false
+// souMonitorEventoSimples (2026-09-30) — acrescenta "Ensalamento" só pra
+// quem monitora pelo menos 1 evento tipo "simples" (ver
+// useMonitoriasSimplesDoAluno em src/lib/data/monitores.ts); monitor de
+// evento completo não ganha esse item, é só um cargo sem função no sistema.
+export function navAlunoPara(
+  vinculoFatec: boolean | undefined,
+  temEventoAtivo = false,
+  souMonitorEventoSimples = false,
+) {
+  const base = vinculoFatec === false
     ? NAV_ALUNO.filter((item) => item.label !== "Projeto Integrador")
     : NAV_ALUNO;
-  return itens.map((item) =>
+  const itens = base.map((item) =>
     item.href === "/aluno/eventos" ? { ...item, indicador: temEventoAtivo } : item,
   );
+  return souMonitorEventoSimples
+    ? [...itens, { label: "Ensalamento", href: "/ensalamento", icon: QrCode }]
+    : itens;
 }

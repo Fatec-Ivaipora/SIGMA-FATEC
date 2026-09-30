@@ -76,6 +76,25 @@ export type Evento = {
   // declaração. Sem esses quatro campos preenchidos, a geração do PDF é
   // bloqueada (ver /api/certificados) — o aviso pede pra completar aqui antes.
   dataRealizacao?: string;
+  // Data de término (2026-09-30) — só preenchida pra evento "simples" de
+  // mais de 1 dia (ex. Semana Acadêmica de Medicina, 08 a 10/10). Ausente/
+  // igual a dataRealizacao = evento de 1 dia só, comportamento de sempre.
+  // Substituiu um campo "Dias do evento" separado (número digitado à parte
+  // — podia discordar da Data de realização, saía estranho no certificado:
+  // "realizado em 08/10" com "16 horas" parecia 1 dia só de 16h). Com as
+  // duas datas, o certificado imprime o período certo ("realizado de 08/10
+  // a 10/10") e o número de dias é sempre derivado daqui — ver
+  // diasDoEvento em src/lib/certificadoDias.ts, usado tanto pro cálculo de
+  // horas proporcionais quanto pelo seletor de dia no Ensalamento.
+  dataRealizacaoFim?: string;
+  // Carga horária: SEMPRE o total do evento, nunca muda de significado —
+  // nem pra evento "simples" multi-dia. Pra qualquer papel que não seja
+  // "participante" (aluno/avaliador/moderador/orientador/monitor), esse
+  // total é só estampado direto na declaração. Horas proporcionais por dia
+  // (só papel "participante"): ver cálculo em /api/certificados —
+  // horasConcedidas = round(diasConfirmados / diasDoEvento(evento) ×
+  // cargaHoraria), nunca passa do total (arredonda só no final, não por
+  // dia, pra não acumular erro quando não divide exato como 16÷3).
   cargaHoraria?: number;
   // Diretor e Coordenador não são mais obrigatórios os dois juntos
   // (2026-09-29) — evento escolhe 1 dos dois ou os dois; pelo menos um é

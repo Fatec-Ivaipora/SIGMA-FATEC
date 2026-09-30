@@ -13,8 +13,10 @@ import { DestaqueEventoBanner } from "@/components/DestaqueEventoBanner";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
+import { diasDoEvento } from "@/lib/certificadoDias";
 import { useTrabalhos } from "@/lib/data/trabalhos";
-import { useMinhaInscricao, useMinhasInscricoes } from "@/lib/data/inscricoes";
+import { useMinhaInscricao, useMinhasInscricoes, diasConfirmadosCount } from "@/lib/data/inscricoes";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
 import type { User } from "firebase/auth";
 
@@ -39,6 +41,17 @@ function CardEvento({
   // um lembrete separado quando pendente, ver abaixo.
   const { inscricao, carregando } = useMinhaInscricao(evento.id, user?.uid);
   const pago = inscricao?.status === "pago";
+  // Evento multi-dia (2026-09-30) — ver diasDoEvento em
+  // src/lib/certificadoDias.ts. Parcial (1 de 3 dias, por exemplo) continua
+  // mostrando "Confirmar presença" pros dias que faltam; qualquer 1 dia já
+  // basta pro certificado aparecer (regra AND com certificadosLiberados +
+  // pagamento, corrigida aqui junto — antes esse card específico ainda
+  // usava OR entre liberação e presença, desatualizado desde a correção de
+  // 2026-09-30 nos outros 3 lugares).
+  const diasEventoSimples = diasDoEvento(evento);
+  const diasConfirmados = diasConfirmadosCount(inscricao);
+  const algumaPresenca = diasConfirmados > 0;
+  const todosDiasConfirmados = diasConfirmados >= diasEventoSimples;
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [baixandoCertificado, setBaixandoCertificado] = useState(false);
@@ -144,10 +157,12 @@ function CardEvento({
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   Inscrição confirmada
                 </span>
-                {inscricao?.presencaConfirmada ? (
+                {todosDiasConfirmados ? (
                   <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Presença confirmada
+                    {diasEventoSimples > 1
+                      ? `Presença confirmada (${diasConfirmados}/${diasEventoSimples} dias)`
+                      : "Presença confirmada"}
                   </span>
                 ) : (
                   <button
@@ -156,12 +171,18 @@ function CardEvento({
                     className="inline-flex w-fit items-center gap-1.5 rounded-full border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                   >
                     <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
-                    Confirmar presença
+                    {diasEventoSimples > 1
+                      ? `Confirmar presença (${diasConfirmados}/${diasEventoSimples} dias)`
+                      : "Confirmar presença"}
                   </button>
                 )}
                 {/* Mesma regra de /api/certificados (papel "participante",
-                    2026-09-24): presença pelo QR OU liberação da organização. */}
-                {(evento.certificadosLiberados || inscricao?.presencaConfirmada) && (
+                    2026-09-30): liberado + pagamento (já garantido aqui,
+                    senão teria caído no branch "pagamento pendente" acima) +
+                    PELO MENOS 1 dia de presença confirmado, todos exigidos
+                    juntos — antes esse card usava OR, desatualizado desde a
+                    correção da regra nos outros lugares. */}
+                {evento.certificadosLiberados && algumaPresenca && (
                   <button
                     type="button"
                     onClick={handleBaixarCertificado}
@@ -226,6 +247,7 @@ export default function AlunoEventosPage() {
   const { eventos: todosEventos } = useEventosPublicos();
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { inscricoes: minhasInscricoes } = useMinhasInscricoes(user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
   const [modalEventoId, setModalEventoId] = useState<string | null>(null);
   const [inscricaoEventoId, setInscricaoEventoId] = useState<string | null>(null);
 
@@ -293,7 +315,7 @@ export default function AlunoEventosPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno/eventos"
         userName={perfil.nome}
         userRoleLabel="Aluno"

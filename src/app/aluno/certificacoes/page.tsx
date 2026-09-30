@@ -6,13 +6,19 @@ import { Sidebar } from "@/components/Sidebar";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
+import { diasDoEvento } from "@/lib/certificadoDias";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import {
   useMinhaInscricao,
   useMinhasInscricoes,
+  diasConfirmadosCount,
   type InscricaoEvento,
 } from "@/lib/data/inscricoes";
-import { useMinhasMonitorias, type MonitorEvento } from "@/lib/data/monitores";
+import {
+  useMinhasMonitorias,
+  useMonitoriasSimplesDoAluno,
+  type MonitorEvento,
+} from "@/lib/data/monitores";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 
 /** Estado do botão de download isolado num componente próprio (2026-08-31)
@@ -157,7 +163,12 @@ function LinhaCertificadoParticipacao({
   onBaixar: () => void;
 }) {
   const pagamentoPendente = !!evento.valorInscricao && inscricao.status !== "pago";
-  const semPresenca = !inscricao.presencaConfirmada;
+  // Evento multi-dia (2026-09-30) — qualquer 1 dia já basta aqui (horas
+  // saem proporcionais na hora de gerar o PDF, ver /api/certificados). Ver
+  // diasDoEvento em src/lib/certificadoDias.ts.
+  const diasConfirmados = diasConfirmadosCount(inscricao);
+  const semPresenca = diasConfirmados === 0;
+  const diasEvento = diasDoEvento(evento);
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-fatec-line bg-white p-5">
@@ -197,6 +208,12 @@ function LinhaCertificadoParticipacao({
           </button>
         )}
       </div>
+      {diasEvento > 1 && !pagamentoPendente && (
+        <p className="pl-[60px] text-xs text-fatec-muted">
+          Presença confirmada em {diasConfirmados}/{diasEvento} dias — horas
+          do certificado saem proporcionais.
+        </p>
+      )}
       {erro && (
         <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{erro}</p>
       )}
@@ -210,6 +227,7 @@ export default function AlunoCertificacoesPage() {
   const { eventos } = useEventosPublicos();
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
   const monitorias = useMinhasMonitorias(user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
   const { inscricoes } = useMinhasInscricoes(user?.uid);
 
   const [baixandoId, setBaixandoId] = useState<string | null>(null);
@@ -261,7 +279,7 @@ export default function AlunoCertificacoesPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno/certificacoes"
         userName={perfil.nome}
         userRoleLabel="Aluno"

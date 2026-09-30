@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useEventosPublicos, type Evento } from "@/lib/data/eventos";
 
 /** monitoresEvento/{eventoId}::{uid} (2026-09-01) — aluno marcado pela
  * organização/admin como monitor de um evento (ajuda na operação, não avalia
@@ -97,6 +98,20 @@ export function useMinhaMonitoria(eventoId: string | undefined, uid: string | un
   }, [eventoId, uid]);
 
   return { monitoria, carregando };
+}
+
+/** Eventos "simples" em que o aluno logado é monitor (2026-09-30) — só
+ * esses dão função de verdade (ajudar a confirmar presença por QR em
+ * /ensalamento); monitor de evento completo continua sendo só um cargo sem
+ * nenhum acesso extra no sistema, igual sempre foi. Usado pra acender o
+ * item "Ensalamento" no menu do aluno (ver navAlunoPara) e pra popular o
+ * seletor de evento lá dentro quando a pessoa monitora mais de um. */
+export function useMonitoriasSimplesDoAluno(uid: string | undefined): Evento[] {
+  const monitorias = useMinhasMonitorias(uid);
+  const { eventos: todosEventos } = useEventosPublicos();
+  return monitorias
+    .map((m) => todosEventos.find((e) => e.id === m.eventoId))
+    .filter((e): e is Evento => !!e && e.tipo === "simples");
 }
 
 export async function adicionarMonitor(

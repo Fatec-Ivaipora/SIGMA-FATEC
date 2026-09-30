@@ -8,7 +8,7 @@ import { codigoParaJanela, interpretarTextoQr, janelaValida } from "@/lib/qrPres
  * PRÓPRIA presença, nunca a de outra pessoa (sem uidAlvo, diferente das
  * rotas de certificado que admin/organização podem emitir em nome de
  * alguém). inscricoesEvento é allow write: if false pro client — só esta
- * rota (Admin SDK) grava presencaConfirmada. */
+ * rota (Admin SDK) grava presencasConfirmadas. */
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { eventoId, janela, codigo } = interpretado;
+  const { eventoId, dia, janela, codigo } = interpretado;
 
   const db = getAdminDb();
   const inscricaoRef = db.doc(`inscricoesEvento/${eventoId}::${uid}`);
@@ -42,7 +42,8 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (inscricao.presencaConfirmada) {
+  const chaveDia = String(dia);
+  if (inscricao.presencasConfirmadas?.[chaveDia]) {
     return NextResponse.json({ ok: true, jaConfirmada: true });
   }
 
@@ -59,17 +60,19 @@ export async function POST(request: Request) {
   const segredo = (await db.doc(`eventosQr/${eventoId}`).get()).data()?.secret as
     | string
     | undefined;
-  if (!segredo || codigoParaJanela(segredo, eventoId, janela) !== codigo) {
+  if (!segredo || codigoParaJanela(segredo, eventoId, dia, janela) !== codigo) {
     return NextResponse.json(
       { erro: "Código inválido — escaneie o QR exibido pelo organizador." },
       { status: 400 },
     );
   }
 
-  await inscricaoRef.set(
-    { presencaConfirmada: true, presencaConfirmadaEm: FieldValue.serverTimestamp() },
-    { merge: true },
-  );
+  // Dot-notation (2026-09-30) — update() em vez de set({merge:true}) pra
+  // gravar só a chave desse dia dentro do mapa, sem arriscar sobrescrever as
+  // confirmações de outros dias já gravadas ali.
+  await inscricaoRef.update({
+    [`presencasConfirmadas.${chaveDia}`]: FieldValue.serverTimestamp(),
+  });
 
   return NextResponse.json({ ok: true, jaConfirmada: false });
 }

@@ -7,11 +7,13 @@ import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { responderConviteTurma, useTurmasDoAluno } from "@/lib/data/turmas";
 import { useIndicadorEventos } from "@/lib/data/eventos";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 
 export default function ProjetoIntegradorAlunoPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { turmas } = useTurmasDoAluno(user?.uid);
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
 
   const convites = turmas.filter((t) => t.convitesPendentesUids?.includes(user?.uid ?? ""));
   const turmasAceitas = turmas.filter((t) => !t.convitesPendentesUids?.includes(user?.uid ?? ""));
@@ -26,7 +28,7 @@ export default function ProjetoIntegradorAlunoPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno/projeto-integrador"
         userName={perfil.nome}
         userRoleLabel="Aluno"

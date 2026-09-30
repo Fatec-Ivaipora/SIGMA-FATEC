@@ -10,6 +10,7 @@ import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, atualizarTrabalho, type Trabalho } from "@/lib/data/trabalhos";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { notificarConviteColega } from "@/lib/notificarEmail";
 
 // Prazo de edição (2026-09-04): 23:55 do dia de fim das inscrições, gravado
@@ -27,6 +28,7 @@ export default function AlunoTrabalhosPage() {
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { eventos } = useEventosPublicos();
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
   const [editando, setEditando] = useState<Trabalho | null>(null);
 
   async function salvarEdicao(trabalho: Trabalho, dados: DadosSubmissao) {
@@ -65,7 +67,7 @@ export default function AlunoTrabalhosPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno/trabalhos"
         userName={perfil.nome}
         userRoleLabel="Aluno"

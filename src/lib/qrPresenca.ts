@@ -20,9 +20,19 @@ export function janelaAtual(agora: number = Date.now()): number {
   return Math.floor(agora / DURACAO_JANELA_MS);
 }
 
-export function codigoParaJanela(segredo: string, eventoId: string, janela: number): string {
+// dia (2026-09-30, evento multi-dia — ver Evento.diasEvento) entra no HMAC
+// junto com eventoId, não só concatenado no texto do QR: sem isso, o código
+// de 8 hex do dia 1 também validaria pro dia 2 na mesma janela de tempo (o
+// server só ia ignorar o "dia" declarado no texto, nunca provar que bate
+// com o segredo). Evento de 1 dia sempre usa dia=1.
+export function codigoParaJanela(
+  segredo: string,
+  eventoId: string,
+  dia: number,
+  janela: number,
+): string {
   return createHmac("sha256", segredo)
-    .update(`${eventoId}:${janela}`)
+    .update(`${eventoId}:${dia}:${janela}`)
     .digest("hex")
     .slice(0, 8);
 }
@@ -33,19 +43,25 @@ export function gerarSegredo(): string {
 
 /** Texto codificado no QR — o organizador exibe isso, o aluno escaneia e
  * manda de volta pra rota de confirmação validar. */
-export function montarTextoQr(eventoId: string, janela: number, codigo: string): string {
-  return `${eventoId}|${janela}|${codigo}`;
+export function montarTextoQr(
+  eventoId: string,
+  dia: number,
+  janela: number,
+  codigo: string,
+): string {
+  return `${eventoId}|${dia}|${janela}|${codigo}`;
 }
 
 export function interpretarTextoQr(
   texto: string,
-): { eventoId: string; janela: number; codigo: string } | null {
+): { eventoId: string; dia: number; janela: number; codigo: string } | null {
   const partes = texto.split("|");
-  if (partes.length !== 3) return null;
-  const [eventoId, janelaStr, codigo] = partes;
+  if (partes.length !== 4) return null;
+  const [eventoId, diaStr, janelaStr, codigo] = partes;
+  const dia = Number(diaStr);
   const janela = Number(janelaStr);
-  if (!eventoId || !codigo || !Number.isFinite(janela)) return null;
-  return { eventoId, janela, codigo };
+  if (!eventoId || !codigo || !Number.isFinite(dia) || !Number.isFinite(janela)) return null;
+  return { eventoId, dia, janela, codigo };
 }
 
 /** true se `janela` ainda está dentro da tolerância aceita, a partir de

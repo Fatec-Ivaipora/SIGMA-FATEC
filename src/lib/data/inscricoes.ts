@@ -23,12 +23,26 @@ export type InscricaoEvento = {
   pagoEm?: Timestamp;
   // Confirmação de presença por QR (2026-09-23, evento "simples") — gravado
   // só por /api/inscricoes/confirmar-presenca (Admin SDK; esta collection é
-  // allow write: if false pro client). Junto com evento.certificadosLiberados,
-  // é um dos dois jeitos de liberar o certificado de participação (ver
-  // /api/certificados, papel "participante").
-  presencaConfirmada?: boolean;
-  presencaConfirmadaEm?: Timestamp;
+  // allow write: if false pro client). Uma chave por dia confirmado
+  // ("1", "2", ...), valor = timestamp de quando confirmou (2026-09-30,
+  // antes era um boolean só — virou mapa pra suportar evento.diasEvento > 1,
+  // ver comentário em src/lib/data/eventos.ts). Evento de 1 dia só usa a
+  // chave "1". Junto com evento.certificadosLiberados e pagamento, é um dos
+  // critérios pra liberar o certificado de participação (ver
+  // /api/certificados, papel "participante") — mas qualquer 1 dia confirmado
+  // já basta pro certificado aparecer (com horas proporcionais).
+  presencasConfirmadas?: Record<string, Timestamp>;
 };
+
+/** Quantos dias distintos essa pessoa já teve presença confirmada — 0 se
+ * nenhum (inclui o caso de inscrição antiga sem o campo). Usado em toda
+ * tela/rota que precisa decidir "tem pelo menos 1 dia?" sem se importar com
+ * QUAIS dias, ou multiplicar por horas/dia (ver evento.cargaHoraria). */
+export function diasConfirmadosCount(inscricao: InscricaoEvento | null | undefined): number {
+  return inscricao?.presencasConfirmadas
+    ? Object.keys(inscricao.presencasConfirmadas).length
+    : 0;
+}
 
 /** Status da própria Etapa 1 (pagamento) do aluno logado num evento. */
 export function useMinhaInscricao(eventoId: string | undefined, uid: string | undefined) {

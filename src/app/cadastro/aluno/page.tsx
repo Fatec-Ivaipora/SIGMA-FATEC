@@ -104,9 +104,18 @@ export default function CadastroAlunoPage() {
         });
         await batch.commit();
         router.push("/aluno");
-      } catch {
+      } catch (e) {
+        // Logado (2026-09-30, achado: aluna relatou esse erro sem nenhuma
+        // pista de causa — a conta do Auth já tinha sido criada, só a
+        // gravação no Firestore falhou, e a mensagem genérica não deixava
+        // rastro nenhum pra investigar depois). Sem isso, o console do
+        // navegador da pessoa é a única evidência que existiria, e ninguém
+        // sabe olhar lá.
+        console.error("Cadastro: falha ao gravar usuarios/usuariosPublicos", e);
         await credencial.user.delete().catch(() => {});
-        setErro("Não foi possível criar a conta. Tente novamente.");
+        setErro(
+          "Não foi possível salvar seus dados. Confira sua conexão com a internet e tente de novo.",
+        );
         setEnviando(false);
       }
     } catch (e) {

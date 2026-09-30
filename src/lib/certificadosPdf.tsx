@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
 import type { Style } from "@react-pdf/types";
+import { ASSINANTES_DIRETOR, ASSINANTES_COORDENADOR } from "@/lib/assinantesCertificado";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -16,6 +17,18 @@ export function formatarDataExtenso(iso: string): string {
 export function formatarDataNumerica(iso: string): string {
   const [ano, mes, dia] = iso.split("-");
   return `${dia}/${mes}/${ano}`;
+}
+
+/** Texto do período de realização (2026-09-30) — "realizado em 08/10/2026"
+ * pra evento de 1 dia (fim ausente/igual ao início, comportamento de
+ * sempre), "realizado de 08/10/2026 a 10/10/2026" pra evento multi-dia. Ver
+ * Evento.dataRealizacaoFim em src/lib/data/eventos.ts — achado pelo usuário
+ * testando a Semana de Medicina: antes só a data de início aparecia no
+ * certificado, mesmo pra um evento de 3 dias, o que ficava estranho ao lado
+ * da carga horária total (16h parecia um evento de 1 dia só). */
+export function formatarPeriodoRealizacao(inicio: string, fim?: string): string {
+  if (!fim || fim === inicio) return `realizado em ${formatarDataNumerica(inicio)}`;
+  return `realizado de ${formatarDataNumerica(inicio)} a ${formatarDataNumerica(fim)}`;
 }
 
 /** Lista humana com "e" antes do último item: ["A","B","C"] -> "A, B e C". */
@@ -51,6 +64,20 @@ const ASSINATURA_RONI = {
   format: "jpg" as const,
 };
 
+// Nome -> imagem (2026-09-30) — antes a imagem era fixa por cargo, sem
+// checar se o nome digitado batia com a pessoa de verdade (ver comentário
+// em src/lib/assinantesCertificado.ts). Cada mapa só tem a mesma pessoa que
+// já existia, mas agora a busca é EXPLÍCITA por nome — um nome que não bate
+// com ninguém aqui (não deveria acontecer, o formulário só deixa escolher
+// os cadastrados) cai em `undefined`, e BlocoAssinatura sabe lidar com isso
+// (mostra nome/cargo sem a imagem da assinatura, em vez de quebrar o PDF).
+const IMAGEM_POR_DIRETOR: Record<string, { data: Buffer; format: "jpg" }> = {
+  [ASSINANTES_DIRETOR[0]]: ASSINATURA_RONI,
+};
+const IMAGEM_POR_COORDENADOR: Record<string, { data: Buffer; format: "jpg" }> = {
+  [ASSINANTES_COORDENADOR[0]]: ASSINATURA_JOAO,
+};
+
 const cores = {
   navy900: "#0a2c47",
   navy800: "#0e3a5e",
@@ -74,14 +101,19 @@ const CARGO_COORDENADOR = "Coordenador Comissão de Iniciação Científica";
  * tinha o próprio JSX repetido). Diretor e Coordenador são opcionais agora
  * (evento escolhe 1 ou os 2, ver faltandoDadosEvento em
  * src/app/api/certificados/route.ts) — este componente só é chamado quando o
- * nome existe, nunca precisa lidar com nome vazio. */
+ * nome existe, nunca precisa lidar com nome vazio. `imagem` também é
+ * opcional (2026-09-30) — só fica undefined se o nome gravado no evento não
+ * bater com nenhum dos cadastrados em IMAGEM_POR_DIRETOR/COORDENADOR (dado
+ * antigo de antes do select existir, ou um nome novo cadastrado sem
+ * assinatura ainda); nesse caso mostra só a linha/nome/cargo, sem quebrar o
+ * PDF por causa de uma imagem ausente. */
 function BlocoAssinatura({
   imagem,
   nome,
   cargo,
   estilos,
 }: {
-  imagem: { data: Buffer; format: "jpg" };
+  imagem: { data: Buffer; format: "jpg" } | undefined;
   nome: string;
   cargo: string;
   estilos: {
@@ -94,7 +126,7 @@ function BlocoAssinatura({
 }) {
   return (
     <View style={estilos.assinatura}>
-      <Image src={imagem} style={estilos.imagemAssinatura} />
+      {imagem && <Image src={imagem} style={estilos.imagemAssinatura} />}
       <View style={estilos.linhaAssinatura} />
       <Text style={estilos.nomeAssinatura}>{nome.toUpperCase()}</Text>
       <Text style={estilos.cargoAssinatura}>{cargo}</Text>
@@ -255,7 +287,7 @@ export function CertificadoApresentacaoPDF({
           <View style={estiloApresentacao.assinaturas}>
             {diretorNome && (
               <BlocoAssinatura
-                imagem={ASSINATURA_RONI}
+                imagem={IMAGEM_POR_DIRETOR[diretorNome]}
                 nome={diretorNome}
                 cargo={CARGO_DIRETOR}
                 estilos={estiloApresentacao}
@@ -263,7 +295,7 @@ export function CertificadoApresentacaoPDF({
             )}
             {coordenadorNome && (
               <BlocoAssinatura
-                imagem={ASSINATURA_JOAO}
+                imagem={IMAGEM_POR_COORDENADOR[coordenadorNome]}
                 nome={coordenadorNome}
                 cargo={CARGO_COORDENADOR}
                 estilos={estiloApresentacao}
@@ -408,6 +440,7 @@ export function DeclaracaoPDF({
   papel,
   eventoNome,
   dataRealizacao,
+  dataRealizacaoFim,
   cargaHoraria,
   diretorNome,
   coordenadorNome,
@@ -417,6 +450,9 @@ export function DeclaracaoPDF({
   papel: "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
   eventoNome: string;
   dataRealizacao: string;
+  // Opcional (2026-09-30) — só vem preenchido pra evento "simples" de mais
+  // de 1 dia; ver formatarPeriodoRealizacao acima.
+  dataRealizacaoFim?: string;
   cargaHoraria: number;
   // Opcionais (2026-09-29) — mesmo espírito de CertificadoApresentacaoPDF:
   // o evento escolhe 1 dos dois ou os dois, pelo menos um é exigido antes
@@ -450,9 +486,9 @@ export function DeclaracaoPDF({
           qualidade de{" "}
           <Text style={estiloDeclaracao.negrito}>{PAPEL_TEXTO[papel]}</Text>{" "}
           na <Text style={estiloDeclaracao.negrito}>{eventoNome}</Text>, da
-          Faculdade de Tecnologia do Vale do Ivaí – FATEC. O evento foi
-          realizado em {formatarDataNumerica(dataRealizacao)}, com carga
-          horária de {String(cargaHoraria).padStart(2, "0")} horas.
+          Faculdade de Tecnologia do Vale do Ivaí – FATEC. O evento foi{" "}
+          {formatarPeriodoRealizacao(dataRealizacao, dataRealizacaoFim)}, com
+          carga horária de {String(cargaHoraria).padStart(2, "0")} horas.
         </Text>
 
         <Text style={estiloDeclaracao.fechamento}>
@@ -466,7 +502,7 @@ export function DeclaracaoPDF({
         <View style={estiloDeclaracao.assinaturas}>
           {diretorNome && (
             <BlocoAssinatura
-              imagem={ASSINATURA_RONI}
+              imagem={IMAGEM_POR_DIRETOR[diretorNome]}
               nome={diretorNome}
               cargo={CARGO_DIRETOR}
               estilos={estiloDeclaracao}
@@ -474,7 +510,7 @@ export function DeclaracaoPDF({
           )}
           {coordenadorNome && (
             <BlocoAssinatura
-              imagem={ASSINATURA_JOAO}
+              imagem={IMAGEM_POR_COORDENADOR[coordenadorNome]}
               nome={coordenadorNome}
               cargo={CARGO_COORDENADOR}
               estilos={estiloDeclaracao}

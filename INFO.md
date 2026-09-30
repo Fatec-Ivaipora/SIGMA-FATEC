@@ -381,6 +381,119 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-30** — Duas sobras menores dessa leva de mudanças, sem entrada
+  própria até agora: (1) **"Liberar certificados" mudou de aba** — morava
+  em `/trabalhos` (`InscritosSimplesView`), foi pra `/ensalamento`
+  (`ConfirmacaoPresencaView`), porque é lá que dá pra ver a presença de
+  verdade antes de decidir liberar (o pagamento mostrado em `/trabalhos` é
+  só informativo, quem trava de verdade é `/api/certificados`); (2) erro de
+  cadastro agora fica logado — achado real: uma aluna relatou falha no
+  cadastro sem nenhuma pista pra investigar (conta do Auth já tinha sido
+  criada, só a gravação em `usuarios`/`usuariosPublicos` falhou); agora
+  `console.error` registra o erro e a mensagem pro usuário ficou mais clara
+  ("Confira sua conexão com a internet e tente de novo").
+- **2026-09-30** — Correção de conta duplicada (Matheus Augusto Cézar
+  Fukuda, evento Semana de Medicina) — ele criou 2 contas porque errou o
+  e-mail na primeira (`.comm` em vez de `.com`) e acabou pagando na conta
+  errada. Apagada a conta certa-mas-não-paga pelo Console; a conta
+  paga-mas-com-e-mail-errado teve só o campo `usuarios.email` corrigido
+  pelo Console, o que NÃO muda o e-mail de login de verdade (Firebase
+  Auth é separado do Firestore) nem limpa o lixo que a exclusão pelo
+  Console deixa em `usuariosPublicos`/`inscricoesEvento` do uid apagado —
+  por isso o evento continuava mostrando "2 Matheus" na lista de
+  inscritos. Corrigido via script descartável (Admin SDK): e-mail de login
+  trocado de verdade (`auth.updateUser`), `usuariosPublicos` e a inscrição
+  da conta certa sincronizados, inscrição + `usuariosPublicos` órfãos da
+  conta apagada removidos. **Lição pra próxima vez que alguém precisar
+  mesclar/corrigir contas duplicadas pelo Console**: apagar a conta pelo
+  Console só remove o registro do Firebase Auth — sempre checar também
+  `usuarios`, `usuariosPublicos` e qualquer coleção com doc-id baseado no
+  uid (`inscricoesEvento`, `monitoresEvento`, etc.), e lembrar que o campo
+  `email` do Firestore é só espelho, nunca o e-mail de login de verdade.
+- **2026-09-30** — Evento "simples" multi-dia (pedido da coordenação, caso
+  real: Semana Acadêmica de Medicina). Em Eventos → Dados do certificado,
+  "Data de realização" virou "Data de início" + novo campo opcional **"Data
+  de término"** pra evento tipo "simples" — o número de dias é sempre
+  CALCULADO a partir do intervalo entre as duas datas (`diasDoEvento` em
+  `src/lib/certificadoDias.ts`, arquivo sem `"use client"` pra ser
+  importável tanto do formulário quanto das rotas de API e da geração do
+  PDF), nunca um número digitado à parte — a primeira versão dessa feature
+  tinha um campo "Dias do evento" separado, que discordou da data de
+  realização assim que testado de verdade (evento real de 2 dias com o
+  campo ainda em 3, de um teste anterior — o certificado saía com
+  "realizado em 08/10... carga horária de 16h", parecendo 1 dia só de 16h),
+  corrigido ainda na mesma sessão. Carga horária continua sendo sempre o
+  TOTAL do evento, nunca muda de significado — evento de 1 dia (a imensa
+  maioria, incluindo a X MAC) continua exatamente igual a antes, nenhuma
+  migração precisou rodar.
+
+  Cada inscrito começa com 0h e ganha proporcionalmente conforme confirma
+  presença dia a dia (`/api/certificados` calcula `round(dias confirmados
+  ÷ dias do evento × carga horária total)`, arredondando só no final pra
+  não acumular erro quando não divide exato — ex.: 16h/3 dias, confirmou
+  2, recebe 11h). O certificado imprime o período certo ("realizado de
+  08/10/2026 a 09/10/2026") em vez de só a data de início, em todas as
+  declarações desse evento (participante, monitor, avaliador/moderador/
+  orientador) via `formatarPeriodoRealizacao` em `certificadosPdf.tsx`.
+
+  Em `/ensalamento`, a tela do QR ganhou um seletor manual "Dia 1 / Dia 2 /
+  Dia 3..." (o admin escolhe qual dia está projetando antes de abrir pro
+  público); a lista de presenças mostra um selo por dia (D1/D2/D3) em vez
+  de um badge único, cada pessoa mostra quantas horas já tem garantidas
+  (calculado ao vivo), e clicar/passar o mouse num selo já confirmado
+  mostra a data/hora exata daquela confirmação — auditoria pensada pra
+  pegar alguém girando os dias sozinho pra um amigo em vez de presença
+  real em dias diferentes (ver entrada do monitor abaixo). Em Eventos →
+  Dados do certificado, "Data de término" ganhou uma etiqueta ao lado
+  mostrando a conta ao vivo ("16h ÷ 3 dias ≈ 5,3h/dia") pra quem está
+  montando o evento conferir — só apoio visual, o certificado em si sempre
+  arredonda pro inteiro. `InscricaoEvento.presencaConfirmada` (boolean)
+  virou `presencasConfirmadas` (mapa `{"1": timestamp, "2": timestamp,
+  ...}`) — o texto do QR também ganhou o dia embutido e assinado (HMAC
+  inclui `eventoId:dia:janela`, não só `eventoId:janela`, pra um QR do dia
+  1 não validar presença no dia 2 mesmo dentro da mesma janela de 1
+  minuto).
+
+  **Liberar certificados** continua exigindo os mesmos três critérios de
+  sempre (liberação + pagamento + presença), mas agora "presença" quer
+  dizer **pelo menos 1 dos N dias confirmado** (não todos) — quem faltou
+  um dia ainda recebe certificado, só que com menos horas. Os 4 lugares
+  que mostram esse estado pro aluno (`DestaqueEventoBanner`, `/aluno`,
+  `/aluno/eventos`, `/aluno/certificacoes`) mostram o progresso "(X/N
+  dias)" quando o evento tem mais de 1 dia — de quebra, `/aluno/eventos`
+  tinha ficado pra trás numa correção anterior (ainda usava OR entre
+  liberação/presença em vez do AND dos três critérios), corrigido junto.
+- **2026-09-30** — Nome de quem assina o certificado (Diretor
+  Acadêmico/Coordenador) virou **select** em vez de texto livre — achado
+  durante a conversa: a imagem da assinatura digitalizada sempre foi FIXA
+  por cargo (Roni pro Diretor, João pro Coordenador, ver
+  `ASSINATURA_RONI`/`ASSINATURA_JOAO` em `certificadosPdf.tsx`), nunca
+  conferida contra o nome digitado — se algum dia alguém tivesse digitado
+  um nome diferente, o PDF saía com a assinatura de outra pessoa embaixo
+  do nome errado. Lista de quem pode ser escolhido agora mora em
+  `src/lib/assinantesCertificado.ts` (só client-safe, string dos nomes —
+  as imagens continuam só em `certificadosPdf.tsx`, que lê arquivo do
+  disco e só roda no servidor); pra cadastrar alguém novo precisa mexer
+  nos dois lugares (documentado lá). Dado antigo não quebrou: "Ronielison
+  Barbosa Ferreira"/"João Felipe Marques da Silva" (já gravados na X MAC)
+  batem exatamente com as opções do select.
+- **2026-09-30** — Monitor ganha função de verdade em evento "simples"
+  (diferente de evento completo, onde monitor continua sendo só um cargo
+  pro certificado, sem acesso nenhum): quem é monitor de um evento tipo
+  "simples" agora vê o item **"Ensalamento"** no próprio menu do aluno,
+  com uma versão enxuta da tela (`EnsalamentoMonitorView`) — só o QR + a
+  lista de presença, **sem** a seção "Liberar certificados" nem o selo de
+  horas por pessoa (isso é decisão/informação de admin/organização, não do
+  monitor). A lista chega por uma rota própria
+  (`/api/inscricoes/lista-presenca`, Admin SDK) porque firestore.rules só
+  libera listar `inscricoesEvento` inteiro pra admin/organização — mesmo
+  problema que `/api/inscricoes/uids` já resolvia pro mesmo motivo.
+  `/api/eventos/qr-atual` também passou a aceitar monitor do evento (antes
+  só admin/organização). A auditoria por dia (hover/clique num selo
+  D1/D2/D3 mostrando a data/hora exata) continua valendo pro monitor — é
+  justamente a segurança contra um monitor mal-intencionado girando os
+  dias sozinho pra confirmar presença de um amigo que não veio nos outros
+  dias. Nenhuma regra do `firestore.rules` precisou mudar.
 - **2026-09-30** — Regra do certificado de participação (evento "simples")
   mudou de vez, pedido explícito do usuário — **três critérios
   obrigatórios juntos, não alternativas entre si**: a organização precisa

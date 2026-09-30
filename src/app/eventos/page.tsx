@@ -54,6 +54,8 @@ import { useEventos, type Evento, type AreaTematicaComplexa } from "@/lib/data/e
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { recalcularAreasTematicas } from "@/lib/areasTematicas";
+import { ASSINANTES_DIRETOR, ASSINANTES_COORDENADOR } from "@/lib/assinantesCertificado";
+import { diasDoEvento } from "@/lib/certificadoDias";
 
 function formatarData(iso: string): string {
   if (!iso) return "";
@@ -62,6 +64,20 @@ function formatarData(iso: string): string {
     month: "long",
     year: "numeric",
   });
+}
+
+/** Mostra pro admin, ao lado do campo "Data de término", como a carga
+ * horária TOTAL (nunca muda de significado, ver comentário em
+ * src/lib/data/eventos.ts) se divide entre os dias do intervalo — o
+ * gatilho pra essa feature foi a comissão perguntar "6h × 3 dias = 16h?"
+ * (não bate: 16 ÷ 3 = 5,3.../dia, por isso o certificado calcula só no
+ * final, não dia a dia — ver /api/certificados). null enquanto a carga
+ * horária não está preenchida ou dá 1 dia só (nesse caso a conta é óbvia,
+ * não precisa mostrar). */
+function horasPorDiaAprox(cargaHorariaStr: string, dias: number): string | null {
+  const total = Number(cargaHorariaStr);
+  if (!total || dias <= 1) return null;
+  return (total / dias).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
 const FASES_CRIAR = [
@@ -491,6 +507,7 @@ export default function EventosPage() {
   const [valorInscricao, setValorInscricao] = useState("");
   const [eventoGratuito, setEventoGratuito] = useState(false);
   const [dataRealizacao, setDataRealizacao] = useState("");
+  const [dataRealizacaoFim, setDataRealizacaoFim] = useState("");
   const [cargaHoraria, setCargaHoraria] = useState("");
   const [nomeDiretorAcademico, setNomeDiretorAcademico] = useState("");
   const [nomeCoordenadorPesquisa, setNomeCoordenadorPesquisa] = useState("");
@@ -513,7 +530,9 @@ export default function EventosPage() {
   const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
+  const certSimples = eventos.find((e) => e.id === modalCertificadoId)?.tipo === "simples";
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
+  const [dataRealizacaoFimCert, setDataRealizacaoFimCert] = useState("");
   const [cargaHorariaCert, setCargaHorariaCert] = useState("");
   const [nomeDiretorCert, setNomeDiretorCert] = useState("");
   const [nomeCoordenadorCert, setNomeCoordenadorCert] = useState("");
@@ -686,6 +705,7 @@ export default function EventosPage() {
   function abrirModalCertificado(evento: Evento) {
     setModalCertificadoId(evento.id);
     setDataRealizacaoCert(evento.dataRealizacao ?? "");
+    setDataRealizacaoFimCert(evento.dataRealizacaoFim ?? "");
     setCargaHorariaCert(evento.cargaHoraria?.toString() ?? "");
     setNomeDiretorCert(evento.nomeDiretorAcademico ?? "");
     setNomeCoordenadorCert(evento.nomeCoordenadorPesquisa ?? "");
@@ -698,6 +718,7 @@ export default function EventosPage() {
     try {
       await updateDoc(doc(db, "eventos", modalCertificadoId), {
         dataRealizacao: dataRealizacaoCert || null,
+        dataRealizacaoFim: dataRealizacaoFimCert || null,
         cargaHoraria: cargaHorariaCert.trim() ? Number(cargaHorariaCert) : null,
         nomeDiretorAcademico: nomeDiretorCert.trim(),
         nomeCoordenadorPesquisa: nomeCoordenadorCert.trim(),
@@ -1007,6 +1028,7 @@ export default function EventosPage() {
           ? { prazoEdicaoTrabalho: Timestamp.fromDate(new Date(`${fimInscricoes}T23:55:00`)) }
           : {}),
         ...(dataRealizacao ? { dataRealizacao } : {}),
+        ...(tipoForm === "simples" && dataRealizacaoFim ? { dataRealizacaoFim } : {}),
         ...(cargaHoraria.trim() ? { cargaHoraria: Number(cargaHoraria) } : {}),
         ...(nomeDiretorAcademico.trim()
           ? { nomeDiretorAcademico: nomeDiretorAcademico.trim() }
@@ -1506,7 +1528,7 @@ export default function EventosPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
-                  Data de realização
+                  {tipoForm === "simples" ? "Data de início" : "Data de realização"}
                 </span>
                 <input
                   type="date"
@@ -1529,37 +1551,84 @@ export default function EventosPage() {
                 />
               </label>
             </div>
+            {tipoForm === "simples" && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fatec-navy-900">
+                  Data de término (opcional)
+                </span>
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="date"
+                    value={dataRealizacaoFim}
+                    onChange={(e) => setDataRealizacaoFim(e.target.value)}
+                    className="w-full max-w-[12rem] rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                  />
+                  {horasPorDiaAprox(cargaHoraria, diasDoEvento({ dataRealizacao, dataRealizacaoFim })) && (
+                    <span className="rounded-lg bg-fatec-navy-50 px-3 py-1.5 text-xs font-semibold text-fatec-navy-800">
+                      {diasDoEvento({ dataRealizacao, dataRealizacaoFim })} dias · {cargaHoraria}h ÷{" "}
+                      {diasDoEvento({ dataRealizacao, dataRealizacaoFim })} ≈{" "}
+                      {horasPorDiaAprox(cargaHoraria, diasDoEvento({ dataRealizacao, dataRealizacaoFim }))}
+                      h/dia
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-fatec-muted">
+                  Evento de vários dias (ex.: uma semana acadêmica)? Preenche
+                  aqui o último dia — o certificado sai com o período
+                  certinho (&quot;realizado de X a Y&quot;). A carga horária
+                  acima continua sendo o TOTAL do evento — cada inscrito
+                  começa com 0h e ganha proporcionalmente conforme confirma
+                  presença dia
+                  a dia no Ensalamento (ex.: 16h em 3 dias, faltou 1 dia,
+                  recebe ~11h). Deixe em branco pra evento de um dia só.
+                </span>
+              </label>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
                   Diretor(a) Acadêmico(a)
                 </span>
-                <input
-                  type="text"
+                <select
                   value={nomeDiretorAcademico}
                   onChange={(e) => setNomeDiretorAcademico(e.target.value)}
-                  placeholder="Nome de quem assina"
-                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-                />
+                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                >
+                  <option value="">Nenhum</option>
+                  {ASSINANTES_DIRETOR.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
                   Coordenador(a) da Comissão de Iniciação Científica
                 </span>
-                <input
-                  type="text"
+                <select
                   value={nomeCoordenadorPesquisa}
                   onChange={(e) => setNomeCoordenadorPesquisa(e.target.value)}
-                  placeholder="Nome de quem assina"
-                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-                />
+                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                >
+                  <option value="">Nenhum</option>
+                  {ASSINANTES_COORDENADOR.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
             <p className="text-xs text-fatec-muted">
-              Pode preencher só um dos dois, ou os dois — o certificado sai
-              só com quem estiver preenchido. Pode deixar os dois em branco
-              e preencher depois, mas sem nenhum dos dois os certificados
-              desse evento não podem ser gerados.
+              Pode escolher só um dos dois, ou os dois — o certificado sai
+              só com quem estiver escolhido. Pode deixar os dois em
+              &quot;Nenhum&quot; e preencher depois, mas sem nenhum dos dois
+              os certificados
+              desse evento não podem ser gerados. Só aparece aqui quem já
+              tem assinatura digitalizada cadastrada — precisa de alguém
+              novo? Fala com quem mantém o sistema pra cadastrar a
+              assinatura antes.
             </p>
           </div>
           </>
@@ -1874,14 +1943,14 @@ export default function EventosPage() {
           <p className="text-sm text-fatec-muted">
             Usados pra gerar o certificado de apresentação e as declarações de
             avaliador/moderador/orientador desse evento. Diretor e
-            Coordenador não são obrigatórios os dois juntos — preencha só um
+            Coordenador não são obrigatórios os dois juntos — escolha só um
             ou os dois; o certificado sai assinado só por quem estiver
-            preenchido.
+            escolhido.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Data de realização
+                {certSimples ? "Data de início" : "Data de realização"}
               </span>
               <input
                 type="date"
@@ -1904,29 +1973,79 @@ export default function EventosPage() {
               />
             </label>
           </div>
+          {certSimples && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Data de término (opcional)
+              </span>
+              <div className="flex items-center gap-2.5">
+                <input
+                  type="date"
+                  value={dataRealizacaoFimCert}
+                  onChange={(e) => setDataRealizacaoFimCert(e.target.value)}
+                  className="w-full max-w-[12rem] rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                />
+                {horasPorDiaAprox(
+                  cargaHorariaCert,
+                  diasDoEvento({ dataRealizacao: dataRealizacaoCert, dataRealizacaoFim: dataRealizacaoFimCert }),
+                ) && (
+                  <span className="rounded-lg bg-fatec-navy-50 px-3 py-1.5 text-xs font-semibold text-fatec-navy-800">
+                    {diasDoEvento({ dataRealizacao: dataRealizacaoCert, dataRealizacaoFim: dataRealizacaoFimCert })}{" "}
+                    dias · {cargaHorariaCert}h ÷{" "}
+                    {diasDoEvento({ dataRealizacao: dataRealizacaoCert, dataRealizacaoFim: dataRealizacaoFimCert })} ≈{" "}
+                    {horasPorDiaAprox(
+                      cargaHorariaCert,
+                      diasDoEvento({ dataRealizacao: dataRealizacaoCert, dataRealizacaoFim: dataRealizacaoFimCert }),
+                    )}
+                    h/dia
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-fatec-muted">
+                Evento de vários dias? Preenche aqui o último dia — o
+                certificado sai com o período certinho (&quot;realizado de X
+                a Y&quot;). A carga horária acima continua sendo o TOTAL do
+                evento — cada inscrito começa com 0h e ganha
+                proporcionalmente conforme confirma presença dia a dia no
+                Ensalamento (ex.:
+                16h em 3 dias, faltou 1 dia, recebe ~11h). Deixe em branco
+                pra evento de um dia só.
+              </span>
+            </label>
+          )}
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
               Diretor(a) Acadêmico(a)
             </span>
-            <input
-              type="text"
+            <select
               value={nomeDiretorCert}
               onChange={(e) => setNomeDiretorCert(e.target.value)}
-              placeholder="Nome de quem assina"
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-            />
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            >
+              <option value="">Nenhum</option>
+              {ASSINANTES_DIRETOR.map((nome) => (
+                <option key={nome} value={nome}>
+                  {nome}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
               Coordenador(a) da Comissão de Iniciação Científica
             </span>
-            <input
-              type="text"
+            <select
               value={nomeCoordenadorCert}
               onChange={(e) => setNomeCoordenadorCert(e.target.value)}
-              placeholder="Nome de quem assina"
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-            />
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            >
+              <option value="">Nenhum</option>
+              {ASSINANTES_COORDENADOR.map((nome) => (
+                <option key={nome} value={nome}>
+                  {nome}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1.5 border-t border-fatec-line pt-4">
             <span className="text-sm font-medium text-fatec-navy-900">

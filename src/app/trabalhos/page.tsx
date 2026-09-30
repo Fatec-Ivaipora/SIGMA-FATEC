@@ -168,14 +168,14 @@ function SecaoInscritos({
 
 /** Evento "simples" (2026-09-22) não tem trabalho/avaliação — no lugar da
  * pipeline de ETAPAS, essa tela mostra só quem se inscreveu (mesmo
- * conteúdo de InscritosEventoModal.tsx, aqui em tela cheia em vez de modal)
- * e um botão pra liberar o certificado de participação pro evento inteiro
- * (escrita direta no evento, organização/admin já tem update liberado nas
- * regras — sem rota nova). */
+ * conteúdo de InscritosEventoModal.tsx, aqui em tela cheia em vez de modal).
+ * "Liberar certificados" morava aqui, mudou pra aba Ensalamento (2026-09-30,
+ * pedido explícito do usuário) — lá dá pra ver a presença de verdade antes
+ * de decidir, que é o critério que mais importa (o pagamento mostrado
+ * abaixo é só informativo, quem trava de verdade é /api/certificados). */
 function InscritosSimplesView({ evento }: { evento: Evento }) {
   const { inscritos } = useInscritosDoEvento(evento.id);
   const [busca, setBusca] = useState("");
-  const [alternando, setAlternando] = useState(false);
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -188,17 +188,6 @@ function InscritosSimplesView({ evento }: { evento: Evento }) {
   const daFatec = filtrados.filter((i) => i.vinculoFatec !== false);
   const externos = filtrados.filter((i) => i.vinculoFatec === false);
   const pagos = inscritos.filter((i) => i.status === "pago").length;
-
-  async function alternarCertificados() {
-    setAlternando(true);
-    try {
-      await updateDoc(doc(db, "eventos", evento.id), {
-        certificadosLiberados: !evento.certificadosLiberados,
-      });
-    } finally {
-      setAlternando(false);
-    }
-  }
 
   return (
     <div className="flex-1 px-6 py-8 md:px-10">
@@ -232,52 +221,6 @@ function InscritosSimplesView({ evento }: { evento: Evento }) {
               className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
             />
           </div>
-        </div>
-
-        <div className="flex items-start gap-3 rounded-2xl border border-fatec-line bg-white p-5">
-          <span
-            className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
-              evento.certificadosLiberados
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-fatec-navy-50 text-fatec-navy-800"
-            }`}
-          >
-            <Award className="h-5 w-5" strokeWidth={1.75} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-fatec-navy-900">
-              {evento.certificadosLiberados
-                ? "Certificados de participação liberados"
-                : "Certificados de participação ainda não liberados"}
-            </p>
-            <p className="mt-0.5 text-sm text-fatec-muted">
-              {evento.valorInscricao
-                ? "Vale pra quem pagou a inscrição."
-                : "Vale pra todo mundo que se inscreveu (evento gratuito)."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={alternarCertificados}
-            disabled={alternando}
-            className={`flex flex-none items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-              evento.certificadosLiberados
-                ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
-                : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
-            }`}
-          >
-            {evento.certificadosLiberados ? (
-              <>
-                <X className="h-4 w-4" strokeWidth={2} />
-                Cancelar liberação
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4" strokeWidth={2} />
-                Liberar certificados
-              </>
-            )}
-          </button>
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

@@ -6,6 +6,7 @@ import {
   CertificadoApresentacaoPDF,
   DeclaracaoPDF,
 } from "@/lib/certificadosPdf";
+import { diasDoEvento } from "@/lib/certificadoDias";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -159,6 +160,7 @@ export async function GET(request: Request) {
         papel: "orientador",
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
+        dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
         cargaHoraria: evento.cargaHoraria as number,
         diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
         coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
@@ -332,10 +334,12 @@ export async function GET(request: Request) {
     // Três critérios independentes, todos exigidos (2026-09-30, regra
     // confirmada com o usuário): a organização precisa ter liberado os
     // certificados do evento, o pagamento (se tiver taxa) precisa estar em
-    // dia, e a presença precisa ter sido confirmada pelo QR. Antes a
-    // presença sozinha já liberava o certificado mesmo sem a organização
-    // apertar "Liberar" — não é mais assim, os três agora são obrigatórios
-    // juntos, não alternativas entre si.
+    // dia, e PELO MENOS 1 dia de presença precisa ter sido confirmado pelo
+    // QR (evento multi-dia — ver comentário abaixo — não exige TODOS os
+    // dias, só 1; as horas saem proporcionais). Antes a presença sozinha já
+    // liberava o certificado mesmo sem a organização apertar "Liberar" — não
+    // é mais assim, os três agora são obrigatórios juntos, não alternativas
+    // entre si.
     if (!evento.certificadosLiberados && !ehStaff) {
       return NextResponse.json(
         {
@@ -344,7 +348,8 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
-    if (!inscricao.presencaConfirmada && !ehStaff) {
+    const diasConfirmados = Object.keys(inscricao.presencasConfirmadas ?? {}).length;
+    if (diasConfirmados === 0 && !ehStaff) {
       return NextResponse.json(
         {
           erro: "Sua presença nesse evento ainda não foi confirmada — escaneie o QR no local do evento.",
@@ -363,6 +368,26 @@ export async function GET(request: Request) {
       );
     }
 
+    // Horas proporcionais (2026-09-30, evento multi-dia) — cargaHoraria
+    // continua sendo SEMPRE o total do evento (ver comentário em
+    // src/lib/data/eventos.ts), dividido igualmente pelos dias do evento
+    // (derivados do intervalo dataRealizacao–dataRealizacaoFim, ver
+    // diasDoEvento) e multiplicado pelos dias que essa pessoa efetivamente
+    // confirmou. Arredonda só no final (não por dia) pra não acumular erro
+    // quando não divide exato — 16h em 3 dias é 5,33.../dia, 2 dias
+    // confirmados dá round(2/3 × 16) = 11h, não round(5,33)×2 = 10h. O
+    // guard acima já garante diasConfirmados > 0 OU ehStaff; se for staff
+    // emitindo sem nenhuma presença gravada, conta como 1 dia (nunca 0).
+    // Evento de 1 dia sempre cai em round(1/1 × cargaHoraria) = o total de
+    // sempre.
+    const diasEvento = diasDoEvento(evento);
+    const diasParaCalculo = diasConfirmados > 0 ? diasConfirmados : 1;
+    const cargaHorariaTotal = evento.cargaHoraria as number;
+    const horasConcedidas = Math.min(
+      Math.round((diasParaCalculo / diasEvento) * cargaHorariaTotal),
+      cargaHorariaTotal,
+    );
+
     const hoje = new Date().toISOString().slice(0, 10);
     const buffer = await renderToBuffer(
       DeclaracaoPDF({
@@ -370,7 +395,8 @@ export async function GET(request: Request) {
         papel: "participante",
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
-        cargaHoraria: evento.cargaHoraria as number,
+        dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
+        cargaHoraria: horasConcedidas,
         diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
         coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
         dataAssinatura: hoje,
@@ -443,6 +469,7 @@ export async function GET(request: Request) {
         papel: "monitor",
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
+        dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
         cargaHoraria: evento.cargaHoraria as number,
         diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
         coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
@@ -530,6 +557,7 @@ export async function GET(request: Request) {
       papel,
       eventoNome: evento.nome as string,
       dataRealizacao: evento.dataRealizacao as string,
+      dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
       cargaHoraria: evento.cargaHoraria as number,
       diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
       coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,

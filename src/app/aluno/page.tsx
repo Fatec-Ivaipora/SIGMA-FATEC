@@ -30,8 +30,10 @@ import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio } from "@/lib/data/eventos";
+import { diasDoEvento } from "@/lib/certificadoDias";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
-import { useMinhasInscricoes } from "@/lib/data/inscricoes";
+import { useMinhasInscricoes, diasConfirmadosCount } from "@/lib/data/inscricoes";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { useAtividades } from "@/lib/data/atividades";
 import {
   notificarConviteAceito,
@@ -109,6 +111,7 @@ export default function AlunoPainelPage() {
   const { eventos: todosEventos } = useEventosPublicos();
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { inscricoes: minhasInscricoes } = useMinhasInscricoes(user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
   const [modalEventoId, setModalEventoId] = useState<string | null>(null);
   const [inscricaoEventoId, setInscricaoEventoId] = useState<string | null>(null);
   // Presença/certificado de evento simples (2026-09-30) — "Meus eventos"
@@ -213,7 +216,7 @@ export default function AlunoPainelPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno"
         userName={perfil.nome}
         userRoleLabel="Aluno"
@@ -327,6 +330,16 @@ export default function AlunoPainelPage() {
                   const temTaxa = !!evento.valorInscricao;
                   const pago = inscricao?.status === "pago";
                   const pagamentoPendente = temTaxa && !pago;
+                  // Evento multi-dia (2026-09-30) — diasConfirmados pode ser
+                  // parcial (ex.: 2 de 3 dias); nesse caso continua
+                  // mostrando "Confirmar presença" (falta escanear os outros
+                  // dias), não vira "Presença confirmada" terminal como no
+                  // evento de 1 dia só. Ver diasDoEvento em
+                  // src/lib/certificadoDias.ts.
+                  const diasEvento = diasDoEvento(evento);
+                  const diasConfirmados = diasConfirmadosCount(inscricao);
+                  const algumaPresenca = diasConfirmados > 0;
+                  const todosDiasConfirmados = diasConfirmados >= diasEvento;
                   return (
                     <div
                       key={evento.id}
@@ -370,29 +383,33 @@ export default function AlunoPainelPage() {
                             independente do pagamento (dá pra escanear no dia
                             mesmo pendente); certificado espera o pagamento,
                             a API já bloqueia mesmo (ver /api/certificados). */}
-                        {evento.tipo === "simples" &&
-                          (inscricao?.presencaConfirmada ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                              Presença confirmada
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmandoPresencaEventoId(evento.id)}
-                              className="inline-flex items-center gap-1.5 rounded-full border border-fatec-line px-2.5 py-1 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                            >
-                              <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
-                              Confirmar presença
-                            </button>
-                          ))}
+                        {evento.tipo === "simples" && todosDiasConfirmados && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                            {diasEvento > 1
+                              ? `Presença confirmada (${diasConfirmados}/${diasEvento} dias)`
+                              : "Presença confirmada"}
+                          </span>
+                        )}
+                        {evento.tipo === "simples" && !todosDiasConfirmados && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmandoPresencaEventoId(evento.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-fatec-line px-2.5 py-1 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                          >
+                            <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
+                            {diasEvento > 1
+                              ? `Confirmar presença (${diasConfirmados}/${diasEvento} dias)`
+                              : "Confirmar presença"}
+                          </button>
+                        )}
                         {/* Mesma regra de /api/certificados (2026-09-30):
-                            liberado + pagamento em dia + presença
-                            confirmada, os três juntos. */}
+                            liberado + pagamento em dia + PELO MENOS 1 dia de
+                            presença confirmado, os três juntos. */}
                         {evento.tipo === "simples" &&
                           !pagamentoPendente &&
                           evento.certificadosLiberados &&
-                          inscricao?.presencaConfirmada && (
+                          algumaPresenca && (
                             <button
                               type="button"
                               onClick={() => handleBaixarCertificado(evento.id)}

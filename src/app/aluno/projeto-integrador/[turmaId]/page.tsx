@@ -22,6 +22,7 @@ import {
   type TurmaTrabalho,
 } from "@/lib/data/turmas";
 import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 
 function formatarData(valor: number): string {
   return new Date(valor).toLocaleDateString("pt-BR", {
@@ -98,6 +99,7 @@ export default function TurmaAlunoPage() {
   const { trabalho } = useMeuTurmaTrabalho(turmaId, user?.uid);
   const { eventos: todosEventos } = useEventosPublicos();
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
+  const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
 
   const [titulo, setTitulo] = useState("");
   const [resumo, setResumo] = useState("");
@@ -151,7 +153,7 @@ export default function TurmaAlunoPage() {
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente)}
+        navItems={navAlunoPara(perfil.vinculoFatec, temEventoPendente, eventosMonitoradosSimples.length > 0)}
         activeHref="/aluno/projeto-integrador"
         userName={perfil.nome}
         userRoleLabel="Aluno"

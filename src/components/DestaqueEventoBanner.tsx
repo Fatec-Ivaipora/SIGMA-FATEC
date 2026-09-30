@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, CheckCircle2, Download, QrCode, Star } from "lucide-react";
 import type { User } from "firebase/auth";
 import { dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
-import { useMinhaInscricao } from "@/lib/data/inscricoes";
+import { useMinhaInscricao, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 
@@ -35,6 +35,10 @@ export function DestaqueEventoBanner({
   // "Inscrever trabalho". inscricao undefined também bate `!== "pago"`, por
   // isso o cálculo de pendente já filtra por `!!inscricao` também.
   const { inscricao } = useMinhaInscricao(destaque.id, user?.uid);
+  // Evento multi-dia (2026-09-30) — pelo menos 1 dia confirmado já conta
+  // como "presença" pra essas badges/gate (ver diasDoEvento em
+  // src/lib/certificadoDias.ts); dá no mesmo de antes pra evento de 1 dia só.
+  const algumaPresenca = diasConfirmadosCount(inscricao) > 0;
   const pagamentoPendente = temTaxa && !!inscricao && inscricao.status !== "pago";
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -179,7 +183,7 @@ export function DestaqueEventoBanner({
                 Inscrição confirmada
               </span>
             )}
-            {inscricao?.presencaConfirmada ? (
+            {algumaPresenca ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
                 Presença confirmada
@@ -199,7 +203,7 @@ export function DestaqueEventoBanner({
                 confirmada, os três juntos — senão a API recusa. */}
             {!pagamentoPendente &&
               destaque.certificadosLiberados &&
-              inscricao?.presencaConfirmada && (
+              algumaPresenca && (
                 <button
                   type="button"
                   onClick={handleBaixarCertificado}

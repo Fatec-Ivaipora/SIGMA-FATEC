@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Award,
+  Check,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -11,6 +13,7 @@ import {
   Search,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
 import { arrayRemove, arrayUnion, doc, Timestamp, updateDoc } from "firebase/firestore";
 import QRCode from "qrcode";
@@ -19,11 +22,19 @@ import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
+import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useAuth } from "@/lib/auth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho, type TrabalhoStatus } from "@/lib/data/trabalhos";
 import { useSalasCatalogo, criarSala, removerSala, type SalaEnsalamento } from "@/lib/data/salas";
-import { useInscritosDoEvento } from "@/lib/data/inscricoes";
+import {
+  useInscritosDoEvento,
+  diasConfirmadosCount,
+  type InscricaoEvento,
+} from "@/lib/data/inscricoes";
+import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
+import { diasDoEvento } from "@/lib/certificadoDias";
 import {
   useSessoesDoEvento,
   montarGradeAutomatica,
@@ -68,16 +79,78 @@ function formatarHorario(d: Date): string {
   });
 }
 
+/** Horas já garantidas pra essa pessoa com os dias confirmados até agora —
+ * mesma conta de /api/certificados (arredonda só no final, trava no total).
+ * null quando o evento nem tem carga horária configurada ainda. */
+function horasConcedidasAteAgora(evento: Evento, diasConfirmados: number): number | null {
+  if (!evento.cargaHoraria) return null;
+  if (diasConfirmados === 0) return 0;
+  const dias = diasDoEvento(evento);
+  return Math.min(Math.round((diasConfirmados / dias) * evento.cargaHoraria), evento.cargaHoraria);
+}
+
 /** Evento "simples" (2026-09-23) não tem trabalho/sala pra alocar — no
  * lugar das abas Salas/Ensalamento, mostra o QR rotativo de confirmação de
  * presença (pra projetar no local do evento) + a lista de quem já
  * confirmou. Busca um código novo a cada 15s (bem dentro da janela de 60s
- * de cada código, ver src/lib/qrPresenca.ts) e redesenha o QR. */
-function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User | null | undefined }) {
-  const { inscritos } = useInscritosDoEvento(evento.id);
+ * de cada código, ver src/lib/qrPresenca.ts) e redesenha o QR.
+ *
+ * `inscritos` vem de fora (2026-09-30) — admin/organização lê direto do
+ * Firestore (useInscritosDoEvento, tempo real); monitor-aluno não tem
+ * permissão de listar a coleção inteira (firestore.rules só libera a
+ * própria inscrição pra quem não é staff do evento), então
+ * EnsalamentoMonitorView busca por uma rota própria (Admin SDK) e repassa
+ * aqui pronto — o componente em si não sabe nem precisa saber a diferença.
+ * `modoMonitor` (2026-09-30, pedido explícito do usuário) esconde as horas
+ * por pessoa e a seção "Liberar certificados" — monitor ajuda a bater
+ * presença, não decide liberação nem precisa ver a conta de horas; o QR + a
+ * listagem com os selos por dia (e o hover/clique de auditoria) continuam
+ * iguais, é a parte que dá segurança contra alguém girando os dias sozinho
+ * pra um amigo. */
+function ConfirmacaoPresencaView({
+  evento,
+  user,
+  inscritos,
+  modoMonitor = false,
+}: {
+  evento: Evento;
+  user: User | null | undefined;
+  inscritos: InscricaoEvento[];
+  modoMonitor?: boolean;
+}) {
   const [busca, setBusca] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [erroQr, setErroQr] = useState<string | null>(null);
+  // Evento multi-dia (2026-09-30) — admin escolhe manualmente qual dia está
+  // projetando; essa escolha decide qual chave de presencasConfirmadas o
+  // scan do aluno grava (ver /api/eventos/qr-atual e
+  // /api/inscricoes/confirmar-presenca). dataRealizacaoFim ausente = 1 dia,
+  // sem seletor, comportamento de sempre (ver diasDoEvento).
+  const diasEvento = diasDoEvento(evento);
+  const [diaSelecionado, setDiaSelecionado] = useState(1);
+  // Auditoria de fraude (2026-09-30, pedido explícito do usuário, pensando
+  // num futuro monitor-aluno com acesso só ao QR desta tela): clicar/passar
+  // o mouse num selo de dia já confirmado mostra a data/hora exata daquela
+  // confirmação — os 3 dias confirmados em minutos um do outro é bandeira
+  // vermelha de alguém girando os dias sozinho pra um amigo em vez de
+  // presença real em dias diferentes.
+  const [detalheAberto, setDetalheAberto] = useState<{ uid: string; dia: number } | null>(null);
+  // "Liberar certificados" mora aqui (2026-09-30, antes ficava em
+  // /trabalhos) — é aqui que dá pra ver a presença de verdade antes de
+  // decidir, que é o critério que mais importa (pagamento pode vir depois
+  // e libera sozinho quando cair; presença não tem como voltar atrás).
+  const [alternando, setAlternando] = useState(false);
+
+  async function alternarCertificados() {
+    setAlternando(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        certificadosLiberados: !evento.certificadosLiberados,
+      });
+    } finally {
+      setAlternando(false);
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -86,9 +159,10 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
     async function buscarQr() {
       try {
         const idToken = await user!.getIdToken();
-        const res = await fetch(`/api/eventos/qr-atual?eventoId=${evento.id}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
+        const res = await fetch(
+          `/api/eventos/qr-atual?eventoId=${evento.id}&dia=${diaSelecionado}`,
+          { headers: { Authorization: `Bearer ${idToken}` } },
+        );
         const corpo = await res.json();
         if (!res.ok) throw new Error(corpo.erro ?? "Não foi possível gerar o QR.");
         const dataUrl = await QRCode.toDataURL(corpo.texto as string, { width: 320, margin: 1 });
@@ -107,7 +181,7 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
       cancelado = true;
       clearInterval(intervalo);
     };
-  }, [evento.id, user]);
+  }, [evento.id, user, diaSelecionado]);
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -117,7 +191,12 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
     );
   }, [inscritos, busca]);
 
-  const confirmados = inscritos.filter((i) => i.presencaConfirmada).length;
+  // "Confirmados" (resumo de apoio no card de liberar + cabeçalho da lista)
+  // conta quem tem PELO MENOS 1 dia confirmado — mesmo critério mínimo da
+  // liberação do certificado (ver /api/certificados). Evento de 1 dia dá no
+  // mesmo de antes (só existe a chave "1").
+  const confirmados = inscritos.filter((i) => diasConfirmadosCount(i) > 0).length;
+  const pagos = inscritos.filter((i) => i.status === "pago").length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -132,6 +211,29 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
           muda sozinho a cada minuto, então um print antigo não funciona
           mais.
         </p>
+        {diasEvento > 1 && (
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[-0.01em] text-fatec-muted">
+              Dia projetado agora
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {Array.from({ length: diasEvento }, (_, i) => i + 1).map((dia) => (
+                <button
+                  key={dia}
+                  type="button"
+                  onClick={() => setDiaSelecionado(dia)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                    diaSelecionado === dia
+                      ? "bg-fatec-orange-500 text-white"
+                      : "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  }`}
+                >
+                  Dia {dia}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {qrDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={qrDataUrl} alt="QR de confirmação de presença" className="h-80 w-80" />
@@ -141,6 +243,74 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
           </div>
         )}
       </section>
+
+      {/* Liberar certificados (2026-09-30, movido de /trabalhos pra cá) —
+          o certificado de participação exige liberação + pagamento em dia
+          + presença confirmada, os três juntos (ver /api/certificados).
+          Presença é o critério que só dá pra ver aqui; pagamento é só um
+          resumo de apoio, quem trava de verdade é o botão de baixar do
+          aluno (não muda nada em quem já pagou/confirmou antes de você
+          decidir liberar). Escondido no modo monitor — decisão é só de
+          admin/organização. */}
+      {!modoMonitor && (
+      <section className="flex items-start gap-3 rounded-2xl border border-fatec-line bg-white p-5">
+        <span
+          className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
+            evento.certificadosLiberados
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-fatec-navy-50 text-fatec-navy-800"
+          }`}
+        >
+          <Award className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-fatec-navy-900">
+            {evento.certificadosLiberados
+              ? "Certificados de participação liberados"
+              : "Certificados de participação ainda não liberados"}
+          </p>
+          <p className="mt-0.5 text-sm text-fatec-muted">
+            Vale pra quem tiver presença confirmada em pelo menos 1
+            {diasEvento > 1 ? ` dos ${diasEvento} dias` : " dia"}
+            {!!evento.valorInscricao && " e pagamento em dia"} —{" "}
+            <span className="font-semibold text-emerald-700">
+              {confirmados}/{inscritos.length}
+            </span>{" "}
+            com presença
+            {!!evento.valorInscricao && (
+              <>
+                ,{" "}
+                <span className="font-semibold text-emerald-700">{pagos}</span> pagos
+              </>
+            )}
+            {diasEvento > 1 && " — horas do certificado saem proporcionais aos dias confirmados"}
+            .
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={alternarCertificados}
+          disabled={alternando}
+          className={`flex flex-none items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+            evento.certificadosLiberados
+              ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+              : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
+          }`}
+        >
+          {evento.certificadosLiberados ? (
+            <>
+              <X className="h-4 w-4" strokeWidth={2} />
+              Cancelar liberação
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4" strokeWidth={2} />
+              Liberar certificados
+            </>
+          )}
+        </button>
+      </section>
+      )}
 
       <section className="rounded-2xl border border-fatec-line bg-white p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -166,7 +336,10 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
         </div>
 
         <div className="mt-4 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line">
-          {filtrados.map((i) => (
+          {filtrados.map((i) => {
+            const diasConfirmadosPessoa = diasConfirmadosCount(i);
+            const horas = horasConcedidasAteAgora(evento, diasConfirmadosPessoa);
+            return (
             <div key={i.uid} className="flex items-center gap-3 px-4 py-3">
               <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
                 {(i.nome || "?").slice(0, 2).toUpperCase()}
@@ -175,27 +348,84 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
                 <p className="truncate text-sm font-medium text-fatec-navy-900">{i.nome}</p>
                 <p className="truncate text-xs text-fatec-muted">{i.email}</p>
               </div>
-              <span
-                className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  i.presencaConfirmada
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-fatec-navy-50 text-fatec-muted"
-                }`}
-              >
-                {i.presencaConfirmada ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                    Confirmada
-                  </>
-                ) : (
-                  <>
-                    <Clock className="h-3.5 w-3.5" strokeWidth={2} />
-                    Aguardando
-                  </>
-                )}
-              </span>
+              {!modoMonitor && horas !== null && (
+                <span className="flex-none rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-navy-800">
+                  {horas}h
+                </span>
+              )}
+              {diasEvento > 1 ? (
+                <div className="flex flex-none flex-wrap items-center justify-end gap-1.5">
+                  {Array.from({ length: diasEvento }, (_, idx) => idx + 1).map((dia) => {
+                    const timestamp = i.presencasConfirmadas?.[String(dia)];
+                    const confirmado = !!timestamp;
+                    const aberto = detalheAberto?.uid === i.uid && detalheAberto?.dia === dia;
+                    return (
+                      <div key={dia} className="group relative">
+                        <button
+                          type="button"
+                          disabled={!confirmado}
+                          onClick={() =>
+                            setDetalheAberto(aberto ? null : confirmado ? { uid: i.uid, dia } : null)
+                          }
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold transition-colors ${
+                            confirmado
+                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                              : "cursor-default bg-fatec-navy-50 text-fatec-muted"
+                          }`}
+                        >
+                          {confirmado ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                          ) : (
+                            <Clock className="h-3.5 w-3.5" strokeWidth={2} />
+                          )}
+                          D{dia}
+                        </button>
+                        {confirmado && timestamp && (
+                          <div
+                            className={`absolute bottom-full left-1/2 z-10 mb-1.5 w-max -translate-x-1/2 rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-opacity ${
+                              aberto
+                                ? "opacity-100"
+                                : "pointer-events-none opacity-0 group-hover:opacity-100"
+                            }`}
+                          >
+                            Dia {dia} confirmado
+                            <br />
+                            {timestamp.toDate().toLocaleString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span
+                  className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    i.presencasConfirmadas?.["1"]
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-fatec-navy-50 text-fatec-muted"
+                  }`}
+                >
+                  {i.presencasConfirmadas?.["1"] ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                      Confirmada
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="h-3.5 w-3.5" strokeWidth={2} />
+                      Aguardando
+                    </>
+                  )}
+                </span>
+              )}
             </div>
-          ))}
+            );
+          })}
           {filtrados.length === 0 && (
             <p className="px-4 py-3 text-sm text-fatec-muted">Ninguém encontrado.</p>
           )}
@@ -205,7 +435,11 @@ function ConfirmacaoPresencaView({ evento, user }: { evento: Evento; user: User 
   );
 }
 
-export default function EnsalamentoPage() {
+// Visão admin/organização (2026-09-30, extraído pra ficar ao lado de
+// EnsalamentoMonitorView, ver EnsalamentoPage no fim do arquivo) — inalterada
+// além do nome, continua com o próprio useRequireAuth (nunca chega a montar
+// pra um aluno, o dispatcher já decide antes).
+function EnsalamentoAdminView() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
@@ -217,6 +451,11 @@ export default function EnsalamentoPage() {
 
   const { salas: catalogoSalas } = useSalasCatalogo();
   const { sessoes } = useSessoesDoEvento(eventoId || undefined);
+  // Só busca pra evento "simples" (é o único que usa ConfirmacaoPresencaView)
+  // — evita um listener ocioso nos demais eventos.
+  const { inscritos: inscritosSimples } = useInscritosDoEvento(
+    evento?.tipo === "simples" ? eventoId : undefined,
+  );
 
   // Salas escolhidas pra ESTE evento, dentro do catálogo único (ver
   // evento.salasIds em src/lib/data/eventos.ts) — é esse subconjunto que a
@@ -511,7 +750,7 @@ export default function EnsalamentoPage() {
           )}
 
           {eventoId && evento?.tipo === "simples" && (
-            <ConfirmacaoPresencaView evento={evento} user={user} />
+            <ConfirmacaoPresencaView evento={evento} user={user} inscritos={inscritosSimples} />
           )}
 
           {eventoId && evento?.tipo !== "simples" && modalidadesDoEvento.length === 0 && (
@@ -988,4 +1227,137 @@ export default function EnsalamentoPage() {
       </Modal>
     </main>
   );
+}
+
+/** Visão do monitor-aluno (2026-09-30) — só existe pra evento tipo "simples"
+ * (monitor de evento completo continua sem nenhum acesso, é só um cargo pro
+ * certificado). Bem mais enxuta que EnsalamentoAdminView de propósito: sem
+ * abas Salas/grade, sem seletor de evento quando só monitora 1, e passa
+ * `modoMonitor` pra ConfirmacaoPresencaView esconder horas + "Liberar
+ * certificados" (decisão de admin/organização, não do monitor). */
+function EnsalamentoMonitorView() {
+  const { user, perfil, carregando } = useRequireAuth(["aluno"]);
+  const eventosMonitorados = useMonitoriasSimplesDoAluno(user?.uid);
+
+  const [eventoIdEscolhido, setEventoIdEscolhido] = useState("");
+  const evento =
+    eventosMonitorados.find((e) => e.id === eventoIdEscolhido) ?? eventosMonitorados[0];
+
+  const [inscritos, setInscritos] = useState<InscricaoEvento[]>([]);
+
+  useEffect(() => {
+    if (!user || !evento) return;
+    let cancelado = false;
+
+    async function buscarPresencas() {
+      try {
+        const idToken = await user!.getIdToken();
+        const res = await fetch(`/api/inscricoes/lista-presenca?eventoId=${evento!.id}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const corpo = await res.json();
+        if (!res.ok || cancelado) return;
+        // Reconstrói Timestamp do client a partir do ISO string que a rota
+        // devolve (Admin SDK não serializa Timestamp em JSON) — assim
+        // ConfirmacaoPresencaView não precisa saber a diferença entre essa
+        // fonte e o listener em tempo real que EnsalamentoAdminView usa.
+        const lista = (
+          corpo.inscritos as Array<Omit<InscricaoEvento, "presencasConfirmadas"> & {
+            presencasConfirmadas?: Record<string, string>;
+          }>
+        ).map((i) => ({
+          ...i,
+          presencasConfirmadas: i.presencasConfirmadas
+            ? Object.fromEntries(
+                Object.entries(i.presencasConfirmadas).map(([dia, iso]) => [
+                  dia,
+                  Timestamp.fromDate(new Date(iso)),
+                ]),
+              )
+            : undefined,
+        })) as InscricaoEvento[];
+        if (!cancelado) setInscritos(lista);
+      } catch {
+        // silencioso — o próximo poll (15s) tenta de novo
+      }
+    }
+
+    buscarPresencas();
+    const intervalo = setInterval(buscarPresencas, 15_000);
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [user, evento]);
+
+  if (carregando || !perfil) return null;
+
+  return (
+    <main className="flex flex-1 flex-col md:flex-row">
+      <Sidebar
+        navItems={navAlunoPara(perfil.vinculoFatec, false, eventosMonitorados.length > 0)}
+        activeHref="/ensalamento"
+        userName={perfil.nome}
+        userRoleLabel="Monitor"
+        userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
+      />
+
+      <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
+        <header className="flex flex-col gap-4 border-b border-fatec-line bg-white px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
+          <div>
+            <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">
+              Ensalamento
+            </h1>
+            <p className="text-sm text-fatec-muted">
+              Confirmação de presença por QR — ajude os inscritos a bater
+              presença.
+            </p>
+          </div>
+
+          {eventosMonitorados.length > 1 && (
+            <div className="relative">
+              <select
+                value={evento?.id ?? ""}
+                onChange={(e) => setEventoIdEscolhido(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
+              >
+                {eventosMonitorados.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                strokeWidth={1.75}
+              />
+            </div>
+          )}
+        </header>
+
+        <div className="flex flex-1 flex-col gap-6 px-6 py-6 md:px-10">
+          {evento ? (
+            <ConfirmacaoPresencaView evento={evento} user={user} inscritos={inscritos} modoMonitor />
+          ) : (
+            <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+              Você não é monitor de nenhum evento no momento.
+            </p>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/** Dispatcher (2026-09-30) — decide qual visão montar sem disparar nenhum
+ * redirect por conta própria (só lê o perfil já carregado pelo
+ * AuthProvider); cada visão chama seu próprio useRequireAuth com a lista de
+ * papéis que ela realmente aceita, então quem não bate com nenhuma delas
+ * ainda cai no redirect de sempre (via EnsalamentoAdminView, que é o
+ * fallback — mesma rota que já existia antes disso tudo). */
+export default function EnsalamentoPage() {
+  const { perfil, carregando } = useAuth();
+  if (carregando) return null;
+  if (perfil?.papel === "aluno") return <EnsalamentoMonitorView />;
+  return <EnsalamentoAdminView />;
 }
