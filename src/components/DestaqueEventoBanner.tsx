@@ -195,10 +195,11 @@ export function DestaqueEventoBanner({
               </button>
             )}
             {/* Mesma regra de /api/certificados (papel "participante",
-                2026-09-24): presença pelo QR OU liberação da organização —
-                e agora também não pagamentoPendente, senão a API recusa. */}
+                2026-09-30): liberado + pagamento em dia + presença
+                confirmada, os três juntos — senão a API recusa. */}
             {!pagamentoPendente &&
-              (destaque.certificadosLiberados || inscricao?.presencaConfirmada) && (
+              destaque.certificadosLiberados &&
+              inscricao?.presencaConfirmada && (
                 <button
                   type="button"
                   onClick={handleBaixarCertificado}

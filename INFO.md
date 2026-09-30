@@ -381,6 +381,24 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-30** — Regra do certificado de participação (evento "simples")
+  mudou de vez, pedido explícito do usuário — **três critérios
+  obrigatórios juntos, não alternativas entre si**: a organização precisa
+  ter apertado "Liberar certificados" no evento, o pagamento (se tiver
+  taxa) precisa estar em dia, e a presença precisa ter sido confirmada
+  pelo QR. Antes presença sozinha já liberava o certificado mesmo sem a
+  organização liberar — não é mais assim. Em `/aluno/certificacoes`
+  especificamente, o item **nem aparece na aba** até `certificadosLiberados`
+  ser true (antes aparecia sempre, só escondia o botão); ali dentro, falta
+  pagamento mostra "Pagamento pendente" e falta presença mostra "Sem
+  presença confirmada". `DestaqueEventoBanner` e "Meus eventos" (`/aluno`)
+  só mostram o botão "Baixar certificado" com os três critérios batendo.
+  Corrigido também no backend (`/api/certificados`), que é quem de fato
+  bloqueia a geração do PDF. **Consertado achado durante o teste**: a
+  versão anterior (do mesmo dia) tinha corrigido só a metade — tirou a
+  presença como "atalho" pra liberar, mas não exigia ela junto com o
+  pagamento, então dava pra baixar só com liberação + pagamento, sem
+  presença nenhuma.
 - **2026-09-30** — Dois achados testando a Semana de Medicina (2º evento
   em destaque de verdade, além da X MAC):
   1. **`/aluno/eventos` ("Submissões") só destacava 1 evento por vez** —

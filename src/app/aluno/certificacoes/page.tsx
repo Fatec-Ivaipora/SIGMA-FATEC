@@ -137,9 +137,12 @@ function LinhaCertificadoMonitor({
 }
 
 /** Certificado de participação (2026-09-24) — evento "simples", sem
- * trabalho. Mesma regra de /api/certificados (papel "participante"):
- * pagamento em dia (se tem taxa) + presença pelo QR OU liberação da
- * organização pro evento inteiro. */
+ * trabalho. Só é chamado depois que o pai já filtrou por
+ * evento.certificadosLiberados (2026-09-30, pedido explícito do usuário —
+ * o item nem aparece na aba antes disso), então aqui dentro "liberado" já
+ * é garantido — falta só bater os outros dois critérios pra liberar o
+ * BOTÃO de baixar: pagamento em dia (se tem taxa) e presença confirmada
+ * pelo QR. Mesma regra de /api/certificados (papel "participante"). */
 function LinhaCertificadoParticipacao({
   inscricao,
   evento,
@@ -154,7 +157,7 @@ function LinhaCertificadoParticipacao({
   onBaixar: () => void;
 }) {
   const pagamentoPendente = !!evento.valorInscricao && inscricao.status !== "pago";
-  const liberado = !!evento.certificadosLiberados || !!inscricao.presencaConfirmada;
+  const semPresenca = !inscricao.presencaConfirmada;
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-fatec-line bg-white p-5">
@@ -173,7 +176,12 @@ function LinhaCertificadoParticipacao({
             <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
             Pagamento pendente
           </span>
-        ) : liberado ? (
+        ) : semPresenca ? (
+          <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-fatec-muted">
+            <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Sem presença confirmada
+          </span>
+        ) : (
           <button
             type="button"
             onClick={onBaixar}
@@ -187,11 +195,6 @@ function LinhaCertificadoParticipacao({
             )}
             Baixar certificado
           </button>
-        ) : (
-          <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-fatec-muted">
-            <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Confirme a presença no evento
-          </span>
         )}
       </div>
       {erro && (
@@ -242,8 +245,12 @@ export default function AlunoCertificacoesPage() {
   }
 
   const aceitos = trabalhos.filter((t) => t.status === "aceito");
+  // certificadosLiberados filtra aqui (2026-09-30, pedido explícito do
+  // usuário) — o item nem aparece na aba até a organização liberar; antes
+  // aparecia sempre, só o botão de baixar é que ficava escondido.
   const participacoes = eventos.flatMap((evento) => {
-    const inscricao = evento.tipo === "simples" ? inscricoes.get(evento.id) : undefined;
+    if (evento.tipo !== "simples" || !evento.certificadosLiberados) return [];
+    const inscricao = inscricoes.get(evento.id);
     return inscricao ? [{ evento, inscricao }] : [];
   });
   const nadaAinda =

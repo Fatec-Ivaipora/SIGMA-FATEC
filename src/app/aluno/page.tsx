@@ -386,9 +386,13 @@ export default function AlunoPainelPage() {
                               Confirmar presença
                             </button>
                           ))}
+                        {/* Mesma regra de /api/certificados (2026-09-30):
+                            liberado + pagamento em dia + presença
+                            confirmada, os três juntos. */}
                         {evento.tipo === "simples" &&
                           !pagamentoPendente &&
-                          (evento.certificadosLiberados || inscricao?.presencaConfirmada) && (
+                          evento.certificadosLiberados &&
+                          inscricao?.presencaConfirmada && (
                             <button
                               type="button"
                               onClick={() => handleBaixarCertificado(evento.id)}

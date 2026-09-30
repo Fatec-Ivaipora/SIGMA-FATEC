@@ -329,14 +329,25 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
-    // Libera se a própria pessoa confirmou presença (QR, 2026-09-23) OU a
-    // organização apertou "Liberar certificados" pra todo mundo (plano B se
-    // o QR falhar no dia do evento) — confirmado com o usuário.
-    if (!inscricao.presencaConfirmada && !evento.certificadosLiberados && !ehStaff) {
+    // Três critérios independentes, todos exigidos (2026-09-30, regra
+    // confirmada com o usuário): a organização precisa ter liberado os
+    // certificados do evento, o pagamento (se tiver taxa) precisa estar em
+    // dia, e a presença precisa ter sido confirmada pelo QR. Antes a
+    // presença sozinha já liberava o certificado mesmo sem a organização
+    // apertar "Liberar" — não é mais assim, os três agora são obrigatórios
+    // juntos, não alternativas entre si.
+    if (!evento.certificadosLiberados && !ehStaff) {
       return NextResponse.json(
         {
-          erro:
-            "Confirme sua presença pelo QR do evento, ou aguarde a organização liberar os certificados.",
+          erro: "A organização ainda não liberou os certificados desse evento — aguarde a liberação.",
+        },
+        { status: 400 },
+      );
+    }
+    if (!inscricao.presencaConfirmada && !ehStaff) {
+      return NextResponse.json(
+        {
+          erro: "Sua presença nesse evento ainda não foi confirmada — escaneie o QR no local do evento.",
         },
         { status: 400 },
       );
