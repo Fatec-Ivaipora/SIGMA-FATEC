@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { diasDoEvento } from "@/lib/certificadoDias";
 
 type ParticipanteEnvio = {
   uid: string;
@@ -95,6 +96,9 @@ export async function POST(request: Request) {
   // inscricoesEvento própria; colega de trabalho sem inscrição própria fica
   // sem entrada aqui (pago fica null, "não sabemos" != "não pagou").
   const statusPagoPorUid = new Map<string, boolean>();
+  // uid -> quantos dias essa pessoa confirmou presença (2026-09-30, só
+  // relevante pra evento.tipo === "simples" — ver cálculo de chpins abaixo).
+  const diasConfirmadosPorUid = new Map<string, number>();
   const [inscricoesSnap, trabalhosSnap] = await Promise.all([
     db.collection("inscricoesEvento").where("eventoId", "==", eventoId).get(),
     db.collection("trabalhos").where("eventoId", "==", eventoId).get(),
@@ -103,6 +107,10 @@ export async function POST(request: Request) {
     const dados = d.data();
     mapa.set(dados.uid as string, dados.nome as string);
     statusPagoPorUid.set(dados.uid as string, dados.status === "pago");
+    diasConfirmadosPorUid.set(
+      dados.uid as string,
+      Object.keys(dados.presencasConfirmadas ?? {}).length,
+    );
   });
   trabalhosSnap.forEach((d) => {
     const t = d.data();
@@ -139,9 +147,26 @@ export async function POST(request: Request) {
     snap.forEach((d) => dadosPorUid.set(d.id, { cpf: d.data().cpf, dataNascimento: d.data().dataNascimento })),
   );
 
-  // Carga horária é do evento, igual em todos os certificados — não varia
-  // por participante (mesmo campo já usado em /api/certificados).
-  const chpins = typeof evento.cargaHoraria === "number" ? evento.cargaHoraria : null;
+  // Carga horária: evento comum (trabalho/avaliação) é igual pra todo mundo
+  // — não tem presença por dia, mesmo campo já usado em /api/certificados
+  // pros papéis que não são "participante". Evento "simples" (2026-09-30)
+  // é diferente: cada pessoa só ganha as horas que confirmou por presença,
+  // mesma fórmula do certificado (round(dias confirmados ÷ dias do evento ×
+  // carga horária total), 0 se ainda não confirmou nenhum dia) — achado
+  // real: o primeiro envio da Semana de Medicina foi feito ANTES dessa
+  // conta existir, então todo mundo foi lançado com as 16h cheias mesmo
+  // sem ninguém ter comparecido ainda. Reenviar agora corrige pra 0h (ou o
+  // proporcional de quem já confirmou), e cada reenvio novo atualiza
+  // conforme a presença dos dias for sendo confirmada.
+  const chpinsFixo = typeof evento.cargaHoraria === "number" ? evento.cargaHoraria : null;
+  const diasEvento = diasDoEvento(evento);
+  function chpinsParaUid(uid: string): number | null {
+    if (evento?.tipo !== "simples") return chpinsFixo;
+    if (typeof evento.cargaHoraria !== "number") return null;
+    const diasConfirmados = diasConfirmadosPorUid.get(uid) ?? 0;
+    if (diasConfirmados === 0) return 0;
+    return Math.min(Math.round((diasConfirmados / diasEvento) * evento.cargaHoraria), evento.cargaHoraria);
+  }
 
   const prontos: ParticipanteEnvio[] = [];
   let pendentesDados = 0;
@@ -154,7 +179,7 @@ export async function POST(request: Request) {
         cpf: dados.cpf,
         nascimento: dados.dataNascimento,
         pago: statusPagoPorUid.has(p.uid) ? (statusPagoPorUid.get(p.uid) as boolean) : null,
-        chpins,
+        chpins: chpinsParaUid(p.uid),
       });
     } else {
       pendentesDados++;

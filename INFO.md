@@ -381,6 +381,21 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-30** — Bug real achado pelo usuário: **Edubox mandava a carga
+  horária CHEIA do evento pra todo mundo**, mesmo sem presença confirmada
+  nenhuma — `/api/edubox/lancar` calculava `chpins` uma vez só a partir de
+  `evento.cargaHoraria` e aplicava igual pra todo participante, sem olhar
+  presença individual (campo só existe de verdade desde a feature de
+  evento multi-dia desse mesmo dia). Aconteceu com a Semana de Medicina: os
+  60 inscritos foram lançados com 16h cada antes do evento nem ter
+  começado. Corrigido: pra `evento.tipo === "simples"`, cada pessoa agora
+  recebe a MESMA conta proporcional do certificado (`round(dias
+  confirmados ÷ dias do evento × carga horária total)`, 0 se ainda não
+  confirmou nenhum dia) — reenviar agora corrige todo mundo pra 0h, e cada
+  reenvio seguinte atualiza sozinho conforme a presença for sendo
+  confirmada dia a dia no Ensalamento. Evento comum (trabalho/avaliação)
+  não muda — carga horária continua igual pra todo mundo, nunca teve
+  presença por dia mesmo.
 - **2026-09-30** — Duas sobras menores dessa leva de mudanças, sem entrada
   própria até agora: (1) **"Liberar certificados" mudou de aba** — morava
   em `/trabalhos` (`InscritosSimplesView`), foi pra `/ensalamento`
