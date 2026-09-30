@@ -374,13 +374,6 @@ ativa no projeto Firebase).
   scroll em telas de PC (2026-09-11) — não tirar essas classes achando que
   são sobra.
 
-## Em andamento
-
-- Na tela **Eventos do aluno** (`/aluno/eventos`), só o primeiro destaque
-  aparece — a home (`/`) já mostra todos os destaques num carrossel
-  (ver "Vários eventos em destaque" no histórico), mas essa tela não foi
-  atualizada junto.
-
 ## Histórico de mudanças
 
 Uma entrada por `git push`, mais recente no topo, curta (o commit em si já
@@ -388,6 +381,27 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-09-30** — Dois achados testando a Semana de Medicina (2º evento
+  em destaque de verdade, além da X MAC):
+  1. **`/aluno/eventos` ("Submissões") só destacava 1 evento por vez** —
+     qualquer outro marcado como destaque caía num card genérico sem
+     banner (mesma lacuna que a home já tinha corrigido, essa tela tinha
+     ficado pra trás). `DestaqueEventoBanner` perdeu a centralização/
+     largura própria (quem decide isso agora é a página) e ganhou
+     `flex-1` interno pra esticar parelho; `/aluno/eventos/page.tsx`
+     mostra todos os destaques numa grade de até 2 colunas (1 no
+     celular).
+  2. **Evento "simples" com taxa nunca checava pagamento antes de mostrar
+     "Inscrição confirmada"** — `jaInscrito` (usado pra decidir isso)
+     significa "tem trabalho enviado", que nunca acontece em evento
+     simples, então o branch de pagamento pendente nunca disparava pra
+     esse caso. Corrigido nos dois lugares que mostram isso
+     (`DestaqueEventoBanner` e "Meus eventos" em `/aluno`, que nem tinha
+     os botões de presença/certificado pra evento simples ainda) —
+     confirmar presença fica **junto** com o aviso de pagamento pendente
+     (são independentes, dá pra escanear o QR no dia mesmo sem o
+     pagamento online confirmado), só "Baixar certificado" espera o
+     pagamento, porque a API já recusa mesmo.
 - **2026-09-29** — Certificados: Diretor Acadêmico e Coordenador não são
   mais obrigatórios os dois juntos — evento escolhe 1 ou os 2 (aplica a
   todo tipo de certificado/declaração, antes só o do aluno exigia os

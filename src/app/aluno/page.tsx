@@ -6,7 +6,9 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   FileStack,
+  QrCode,
   UserPlus,
   Check,
   X,
@@ -19,10 +21,12 @@ import {
 } from "lucide-react";
 import type { TipoAtividade } from "@/lib/atividadesAdmin";
 import { db } from "@/lib/firebase";
+import { baixarCertificado } from "@/lib/baixarCertificado";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
+import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio } from "@/lib/data/eventos";
@@ -107,6 +111,34 @@ export default function AlunoPainelPage() {
   const { inscricoes: minhasInscricoes } = useMinhasInscricoes(user?.uid);
   const [modalEventoId, setModalEventoId] = useState<string | null>(null);
   const [inscricaoEventoId, setInscricaoEventoId] = useState<string | null>(null);
+  // Presença/certificado de evento simples (2026-09-30) — "Meus eventos"
+  // aqui nunca tinha esses botões, só a tela de Submissões (DestaqueEventoBanner)
+  // tinha. Mesmo padrão: confirmar presença é independente do pagamento
+  // (dá pra escanear o QR no dia mesmo com o pagamento online pendente);
+  // só "Baixar certificado" espera o pagamento, a API já bloqueia mesmo.
+  const [confirmandoPresencaEventoId, setConfirmandoPresencaEventoId] = useState<string | null>(
+    null,
+  );
+  const [baixandoCertificadoEventoId, setBaixandoCertificadoEventoId] = useState<string | null>(
+    null,
+  );
+  // Junto com o eventoId (2026-09-30) — vários cards na lista, sem isso um
+  // erro de um evento apareceria "pendurado" embaixo do card errado.
+  const [erroCertificado, setErroCertificado] = useState<{ eventoId: string; mensagem: string } | null>(
+    null,
+  );
+
+  async function handleBaixarCertificado(eventoId: string) {
+    if (!user) return;
+    setErroCertificado(null);
+    setBaixandoCertificadoEventoId(eventoId);
+    try {
+      const resultado = await baixarCertificado(user, { papel: "participante", eventoId });
+      if (!resultado.ok) setErroCertificado({ eventoId, mensagem: resultado.erro });
+    } finally {
+      setBaixandoCertificadoEventoId(null);
+    }
+  }
 
   const eventos = useMemo(
     () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
@@ -294,6 +326,7 @@ export default function AlunoPainelPage() {
                 {eventosInscritos.map(({ evento, trabalho, inscricao }) => {
                   const temTaxa = !!evento.valorInscricao;
                   const pago = inscricao?.status === "pago";
+                  const pagamentoPendente = temTaxa && !pago;
                   return (
                     <div
                       key={evento.id}
@@ -305,6 +338,9 @@ export default function AlunoPainelPage() {
                           <p className="mt-0.5 text-sm text-fatec-muted">
                             {trabalho ? trabalho.titulo : "Nenhum trabalho enviado ainda"}
                           </p>
+                        )}
+                        {erroCertificado?.eventoId === evento.id && (
+                          <p className="mt-1 text-xs text-rose-600">{erroCertificado.mensagem}</p>
                         )}
                       </div>
                       <div className="flex flex-none flex-wrap items-center gap-2">
@@ -329,6 +365,42 @@ export default function AlunoPainelPage() {
                               Pagamento pendente
                             </button>
                           ))}
+                        {/* Evento simples (2026-09-30) — "Meus eventos" nunca
+                            tinha isso, só a tela de Submissões. Presença é
+                            independente do pagamento (dá pra escanear no dia
+                            mesmo pendente); certificado espera o pagamento,
+                            a API já bloqueia mesmo (ver /api/certificados). */}
+                        {evento.tipo === "simples" &&
+                          (inscricao?.presencaConfirmada ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                              Presença confirmada
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmandoPresencaEventoId(evento.id)}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-fatec-line px-2.5 py-1 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                            >
+                              <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
+                              Confirmar presença
+                            </button>
+                          ))}
+                        {evento.tipo === "simples" &&
+                          !pagamentoPendente &&
+                          (evento.certificadosLiberados || inscricao?.presencaConfirmada) && (
+                            <button
+                              type="button"
+                              onClick={() => handleBaixarCertificado(evento.id)}
+                              disabled={baixandoCertificadoEventoId === evento.id}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                            >
+                              <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                              {baixandoCertificadoEventoId === evento.id
+                                ? "Gerando..."
+                                : "Baixar certificado"}
+                            </button>
+                          )}
                         {!trabalho &&
                           evento.tipo !== "simples" &&
                           (dentroDoPrazoEnvio(evento) ? (
@@ -426,6 +498,14 @@ export default function AlunoPainelPage() {
           onClose={() => setInscricaoEventoId(null)}
         />
       )}
+
+      <ConfirmarPresencaModal
+        open={!!confirmandoPresencaEventoId}
+        eventoId={confirmandoPresencaEventoId ?? ""}
+        user={user}
+        onClose={() => setConfirmandoPresencaEventoId(null)}
+        onConfirmado={() => setConfirmandoPresencaEventoId(null)}
+      />
     </main>
   );
 }

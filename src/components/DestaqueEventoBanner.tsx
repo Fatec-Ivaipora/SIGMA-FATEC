@@ -77,7 +77,12 @@ export function DestaqueEventoBanner({
   }
 
   return (
-    <div className="mx-auto mb-8 max-w-2xl overflow-hidden rounded-2xl border border-fatec-line bg-white shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
+    // Sem mx-auto/max-w/mb próprios (2026-09-30, antes só existia 1 destaque
+    // por vez aqui) — quem decide largura/centralização/espaçamento agora é
+    // a página que usa este card, porque com mais de um destaque eles
+    // precisam caber lado a lado numa grade em vez de cada um se centralizar
+    // sozinho. Ver /aluno/eventos/page.tsx.
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-fatec-line bg-white shadow-[0_12px_30px_-18px_rgba(14,58,94,0.45)]">
       {/* aspect-[12/5] (2026-09-29, era h-28/h-36/h-44 fixo) — bate com o
           recorte do BannerCropModal (12:5); altura fixa cortava a foto de
           jeito diferente do que o admin via ao recortar, mesmo bug achado
@@ -105,7 +110,11 @@ export function DestaqueEventoBanner({
         </span>
       </div>
 
-      <div className="flex flex-col items-start gap-3 p-5 md:p-6">
+      {/* flex-1 (2026-09-30) — quando 2+ cards ficam lado a lado numa grade
+          e esticam pra mesma altura (a imagem acima já é altura fixa via
+          aspect-ratio, não estica), é este bloco que absorve a diferença,
+          em vez do botão ficar solto no meio do card mais alto. */}
+      <div className="flex flex-1 flex-col items-start gap-3 p-5 md:p-6">
         <div>
           <h3 className="text-lg font-bold leading-tight text-fatec-navy-900 md:text-xl">
             {destaque.nome}
@@ -144,14 +153,32 @@ export function DestaqueEventoBanner({
             Pagamento pendente — pagar agora
           </button>
         ) : destaque.tipo === "simples" ? (
-          // Evento simples (2026-09-22) não tem trabalho nenhum — depois de
-          // inscrito (e pago, se for o caso, já tratado acima), só falta o
-          // certificado, quando a organização liberar.
+          // Evento simples (2026-09-22) não tem trabalho nenhum, então não
+          // passa pelo branch "jaInscrito && pagamentoPendente" ali em cima
+          // (jaInscrito é sobre ter trabalho enviado, nunca acontece aqui) —
+          // esse era o bug (2026-09-30, achado: card mostrava "Inscrição
+          // confirmada" mesmo sem pagar). Confirmar presença fica junto com
+          // o aviso de pagamento pendente, não no lugar dele — são coisas
+          // independentes (dá pra escanear o QR no dia do evento mesmo com
+          // o pagamento online ainda não confirmado); só "Baixar
+          // certificado" espera o pagamento, porque a API já bloqueia isso
+          // mesmo (ver /api/certificados).
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700">
-              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-              Inscrição confirmada
-            </span>
+            {pagamentoPendente ? (
+              <button
+                type="button"
+                onClick={() => onAbrirInscricao(destaque.id)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                Pagamento pendente — pagar agora
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                Inscrição confirmada
+              </span>
+            )}
             {inscricao?.presencaConfirmada ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
@@ -168,18 +195,20 @@ export function DestaqueEventoBanner({
               </button>
             )}
             {/* Mesma regra de /api/certificados (papel "participante",
-                2026-09-24): presença pelo QR OU liberação da organização. */}
-            {(destaque.certificadosLiberados || inscricao?.presencaConfirmada) && (
-              <button
-                type="button"
-                onClick={handleBaixarCertificado}
-                disabled={baixandoCertificado}
-                className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
-              >
-                <Download className="h-3.5 w-3.5" strokeWidth={2} />
-                {baixandoCertificado ? "Gerando..." : "Baixar certificado"}
-              </button>
-            )}
+                2026-09-24): presença pelo QR OU liberação da organização —
+                e agora também não pagamentoPendente, senão a API recusa. */}
+            {!pagamentoPendente &&
+              (destaque.certificadosLiberados || inscricao?.presencaConfirmada) && (
+                <button
+                  type="button"
+                  onClick={handleBaixarCertificado}
+                  disabled={baixandoCertificado}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  {baixandoCertificado ? "Gerando..." : "Baixar certificado"}
+                </button>
+              )}
             {erroCertificado && <p className="w-full text-xs text-rose-600">{erroCertificado}</p>}
             <ConfirmarPresencaModal
               open={confirmandoPresenca}

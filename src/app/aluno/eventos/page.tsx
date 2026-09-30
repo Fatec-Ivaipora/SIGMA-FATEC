@@ -251,18 +251,23 @@ export default function AlunoEventosPage() {
   // faz mais sentido morar aqui e abrir os modais direto). `eventos` já vem
   // sem os encerrados (ver acima) — o fallback pro primeiro da lista nunca
   // pega um evento fechado.
-  const destaque = useMemo(
-    () => eventos.find((e) => e.destaque) ?? eventos[0],
-    [eventos],
-  );
-  const jaInscritoDestaque = !!(destaque && trabalhos.some((t) => t.eventoId === destaque.id));
+  // Todos os destaques, não só o primeiro (2026-09-30 — antes só 1 evento
+  // virava banner bonito e qualquer outro marcado como destaque caía na
+  // grade genérica de baixo, sem banner, parecendo "desconfigurado" do lado
+  // do que tem banner; a home já tinha sido corrigida pra isso, essa tela
+  // não). Sem nenhum marcado, cai no fallback de sempre (só o primeiro
+  // evento aberto vira destaque, não mostra a lista toda como banner).
+  const destaques = useMemo(() => {
+    const marcados = eventos.filter((e) => e.destaque);
+    return marcados.length > 0 ? marcados : eventos.slice(0, 1);
+  }, [eventos]);
 
-  // O card do destaque já aparece no banner acima — tira ele da grade pra
-  // não duplicar (só quando sobra mais gente na grade).
-  const eventosGrade = useMemo(
-    () => eventos.filter((e) => e.id !== destaque?.id),
-    [eventos, destaque],
-  );
+  // Os cards dos destaques já aparecem nos banners acima — tira eles da
+  // grade pra não duplicar (só quando sobra mais gente na grade).
+  const eventosGrade = useMemo(() => {
+    const idsDestaque = new Set(destaques.map((e) => e.id));
+    return eventos.filter((e) => !idsDestaque.has(e.id));
+  }, [eventos, destaques]);
 
   const eventoModal = eventos.find((e) => e.id === modalEventoId);
   const eventoInscricao = eventos.find((e) => e.id === inscricaoEventoId);
@@ -309,19 +314,33 @@ export default function AlunoEventosPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          {/* mx-auto no card abaixo (2026-09-10, pedido do usuário) — só
-              existe um destaque por vez, faz sentido centralizar em telas
+          {/* mx-auto (2026-09-10, pedido do usuário) — centraliza em telas
               largas em vez de ficar grudado na esquerda. Banner extraído
-              (2026-09-19) pra DestaqueEventoBanner — também usado em
-              /aluno. */}
-          {destaque && (
-            <DestaqueEventoBanner
-              destaque={destaque}
-              user={user}
-              jaInscrito={jaInscritoDestaque}
-              onAbrirTrabalho={setModalEventoId}
-              onAbrirInscricao={setInscricaoEventoId}
-            />
+              (2026-09-19) pra DestaqueEventoBanner.
+              Com 2+ destaques (2026-09-30): grade de até 2 colunas, cada
+              card estica pra mesma altura (grid já faz isso sozinho,
+              DestaqueEventoBanner só precisa de flex-1 internamente pra
+              acompanhar). Com 1 só, mantém o visual de sempre — card único,
+              mais estreito (max-w-2xl), centralizado. */}
+          {destaques.length > 0 && (
+            <div
+              className={
+                destaques.length > 1
+                  ? "mx-auto mb-8 grid max-w-4xl gap-4 sm:grid-cols-2"
+                  : "mx-auto mb-8 grid max-w-2xl gap-4"
+              }
+            >
+              {destaques.map((d) => (
+                <DestaqueEventoBanner
+                  key={d.id}
+                  destaque={d}
+                  user={user}
+                  jaInscrito={trabalhos.some((t) => t.eventoId === d.id)}
+                  onAbrirTrabalho={setModalEventoId}
+                  onAbrirInscricao={setInscricaoEventoId}
+                />
+              ))}
+            </div>
           )}
 
           {/* justify-center + auto-fit (2026-09-23, achado: com 1 só card na
@@ -342,7 +361,7 @@ export default function AlunoEventosPage() {
               />
             ))}
 
-            {!destaque && eventosGrade.length === 0 && (
+            {destaques.length === 0 && eventosGrade.length === 0 && (
               <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
                 {perfil.vinculoFatec === false && todosEventos.length > 0
                   ? "Nenhum evento aberto para participantes externos no momento."
