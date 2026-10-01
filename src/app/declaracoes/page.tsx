@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import {
+  Check,
   ChevronDown,
+  Clock,
   Download,
   ExternalLink,
   FileCheck,
@@ -21,6 +23,7 @@ import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
+import { useInscritosDoEvento, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 import {
@@ -40,12 +43,28 @@ import {
 // sistema, só texto livre no trabalho) não tinha rota nenhuma. Corrigido em
 // /api/certificados (uidAlvo pra staff mirar outra pessoa; rota nova pra
 // orientador usando o nome já salvo no trabalho, sem precisar de CPF).
+// Checklist por candidato (2026-10-01, pedido explícito do usuário) — antes
+// o botão "Baixar PDF" só ficava desabilitado enquanto baixava, nunca por
+// faltar algum requisito de verdade (achado real: evento simples mostrava o
+// botão ativo pra todo mundo que pagou, mesmo quem não tinha presença
+// nenhuma confirmada — o backend barra isso certo, mas a tela não dava
+// nenhuma pista visual de que ia falhar). `checks` espelha as mesmas regras
+// não-staff de /api/certificados (o próprio admin bypassa elas lá, mas essa
+// tela é uma "rede de proteção" pra verificar quem tá apto de verdade, não
+// um atalho pra forçar sem os requisitos — por isso o botão desabilita
+// igual ao autoatendimento normal, sem usar o bypass de staff). `grupo`
+// separa quem paga/se inscreve ("aluno", cobre tanto o aluno de trabalho
+// quanto o participante de evento simples) de quem só é atribuído por fora
+// ("outros": avaliador, moderador, monitor, orientador — nenhum desses paga
+// nem se inscreve).
 type CandidatoDocumento = {
   chaveLista: string;
   nome: string;
   rotuloTipo: string;
   contexto?: string;
   textoBusca: string;
+  grupo: "aluno" | "outros";
+  checks: { label: string; ok: boolean }[];
   gerar: () => Promise<{ ok: true } | { ok: false; erro: string }>;
 };
 
@@ -62,12 +81,56 @@ function EmitirCertificado({
   const [busca, setBusca] = useState("");
   const [baixandoChave, setBaixandoChave] = useState<string | null>(null);
   const [erro, setErro] = useState<{ chave: string; msg: string } | null>(null);
+  // Alunos (aluno de trabalho + participante de evento simples) precisam de
+  // todos os checks — pagamento, presença/liberação; "outros" (monitor,
+  // avaliador, moderador, orientador) nunca pagam nem se inscrevem, só são
+  // atribuídos por fora (2026-10-01, pedido explícito do usuário).
+  const [filtroGrupo, setFiltroGrupo] = useState<"todos" | "aluno" | "outros">("todos");
 
+  const evento = eventos.find((e) => e.id === eventoId);
   const { monitores } = useMonitoresDoEvento(eventoId || undefined);
+  // Precisa pra todo tipo de evento agora (2026-10-01) — não só pra checar
+  // quem já pagou em evento simples, mas também pra olhar o pagamento do
+  // aluno/evento completo (inscricoesEvento é a mesma coleção nos dois
+  // casos) e a presença do monitor em evento simples.
+  const { inscritos } = useInscritosDoEvento(eventoId || undefined);
+  const inscritosPorUid = useMemo(
+    () => new Map(inscritos.map((i) => [i.uid, i])),
+    [inscritos],
+  );
 
   const candidatos = useMemo<CandidatoDocumento[]>(() => {
-    if (!eventoId || !user) return [];
+    if (!eventoId || !user || !evento) return [];
     const lista: CandidatoDocumento[] = [];
+    const temTaxa = !!evento.valorInscricao;
+
+    // Evento "simples" (2026-10-01, achado faltando: essa tela nunca
+    // mostrava os participantes desse tipo de evento, só monitores — não
+    // tem trabalho nenhum aqui, a lista some de "trabalhos" inteira).
+    // Aparece na busca assim que "apto a aparecer" (mesmo critério de
+    // visibilidade do pagamento em /api/certificados — com taxa, só quem já
+    // pagou; sem taxa, todo mundo que demonstrou interesse); o check de
+    // presença é quem decide se o botão fica ativo ou não.
+    if (evento.tipo === "simples") {
+      for (const i of inscritos) {
+        const pagou = temTaxa ? i.status === "pago" : true;
+        if (!pagou) continue;
+        lista.push({
+          chaveLista: `participante_${i.uid}`,
+          nome: i.nome,
+          rotuloTipo: "Certificado de participação",
+          textoBusca: i.nome.toLowerCase(),
+          grupo: "aluno",
+          checks: [
+            ...(temTaxa ? [{ label: "Pagamento", ok: pagou }] : []),
+            { label: "Liberado pela organização", ok: !!evento.certificadosLiberados },
+            { label: "Presença confirmada", ok: diasConfirmadosCount(i) > 0 },
+          ],
+          gerar: () =>
+            baixarCertificado(user, { papel: "participante", eventoId, uidAlvo: i.uid }),
+        });
+      }
+    }
 
     const trabalhosDoEvento = trabalhos.filter(
       (t) => t.eventoId === eventoId && t.status === "aceito",
@@ -76,12 +139,25 @@ function EmitirCertificado({
     for (const t of trabalhosDoEvento) {
       const nomes = [t.alunoNome, ...(t.participantesNomes ?? [])];
       if (t.nomeOrientador) nomes.push(t.nomeOrientador);
+      // Pagamento é checado só pelo aluno principal (2026-10-01) — um
+      // trabalho em grupo sai num PDF só, com todos os nomes juntos (ver
+      // CertificadoApresentacaoPDF), não tem como checar "o pagamento de
+      // qual colega" individualmente aqui.
+      const pagouAluno = temTaxa
+        ? inscritosPorUid.get(t.alunoUid)?.status === "pago"
+        : true;
       lista.push({
         chaveLista: `certificado_${t.id}`,
         nome: nomes.join(", "),
         rotuloTipo: "Certificado de apresentação",
         contexto: t.titulo,
         textoBusca: nomes.join(" ").toLowerCase(),
+        grupo: "aluno",
+        checks: [
+          { label: "Resultado final aceito", ok: true },
+          { label: "Liberado pela organização", ok: !!t.certificadoLiberado },
+          ...(temTaxa ? [{ label: "Pagamento", ok: !!pagouAluno }] : []),
+        ],
         gerar: () => baixarCertificado(user, { papel: "aluno", trabalhoId: t.id }),
       });
 
@@ -92,6 +168,10 @@ function EmitirCertificado({
           rotuloTipo: "Declaração de orientador(a)",
           contexto: t.titulo,
           textoBusca: t.nomeOrientador.toLowerCase(),
+          grupo: "outros",
+          // Orientador não tem conta/inscrição — nada além do trabalho
+          // aceito trava a declaração dele (ver /api/certificados).
+          checks: [{ label: "Resultado final aceito", ok: true }],
           gerar: () => baixarCertificado(user, { papel: "orientador", trabalhoId: t.id }),
         });
       }
@@ -103,44 +183,76 @@ function EmitirCertificado({
       if (t.avaliadorUid && t.avaliadorNome) avaliadores.set(t.avaliadorUid, t.avaliadorNome);
       if (t.moderadorUid && t.moderadorNome) moderadores.set(t.moderadorUid, t.moderadorNome);
     }
+    // Liberado = pelo menos 1 trabalho que essa pessoa avaliou/moderou já
+    // teve o certificado liberado (mesma regra do branch avaliador/
+    // moderador em /api/certificados — not "todos", só "algum").
     for (const [uid, nome] of avaliadores) {
+      const liberado = trabalhosDoEvento.some(
+        (t) => t.avaliadorUid === uid && t.certificadoLiberado,
+      );
       lista.push({
         chaveLista: `avaliador_${uid}`,
         nome,
         rotuloTipo: "Declaração de avaliador(a)",
         textoBusca: nome.toLowerCase(),
+        grupo: "outros",
+        checks: [{ label: "Liberado pela organização", ok: liberado }],
         gerar: () =>
           baixarCertificado(user, { papel: "avaliador", eventoId, uidAlvo: uid }),
       });
     }
     for (const [uid, nome] of moderadores) {
+      const liberado = trabalhosDoEvento.some(
+        (t) => t.moderadorUid === uid && t.certificadoLiberado,
+      );
       lista.push({
         chaveLista: `moderador_${uid}`,
         nome,
         rotuloTipo: "Declaração de moderador(a)",
         textoBusca: nome.toLowerCase(),
+        grupo: "outros",
+        checks: [{ label: "Liberado pela organização", ok: liberado }],
         gerar: () =>
           baixarCertificado(user, { papel: "moderador", eventoId, uidAlvo: uid }),
       });
     }
+    // Monitor nunca paga, nos dois tipos de evento (2026-10-01) — evento
+    // completo libera pelo monitor.certificadoLiberado próprio (ligado
+    // junto com "Emitir certificados" em /trabalhos); evento simples usa o
+    // mesmo evento.certificadosLiberados do participante + exige presença
+    // (só dá pra provar que o monitor compareceu pelo QR, ver
+    // /api/certificados).
     for (const m of monitores) {
+      const simples = evento.tipo === "simples";
       lista.push({
         chaveLista: `monitor_${m.uid}`,
         nome: m.nome,
         rotuloTipo: "Declaração de monitor(a)",
         textoBusca: m.nome.toLowerCase(),
+        grupo: "outros",
+        checks: simples
+          ? [
+              { label: "Liberado pela organização", ok: !!evento.certificadosLiberados },
+              {
+                label: "Presença confirmada",
+                ok: diasConfirmadosCount(inscritosPorUid.get(m.uid)) > 0,
+              },
+            ]
+          : [{ label: "Liberado pela organização", ok: !!m.certificadoLiberado }],
         gerar: () =>
           baixarCertificado(user, { papel: "monitor", eventoId, uidAlvo: m.uid }),
       });
     }
 
     return lista;
-  }, [eventoId, trabalhos, monitores, user]);
+  }, [eventoId, evento, inscritos, inscritosPorUid, trabalhos, monitores, user]);
 
   const termo = busca.trim().toLowerCase();
-  const resultados = termo
-    ? candidatos.filter((c) => c.textoBusca.includes(termo))
-    : candidatos;
+  const resultados = candidatos.filter(
+    (c) =>
+      (filtroGrupo === "todos" || c.grupo === filtroGrupo) &&
+      (!termo || c.textoBusca.includes(termo)),
+  );
 
   async function gerar(candidato: CandidatoDocumento) {
     setErro(null);
@@ -189,11 +301,40 @@ function EmitirCertificado({
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             disabled={!eventoId}
-            placeholder="Buscar por nome — aluno, avaliador, moderador, monitor ou orientador"
+            placeholder={
+              evento?.tipo === "simples"
+                ? "Buscar por nome — participante ou monitor"
+                : "Buscar por nome — aluno, avaliador, moderador, monitor ou orientador"
+            }
             className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50"
           />
         </div>
       </div>
+
+      {eventoId && (
+        <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
+          {(
+            [
+              { label: "Todos", valor: "todos" },
+              { label: "Alunos", valor: "aluno" },
+              { label: "Outros cargos", valor: "outros" },
+            ] as const
+          ).map((f) => (
+            <button
+              key={f.valor}
+              type="button"
+              onClick={() => setFiltroGrupo(f.valor)}
+              className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                filtroGrupo === f.valor
+                  ? "bg-white text-fatec-navy-900 shadow-sm"
+                  : "text-fatec-muted hover:text-fatec-navy-900"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {!eventoId && (
         <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
@@ -203,7 +344,9 @@ function EmitirCertificado({
 
       {eventoId && (
         <div className="flex flex-col gap-2">
-          {resultados.map((c) => (
+          {resultados.map((c) => {
+            const apto = c.checks.every((chk) => chk.ok);
+            return (
             <div
               key={c.chaveLista}
               className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -217,6 +360,27 @@ function EmitirCertificado({
                 {c.contexto && (
                   <p className="truncate text-xs text-fatec-muted">{c.contexto}</p>
                 )}
+                {c.checks.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {c.checks.map((chk) => (
+                      <span
+                        key={chk.label}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          chk.ok
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-fatec-navy-50 text-fatec-muted"
+                        }`}
+                      >
+                        {chk.ok ? (
+                          <Check className="h-3 w-3" strokeWidth={2.5} />
+                        ) : (
+                          <Clock className="h-3 w-3" strokeWidth={2} />
+                        )}
+                        {chk.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {erro?.chave === c.chaveLista && (
                   <p className="mt-1 text-xs text-red-600">{erro.msg}</p>
                 )}
@@ -224,7 +388,8 @@ function EmitirCertificado({
               <button
                 type="button"
                 onClick={() => gerar(c)}
-                disabled={baixandoChave === c.chaveLista}
+                disabled={!apto || baixandoChave === c.chaveLista}
+                title={apto ? undefined : "Falta pelo menos um requisito — veja os selos acima"}
                 className="flex flex-none items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
               >
                 {baixandoChave === c.chaveLista ? (
@@ -235,11 +400,14 @@ function EmitirCertificado({
                 Baixar PDF
               </button>
             </div>
-          ))}
+            );
+          })}
           {resultados.length === 0 && (
             <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
               {candidatos.length === 0
-                ? "Nenhum trabalho aceito, monitor ou avaliador/moderador designado nesse evento ainda."
+                ? evento?.tipo === "simples"
+                  ? "Ninguém apto a aparecer ainda — pra evento com taxa, precisa ter pelo menos 1 inscrição paga."
+                  : "Nenhum trabalho aceito, monitor ou avaliador/moderador designado nesse evento ainda."
                 : "Nenhum resultado pra essa busca."}
             </p>
           )}

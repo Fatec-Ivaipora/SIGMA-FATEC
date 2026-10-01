@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, UserPlus, KeyRound, Pencil, Trash2, X, Plus } from "lucide-react";
+import { Search, UserPlus, KeyRound, Pencil, IdCard, Trash2, X, Plus } from "lucide-react";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -20,6 +20,7 @@ import {
   type UsuarioRegistro,
 } from "@/lib/data/usuarios";
 import { notificarNovoPapel } from "@/lib/notificarEmail";
+import { CURSOS_FATEC } from "@/lib/cursos";
 
 const FILTROS: { label: string; papel: Papel | "todos" }[] = [
   { label: "Todos", papel: "todos" },
@@ -63,6 +64,21 @@ export default function UsuariosPage() {
   const [novoEvento, setNovoEvento] = useState("");
   const [novasAreas, setNovasAreas] = useState<string[]>([]);
 
+  // Editar nome/e-mail (2026-10-01, pedido explícito do usuário) — resolve
+  // sem violar a senha de ninguém; separado do "Editar eventos" acima (esse
+  // Pencil já era de outra coisa, eventos/áreas temáticas de avaliador).
+  const [editandoPerfil, setEditandoPerfil] = useState<UsuarioRegistro | null>(null);
+  const [perfilNome, setPerfilNome] = useState("");
+  const [perfilEmail, setPerfilEmail] = useState("");
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+  const [erroPerfil, setErroPerfil] = useState<string | null>(null);
+
+  // Filtros extras só fazem sentido dentro de "Aluno" (2026-10-01, pedido
+  // explícito) — externo não tem curso, e os outros papéis não têm nenhum
+  // dos dois campos.
+  const [filtroVinculo, setFiltroVinculo] = useState<"todos" | "fatec" | "externo">("todos");
+  const [filtroCurso, setFiltroCurso] = useState("");
+
   const souAdmin = perfil?.papel === "admin";
 
   const usuariosFiltrados = useMemo(() => {
@@ -73,9 +89,15 @@ export default function UsuariosPage() {
         !termo ||
         u.nome.toLowerCase().includes(termo) ||
         u.email.toLowerCase().includes(termo);
-      return bateFiltro && bateBusca;
+      const bateVinculo =
+        filtro !== "aluno" ||
+        filtroVinculo === "todos" ||
+        (filtroVinculo === "externo" ? u.vinculoFatec === false : u.vinculoFatec !== false);
+      const bateCurso =
+        filtro !== "aluno" || !filtroCurso || u.curso === filtroCurso;
+      return bateFiltro && bateBusca && bateVinculo && bateCurso;
     });
-  }, [usuarios, busca, filtro]);
+  }, [usuarios, busca, filtro, filtroVinculo, filtroCurso]);
 
   function areasDoEvento(eventoId: string): string[] {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
@@ -178,6 +200,44 @@ export default function UsuariosPage() {
     setNovasAreas([]);
   }
 
+  function abrirEdicaoPerfil(u: UsuarioRegistro) {
+    setEditandoPerfil(u);
+    setPerfilNome(u.nome);
+    setPerfilEmail(u.email);
+    setErroPerfil(null);
+  }
+
+  function fecharEdicaoPerfil() {
+    setEditandoPerfil(null);
+    setErroPerfil(null);
+  }
+
+  async function salvarPerfil() {
+    if (!editandoPerfil || !user) return;
+    setSalvandoPerfil(true);
+    setErroPerfil(null);
+    try {
+      const idToken = await user.getIdToken();
+      const resposta = await fetch("/api/usuarios", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: editandoPerfil.uid,
+          nome: perfilNome,
+          email: perfilEmail,
+        }),
+      });
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok || !dados) {
+        setErroPerfil(dados?.erro ?? "Não foi possível salvar. Tente de novo.");
+        return;
+      }
+      setEditandoPerfil(null);
+    } finally {
+      setSalvandoPerfil(false);
+    }
+  }
+
   function alternarNovaArea(area: string) {
     setNovasAreas((prev) =>
       prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area],
@@ -278,6 +338,46 @@ export default function UsuariosPage() {
             </div>
           </div>
 
+          {filtro === "aluno" && (
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
+                {(
+                  [
+                    { label: "Todos", valor: "todos" },
+                    { label: "Fatec", valor: "fatec" },
+                    { label: "Externos", valor: "externo" },
+                  ] as const
+                ).map((v) => (
+                  <button
+                    key={v.valor}
+                    type="button"
+                    onClick={() => setFiltroVinculo(v.valor)}
+                    className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                      filtroVinculo === v.valor
+                        ? "bg-white text-fatec-navy-900 shadow-sm"
+                        : "text-fatec-muted hover:text-fatec-navy-900"
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={filtroCurso}
+                onChange={(e) => setFiltroCurso(e.target.value)}
+                disabled={filtroVinculo === "externo"}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+              >
+                <option value="">Todos os cursos</option>
+                {CURSOS_FATEC.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="mt-6 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-sm">
@@ -322,6 +422,14 @@ export default function UsuariosPage() {
                                 <Pencil className="h-4 w-4" strokeWidth={1.75} />
                               </button>
                             )}
+                            <button
+                              type="button"
+                              aria-label={`Editar nome e e-mail de ${u.nome}`}
+                              onClick={() => abrirEdicaoPerfil(u)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-fatec-muted transition-colors hover:bg-fatec-navy-50 hover:text-fatec-navy-900"
+                            >
+                              <IdCard className="h-4 w-4" strokeWidth={1.75} />
+                            </button>
                             <button
                               type="button"
                               aria-label={`Redefinir senha de ${u.nome}`}
@@ -587,6 +695,50 @@ export default function UsuariosPage() {
             className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/25 transition-colors hover:bg-rose-700"
           >
             Excluir
+          </button>
+        </div>
+      </Modal>
+
+      {/* Editar nome/e-mail (2026-10-01) */}
+      <Modal open={!!editandoPerfil} onClose={fecharEdicaoPerfil} title="Editar usuário">
+        <div className="flex flex-col gap-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">Nome completo</span>
+            <input
+              type="text"
+              value={perfilNome}
+              onChange={(e) => setPerfilNome(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">E-mail</span>
+            <input
+              type="email"
+              value={perfilEmail}
+              onChange={(e) => setPerfilEmail(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            />
+            <span className="text-xs text-fatec-muted">
+              Troca o e-mail de login de verdade (não só o que aparece na
+              tela) — a pessoa passa a entrar com esse e-mail novo, com a
+              mesma senha de antes.
+            </span>
+          </label>
+
+          {erroPerfil && (
+            <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+              {erroPerfil}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={salvarPerfil}
+            disabled={salvandoPerfil || !perfilNome.trim() || !perfilEmail.trim()}
+            className="mt-1 w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+          >
+            {salvandoPerfil ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </Modal>

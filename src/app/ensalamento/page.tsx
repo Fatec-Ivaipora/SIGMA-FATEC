@@ -140,6 +140,16 @@ function ConfirmacaoPresencaView({
   // decidir, que é o critério que mais importa (pagamento pode vir depois
   // e libera sozinho quando cair; presença não tem como voltar atrás).
   const [alternando, setAlternando] = useState(false);
+  // Presença manual (2026-09-30, pedido explícito do usuário) — pra quando
+  // a pessoa não consegue escanear (câmera com problema, sem internet no
+  // local, etc). Só admin/organização (nunca monitor — ver
+  // /api/inscricoes/confirmar-presenca-manual, a mesma auditoria por dia
+  // que existe pra desconfiar de um monitor mal-intencionado perderia o
+  // sentido se o próprio monitor pudesse marcar presença na mão). Clicar
+  // no selo do dia já alterna direto, sem confirmação — dá pra desmarcar
+  // do mesmo jeito se clicar de novo.
+  const [alternandoPresenca, setAlternandoPresenca] = useState<Set<string>>(new Set());
+  const [erroPresencaManual, setErroPresencaManual] = useState<string | null>(null);
 
   async function alternarCertificados() {
     setAlternando(true);
@@ -149,6 +159,33 @@ function ConfirmacaoPresencaView({
       });
     } finally {
       setAlternando(false);
+    }
+  }
+
+  async function alternarPresencaManual(uidAlvo: string, dia: number, confirmar: boolean) {
+    if (!user) return;
+    const chave = `${uidAlvo}:${dia}`;
+    setErroPresencaManual(null);
+    setAlternandoPresenca((prev) => new Set(prev).add(chave));
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/inscricoes/confirmar-presenca-manual", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ eventoId: evento.id, uid: uidAlvo, dia, confirmar }),
+      });
+      if (!res.ok) {
+        const corpo = await res.json().catch(() => null);
+        setErroPresencaManual(corpo?.erro ?? "Não foi possível alterar a presença.");
+      }
+    } catch {
+      setErroPresencaManual("Falha de conexão — tente de novo.");
+    } finally {
+      setAlternandoPresenca((prev) => {
+        const next = new Set(prev);
+        next.delete(chave);
+        return next;
+      });
     }
   }
 
@@ -334,6 +371,17 @@ function ConfirmacaoPresencaView({
             />
           </div>
         </div>
+        {!modoMonitor && (
+          <p className="mt-2 text-xs text-fatec-muted">
+            Não deu pra escanear o QR? Clique no selo do dia pra marcar (ou
+            desmarcar) a presença na mão.
+          </p>
+        )}
+        {erroPresencaManual && (
+          <p className="mt-2 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+            {erroPresencaManual}
+          </p>
+        )}
 
         <div className="mt-4 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line">
           {filtrados.map((i) => {
@@ -359,18 +407,25 @@ function ConfirmacaoPresencaView({
                     const timestamp = i.presencasConfirmadas?.[String(dia)];
                     const confirmado = !!timestamp;
                     const aberto = detalheAberto?.uid === i.uid && detalheAberto?.dia === dia;
+                    const emAndamento = alternandoPresenca.has(`${i.uid}:${dia}`);
                     return (
                       <div key={dia} className="group relative">
                         <button
                           type="button"
-                          disabled={!confirmado}
-                          onClick={() =>
-                            setDetalheAberto(aberto ? null : confirmado ? { uid: i.uid, dia } : null)
-                          }
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold transition-colors ${
+                          disabled={modoMonitor ? !confirmado : emAndamento}
+                          onClick={() => {
+                            if (modoMonitor) {
+                              setDetalheAberto(aberto ? null : confirmado ? { uid: i.uid, dia } : null);
+                            } else {
+                              alternarPresencaManual(i.uid, dia, !confirmado);
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             confirmado
                               ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                              : "cursor-default bg-fatec-navy-50 text-fatec-muted"
+                              : modoMonitor
+                                ? "cursor-default bg-fatec-navy-50 text-fatec-muted"
+                                : "bg-fatec-navy-50 text-fatec-muted hover:bg-fatec-navy-100"
                           }`}
                         >
                           {confirmado ? (
@@ -403,14 +458,9 @@ function ConfirmacaoPresencaView({
                   })}
                 </div>
               ) : (
-                <span
-                  className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    i.presencasConfirmadas?.["1"]
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-fatec-navy-50 text-fatec-muted"
-                  }`}
-                >
-                  {i.presencasConfirmadas?.["1"] ? (
+                (() => {
+                  const confirmado1 = !!i.presencasConfirmadas?.["1"];
+                  const conteudo = confirmado1 ? (
                     <>
                       <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
                       Confirmada
@@ -420,8 +470,36 @@ function ConfirmacaoPresencaView({
                       <Clock className="h-3.5 w-3.5" strokeWidth={2} />
                       Aguardando
                     </>
-                  )}
-                </span>
+                  );
+                  if (modoMonitor) {
+                    return (
+                      <span
+                        className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          confirmado1
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-fatec-navy-50 text-fatec-muted"
+                        }`}
+                      >
+                        {conteudo}
+                      </span>
+                    );
+                  }
+                  const emAndamento1 = alternandoPresenca.has(`${i.uid}:1`);
+                  return (
+                    <button
+                      type="button"
+                      disabled={emAndamento1}
+                      onClick={() => alternarPresencaManual(i.uid, 1, !confirmado1)}
+                      className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        confirmado1
+                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                          : "bg-fatec-navy-50 text-fatec-muted hover:bg-fatec-navy-100"
+                      }`}
+                    >
+                      {conteudo}
+                    </button>
+                  );
+                })()
               )}
             </div>
             );

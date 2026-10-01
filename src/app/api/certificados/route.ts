@@ -311,8 +311,14 @@ export async function GET(request: Request) {
       chamador?.papel === "admin" ||
       (chamador?.papel === "organizacao" &&
         (chamador?.eventosPermitidos ?? []).includes(eventoId));
+    // uidAlvo (2026-10-01) — mesmo mecanismo já usado em avaliador/
+    // moderador/monitor: admin/organização emitindo em nome de outra
+    // pessoa (tela Declarações → "Emitir certificado"), achado faltando
+    // nesse papel — antes só dava pra gerar o PRÓPRIO certificado de
+    // participante por essa rota, nunca o de quem foi buscado na tela.
+    const uidAlvo = ehStaff ? (url.searchParams.get("uidAlvo") ?? uid) : uid;
 
-    const inscricaoSnap = await db.doc(`inscricoesEvento/${eventoId}::${uid}`).get();
+    const inscricaoSnap = await db.doc(`inscricoesEvento/${eventoId}::${uidAlvo}`).get();
     const inscricao = inscricaoSnap.data();
     if (!inscricao) {
       return NextResponse.json(
@@ -437,7 +443,50 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
-    if (!monitor.certificadoLiberado && !ehStaff) {
+
+    const eventoSnap = await db.doc(`eventos/${eventoId}`).get();
+    const evento = eventoSnap.data();
+    if (!evento) {
+      return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
+    }
+
+    // Evento "simples" (2026-10-01) — monitor nunca precisa pagar (mesma
+    // regra de sempre pro evento completo, ver comentário acima), mas
+    // precisa ter COMPARECIDO de verdade — só dá pra provar isso pelo QR,
+    // já que não tem trabalho nenhum pra avaliar. Por isso usa a mesma
+    // inscricaoEvento/presencasConfirmadas do papel "participante" (o
+    // monitor também se inscreve normalmente, só sem precisar pagar) em
+    // vez de monitor.certificadoLiberado — esse campo nem tem como ser
+    // ligado pra evento simples, já que o botão "Emitir certificados" que
+    // o liga só existe na tela de trabalhos (evento completo). A liberação
+    // aqui é a mesma de evento.certificadosLiberados, o mesmo botão
+    // "Liberar certificados" do Ensalamento que já libera o participante.
+    if (evento.tipo === "simples") {
+      if (!evento.certificadosLiberados && !ehStaff) {
+        return NextResponse.json(
+          {
+            erro:
+              "A organização ainda não liberou os certificados desse evento — aguarde a liberação.",
+          },
+          { status: 400 },
+        );
+      }
+      const inscricaoMonitor = (
+        await db.doc(`inscricoesEvento/${eventoId}::${uidAlvo}`).get()
+      ).data();
+      const diasConfirmadosMonitor = Object.keys(
+        inscricaoMonitor?.presencasConfirmadas ?? {},
+      ).length;
+      if (diasConfirmadosMonitor === 0 && !ehStaff) {
+        return NextResponse.json(
+          {
+            erro:
+              "Sua presença nesse evento ainda não foi confirmada — escaneie o QR no local do evento.",
+          },
+          { status: 400 },
+        );
+      }
+    } else if (!monitor.certificadoLiberado && !ehStaff) {
       return NextResponse.json(
         {
           erro:
@@ -447,11 +496,6 @@ export async function GET(request: Request) {
       );
     }
 
-    const eventoSnap = await db.doc(`eventos/${eventoId}`).get();
-    const evento = eventoSnap.data();
-    if (!evento) {
-      return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
-    }
     const faltando = faltandoDadosEvento(evento);
     if (faltando.length > 0) {
       return NextResponse.json(

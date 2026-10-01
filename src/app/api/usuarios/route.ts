@@ -156,6 +156,84 @@ export async function POST(request: Request) {
   }
 }
 
+/** Edita nome/e-mail de um usuário (2026-10-01, pedido explícito do
+ * usuário — resolve sem violar a senha de ninguém: nome/e-mail errado ou
+ * digitado torto no cadastro). Só Admin. Sincroniza nos TRÊS lugares que
+ * precisam bater — lição aprendida corrigindo a conta duplicada do Matheus
+ * Fukuda (ver INFO.md "Histórico de mudanças", 2026-09-30): o e-mail de
+ * LOGIN de verdade é o do Firebase Auth, nunca o campo `email` do
+ * Firestore (que é só espelho); editar só o Firestore deixa a pessoa
+ * sem conseguir entrar com o e-mail "corrigido". */
+export async function PATCH(request: Request) {
+  const authHeader = request.headers.get("authorization");
+  const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!idToken) {
+    return NextResponse.json({ erro: "Não autenticado." }, { status: 401 });
+  }
+
+  let chamadorUid: string;
+  try {
+    chamadorUid = (await getAdminAuth().verifyIdToken(idToken)).uid;
+  } catch {
+    return NextResponse.json({ erro: "Sessão inválida." }, { status: 401 });
+  }
+
+  try {
+    const chamadorDoc = await getAdminDb().doc(`usuarios/${chamadorUid}`).get();
+    if (chamadorDoc.data()?.papel !== "admin") {
+      return NextResponse.json(
+        { erro: "Só o Admin pode editar usuários." },
+        { status: 403 },
+      );
+    }
+
+    const { uid, nome, email } = (await request.json()) as {
+      uid?: string;
+      nome?: string;
+      email?: string;
+    };
+    if (!uid || !nome?.trim() || !email?.trim()) {
+      return NextResponse.json(
+        { erro: "uid, nome e e-mail são obrigatórios." },
+        { status: 400 },
+      );
+    }
+    const nomeLimpo = nome.trim();
+    const emailLimpo = email.trim();
+
+    try {
+      await getAdminAuth().updateUser(uid, { email: emailLimpo, displayName: nomeLimpo });
+    } catch (e) {
+      const codigo = (e as { code?: string }).code;
+      const mensagem =
+        codigo === "auth/email-already-exists"
+          ? "Já existe outra conta com esse e-mail."
+          : codigo === "auth/user-not-found"
+            ? "Essa conta não existe mais no Authentication."
+            : "Não foi possível atualizar o login (Authentication).";
+      return NextResponse.json({ erro: mensagem }, { status: 400 });
+    }
+
+    const db = getAdminDb();
+    await db.doc(`usuarios/${uid}`).update({ nome: nomeLimpo, email: emailLimpo });
+    // merge:true (2026-10-01) — nem todo papel tem esse doc hoje (só "aluno"
+    // ganha um na criação), mas não custa manter em sincronia se existir, e
+    // criar um não quebra nada pra quem ainda não tinha.
+    await db.doc(`usuariosPublicos/${uid}`).set(
+      { nome: nomeLimpo, email: emailLimpo },
+      { merge: true },
+    );
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("Erro inesperado ao editar usuário:", e);
+    return NextResponse.json(
+      { erro: "Erro interno ao editar usuário. Tente de novo em instantes." },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: Request) {
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;

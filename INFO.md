@@ -381,6 +381,86 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-01** *(ainda não commitado — aguardando "pode subir")* —
+  `/declaracoes` → "Emitir certificado" ganhou um **checklist por pessoa**
+  (achado real testando: evento simples mostrava o botão "Baixar PDF"
+  ATIVO pra todo mundo que já tinha pago, mesmo sem nenhuma presença
+  confirmada — o backend barrava certo, mas a tela não dava nenhuma pista
+  visual de que ia falhar). Cada candidato agora mostra selos (✓ verde /
+  relógio cinza) dos requisitos que faltam — pagamento, liberação,
+  presença — espelhando as MESMAS regras não-staff de `/api/certificados`
+  (de propósito sem usar o bypass que o próprio admin tem lá: essa tela é
+  pensada como verificação de quem está apto de verdade, não um atalho pra
+  forçar sem os requisitos). "Baixar PDF" só fica clicável quando todos os
+  selos da pessoa estiverem verdes. Checklist por papel: aluno/participante
+  — pagamento (se tiver taxa) + liberação + presença (só evento simples);
+  avaliador/moderador — liberação (algum trabalho dela já liberado);
+  monitor — liberação (mais presença, só em evento simples, ele nunca
+  paga); orientador — sem check nenhum (nada bloqueia além do trabalho já
+  estar na lista). Ganhou também um filtro **Alunos / Outros cargos**
+  embaixo da busca, já que só alunos/participantes pagam e se inscrevem —
+  o resto (avaliador, moderador, monitor, orientador) é só atribuído por
+  fora pelo admin.
+- **2026-10-01** *(ainda não commitado — aguardando "pode subir")* —
+  `/declaracoes` → "Emitir certificado" (a "rede de proteção" pra quando o
+  autoatendimento falha) **nunca mostrava participante de evento "simples"
+  na busca** — achado durante a conversa: a lista inteira vinha de
+  `trabalhos`, que nem existe pra esse tipo de evento; só monitor aparecia.
+  Agora aparece assim que "apto" (mesmo critério do pagamento em
+  `/api/certificados` — com taxa, só quem já pagou; sem taxa, todo mundo
+  que demonstrou interesse) — igual ao evento completo, onde o critério de
+  aparecer é o trabalho estar "aceito". Gerar o PDF continua podendo falhar
+  por falta de presença/liberação (o erro aparece ali na hora, a pessoa não
+  some da lista). De quebra, achado faltando: a rota de participante nunca
+  aceitava `uidAlvo` — só dava pra gerar o PRÓPRIO certificado por ali,
+  nunca o de quem foi buscado na tela (mesmo mecanismo que avaliador/
+  moderador/monitor já tinham, só faltava nesse papel).
+- **2026-10-01** *(ainda não commitado — aguardando "pode subir")* — Duas
+  melhorias em `/usuarios` (pedido explícito do usuário, por falhas
+  observadas nos últimos dias — resolver sem precisar violar a senha de
+  ninguém): **editar nome/e-mail** (novo botão `IdCard`, PATCH
+  `/api/usuarios`) — troca o e-mail de LOGIN de verdade no Firebase Auth
+  (`auth.updateUser`), não só o campo espelho do Firestore, e sincroniza
+  `usuarios` + `usuariosPublicos` junto (mesma lição da correção do
+  Matheus Fukuda, 2026-09-30: editar só o Firestore deixa a pessoa sem
+  conseguir entrar com o e-mail "corrigido"). O botão "Redefinir senha"
+  (`KeyRound`) já existia antes, mandando o link de recuperação padrão do
+  Firebase — não precisou de nada novo. Dentro do filtro "Aluno", dois
+  sub-filtros novos: **Fatec/Externos** (pills) e **curso** (select, lista
+  de `src/lib/cursos.ts`) — só aparecem com "Aluno" selecionado, já que
+  vínculo/curso não fazem sentido pros outros papéis.
+
+- **2026-10-01** *(ainda não commitado — aguardando "pode subir")* —
+  **Certificado de monitor em evento "simples" nunca tinha como ser
+  liberado** — achado durante a conversa: a tela que liga
+  `monitor.certificadoLiberado` (botão "Emitir certificados") só existe na
+  aba de trabalhos de evento completo, que nem renderiza pra evento
+  simples (`InscritosSimplesView` toma o lugar inteiro). `/api/certificados`
+  ganhou um caminho próprio pra `papel === "monitor"` quando
+  `evento.tipo === "simples"`: libera junto com o **mesmo botão "Liberar
+  certificados" do Ensalamento** que já libera o participante
+  (`evento.certificadosLiberados`, em vez do campo separado
+  `monitor.certificadoLiberado`), continua **sem exigir pagamento** (mesma
+  regra de sempre do monitor em evento completo), mas passa a **exigir
+  presença confirmada pelo QR** (mesma fonte do papel "participante" —
+  pressupõe que o monitor também clica "Participar" como inscrito comum,
+  sem precisar pagar, só pra poder escanear o mesmo QR que todo mundo).
+  Evento completo não muda em nada. `/aluno/certificacoes` atualizado pra
+  bater com essa regra (senão o botão de baixar nunca aparecia pro
+  monitor de evento simples, mesmo liberado).
+- **2026-10-01** *(ainda não commitado — aguardando "pode subir")* —
+  **Presença manual** em `/ensalamento`, pedido explícito do usuário: às
+  vezes a pessoa não consegue escanear o QR (câmera com problema, sem
+  internet no local, etc). Clicar no selo do dia (D1/D2/D3, ou o badge
+  único de evento de 1 dia) marca/desmarca a presença direto, sem QR — só
+  admin/organização, DE PROPÓSITO sem o monitor (ver
+  `/api/inscricoes/confirmar-presenca-manual`, nova rota Admin SDK): dar
+  esse poder pro monitor anularia a auditoria por dia que existe bem pra
+  desconfiar de um monitor marcando presença falsa pra um amigo. No modo
+  monitor, clicar no selo continua só abrindo/fechando a dica de
+  data/hora (não editável); no modo admin, clicar alterna a presença de
+  verdade — o hover continua mostrando a dica de data/hora pra quem já
+  está confirmado, independente do clique.
 - **2026-09-30** — Bug real achado pelo usuário: **Edubox mandava a carga
   horária CHEIA do evento pra todo mundo**, mesmo sem presença confirmada
   nenhuma — `/api/edubox/lancar` calculava `chpins` uma vez só a partir de

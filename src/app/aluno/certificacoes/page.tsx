@@ -87,21 +87,33 @@ function LinhaCertificado({
   );
 }
 
-/** Declaração de monitor (2026-09-01) — sem pagamento envolvido, só depende
- * do "Emitir certificados" liberar. */
+/** Declaração de monitor (2026-09-01) — evento completo: sem pagamento
+ * envolvido, só depende do "Emitir certificados" (em /trabalhos) liberar.
+ * Evento "simples" (2026-10-01, achado: esse botão nem existe pra evento
+ * simples, monitor.certificadoLiberado nunca tinha como virar true) — usa
+ * a MESMA liberação do participante (evento.certificadosLiberados, o botão
+ * "Liberar certificados" do Ensalamento) e exige presença confirmada pelo
+ * QR (mesma fonte do papel "participante"), continua sem exigir pagamento.
+ * Mesma regra de /api/certificados. */
 function LinhaCertificadoMonitor({
   monitoria,
   evento,
+  inscricao,
   baixando,
   erro,
   onBaixar,
 }: {
   monitoria: MonitorEvento;
   evento: Evento | undefined;
+  inscricao: InscricaoEvento | undefined;
   baixando: boolean;
   erro: string | undefined;
   onBaixar: () => void;
 }) {
+  const simples = evento?.tipo === "simples";
+  const liberado = simples ? !!evento?.certificadosLiberados : !!monitoria.certificadoLiberado;
+  const semPresenca = simples && diasConfirmadosCount(inscricao) === 0;
+
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-fatec-line bg-white p-5">
       <div className="flex items-center gap-4">
@@ -114,7 +126,12 @@ function LinhaCertificadoMonitor({
           </p>
           <p className="text-sm text-fatec-muted">{evento?.nome ?? monitoria.eventoId}</p>
         </div>
-        {monitoria.certificadoLiberado ? (
+        {liberado && semPresenca ? (
+          <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-fatec-muted">
+            <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Sem presença confirmada
+          </span>
+        ) : liberado ? (
           <button
             type="button"
             onClick={onBaixar}
@@ -330,6 +347,7 @@ export default function AlunoCertificacoesPage() {
                   key={m.id}
                   monitoria={m}
                   evento={eventos.find((e) => e.id === m.eventoId)}
+                  inscricao={inscricoes.get(m.eventoId)}
                   baixando={baixandoId === `monitor_${m.eventoId}`}
                   erro={
                     erroId?.id === `monitor_${m.eventoId}` ? erroId.msg : undefined

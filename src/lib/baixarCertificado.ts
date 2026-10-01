@@ -14,7 +14,10 @@ type ChaveCertificado =
   | { papel: "orientador"; trabalhoId: string }
   // Certificado de participação (2026-09-22) — evento "simples", sem
   // trabalho nenhum por trás, só a inscrição do próprio uid nesse evento.
-  | { papel: "participante"; eventoId: string };
+  // uidAlvo (2026-10-01) — mesmo espírito do avaliador/moderador/monitor
+  // acima, pra tela Declarações → "Emitir certificado" gerar o de outra
+  // pessoa.
+  | { papel: "participante"; eventoId: string; uidAlvo?: string };
 
 /** Busca o PDF autenticado e dispara o download no navegador — usado tanto
  * pelo certificado do aluno (por trabalho) quanto pelas declarações de
