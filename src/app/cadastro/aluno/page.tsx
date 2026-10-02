@@ -80,17 +80,43 @@ export default function CadastroAlunoPage() {
       return;
     }
 
+    // E-mail sempre minúsculo (2026-10-02, achado real: Luciano conseguiu
+    // duas contas porque "Drlucianorosaguimaraes@..." e
+    // "drlucianorosaguimaraes@..." não bateram como o mesmo e-mail — uma
+    // delas ficou órfã, sem conta, com inscrição e pagamento pendente que
+    // nunca ia dar certo). Normaliza ANTES de criar a conta no Auth, não só
+    // ao gravar no Firestore — é a criação em si que precisa tratar as duas
+    // grafias como a mesma pessoa.
+    const emailNormalizado = email.trim().toLowerCase();
+    const cpfLimpo = cpf.replace(/\D/g, "");
+
     setEnviando(true);
     try {
-      const credencial = await createUserWithEmailAndPassword(auth, email, senha);
+      // CPF é obrigatório e único por pessoa (2026-10-02, pedido explícito
+      // do usuário) — checa ANTES de criar a conta no Auth, pra nunca
+      // acabar com uma conta órfã se o CPF já estiver em uso (mesmo
+      // cuidado do e-mail normalizado acima).
+      const respostaCpf = await fetch("/api/cadastro/checar-cpf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpf: cpfLimpo }),
+      });
+      const dadosCpf = await respostaCpf.json().catch(() => null);
+      if (dadosCpf?.emUso) {
+        setErro("Já existe uma conta cadastrada com esse CPF.");
+        setEnviando(false);
+        return;
+      }
+
+      const credencial = await createUserWithEmailAndPassword(auth, emailNormalizado, senha);
       try {
         const batch = writeBatch(db);
         batch.set(doc(db, "usuarios", credencial.user.uid), {
           nome: nome.trim(),
-          email: email.trim(),
+          email: emailNormalizado,
           papel: "aluno",
           vinculoFatec,
-          cpf: cpf.replace(/\D/g, ""),
+          cpf: cpfLimpo,
           dataNascimento,
           ...(vinculoFatec ? { curso } : {}),
         });
@@ -99,7 +125,7 @@ export default function CadastroAlunoPage() {
         // ler o doc usuarios/{uid} inteiro (que tem cpf/dataNascimento).
         batch.set(doc(db, "usuariosPublicos", credencial.user.uid), {
           nome: nome.trim(),
-          email: email.trim(),
+          email: emailNormalizado,
           vinculoFatec,
         });
         await batch.commit();

@@ -65,13 +65,19 @@ export async function POST(request: Request) {
         status: 400,
       });
     }
+    // E-mail sempre minúsculo (2026-10-02, achado real: duas contas pra
+    // mesma pessoa, uma com "Drfulano@..." outra com "drfulano@...", só
+    // porque não normalizávamos — uma delas ficou órfã, com inscrição e
+    // pagamento pendente que nunca ia dar certo). Normaliza ANTES de criar
+    // no Auth, não só ao gravar no Firestore.
+    const emailNormalizado = body.email.trim().toLowerCase();
 
     const senha = senhaTemporaria();
 
     let uid: string;
     try {
       const contaCriada = await getAdminAuth().createUser({
-        email: body.email.trim(),
+        email: emailNormalizado,
         password: senha,
         displayName: body.nome.trim(),
       });
@@ -90,7 +96,7 @@ export async function POST(request: Request) {
       .doc(`usuarios/${uid}`)
       .set({
         nome: body.nome.trim(),
-        email: body.email.trim(),
+        email: emailNormalizado,
         papel: body.papel,
         ...(body.atribuicoesEventos && body.atribuicoesEventos.length > 0
           ? {
@@ -115,7 +121,7 @@ export async function POST(request: Request) {
     if (body.papel === "aluno") {
       await db.doc(`usuariosPublicos/${uid}`).set({
         nome: body.nome.trim(),
-        email: body.email.trim(),
+        email: emailNormalizado,
       });
     }
 
@@ -132,7 +138,7 @@ export async function POST(request: Request) {
         const labels = listarLabels(Array.from(papeisDeAvaliacao));
         const rota = ROTA_POR_PAPEL[body.papel];
         await enviarEmail({
-          to: body.email.trim(),
+          to: emailNormalizado,
           subject: `Você foi cadastrado(a) como ${labels} no SIGMA`,
           html: modeloEmail(
             `<p>Você foi cadastrado(a) como <strong>${labels}</strong> no SIGMA, o sistema de submissão e avaliação de trabalhos acadêmicos da Fatec Ivaiporã.</p>
@@ -199,7 +205,10 @@ export async function PATCH(request: Request) {
       );
     }
     const nomeLimpo = nome.trim();
-    const emailLimpo = email.trim();
+    // Sempre minúsculo (2026-10-02) — mesmo critério usado na criação de
+    // conta agora (cadastro/aluno e POST acima), pra nunca mais duas contas
+    // diferirem só por maiúscula/minúscula.
+    const emailLimpo = email.trim().toLowerCase();
 
     try {
       await getAdminAuth().updateUser(uid, { email: emailLimpo, displayName: nomeLimpo });

@@ -381,6 +381,97 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* —
+  Checagem de **CPF duplicado** (pedido explícito do usuário, mesma linha
+  do e-mail normalizado acima: CPF é obrigatório e único por pessoa, mas
+  nada impedia duas contas com o mesmo). Nova rota pública
+  `/api/cadastro/checar-cpf` (sem Authorization — quem está se cadastrando
+  ainda não tem conta nenhuma, não tem token; só devolve um booleano, nunca
+  de quem é o CPF), chamada em dois lugares: **autocadastro**
+  (`cadastro/aluno/page.tsx`) — checa ANTES de criar a conta no Auth, pra
+  nunca deixar uma conta órfã se o CPF já estiver em uso (mesmo cuidado do
+  e-mail); e **Configurações** (`ConfiguracoesModal.tsx`) — quando alguém
+  de conta antiga preenche o CPF pela primeira vez, com `excluirUid` pro
+  próprio uid pra não acusar a pessoa resalvando o CPF que já é dela.
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* — Bug
+  real achado ao tentar enviar a Semana de Medicina pro Edubox ("1 sem
+  CPF/nascimento"): não era ninguém sem CPF (nenhum dos 109 alunos
+  cadastrados está — por regra, não dá). Era uma inscrição **órfã** —
+  "Luciano rosa guimaraes" tinha 2 registros nesse evento: um pago, com
+  conta funcionando (`drlucianorosaguimaraes@...`), e outro "pendente" cuja
+  conta **não existia mais no Auth nem no Firestore** (só a
+  `inscricaoEvento` tinha ficado pra trás) —
+  `Drlucianorosaguimaraes@gmail.com`, com **D maiúsculo**: as duas contas
+  nunca foram tratadas como o mesmo e-mail. Inscrição órfã apagada.
+  **Corrigido pra não acontecer de novo**: e-mail sempre normalizado pra
+  minúsculo antes de criar/editar conta no Firebase Auth — não só ao
+  gravar no Firestore (que já tinha `.trim()`, mas nunca `.toLowerCase()`).
+  Alterado em `cadastro/aluno/page.tsx` (autocadastro) e
+  `/api/usuarios/route.ts` (POST criar conta pelo admin + PATCH editar
+  e-mail). Login/recuperação de senha não precisaram de mudança — o
+  Firebase já trata esses dois como case-insensitive por conta própria; só
+  a CRIAÇÃO/EDIÇÃO de conta não normalizava.
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* —
+  `/relatorios` de evento "simples" ganhou conteúdo próprio (pedido
+  explícito do usuário: era uma cópia do relatório de evento completo, só
+  sem submissão/área temática, não fazia sentido). Pra esse tipo de evento,
+  o 2º KPI vira **"Presença confirmada"** (em vez de "Submissões", sempre
+  0) e as seções de nota/trabalho por área são trocadas por: **Perfil dos
+  inscritos** (Fatec vs externo), **Inscritos por curso** (ranking, curso
+  vem de `usuarios/{uid}`, buscado à parte já que não mora em
+  `InscricaoEvento`) e, só quando o evento tem mais de 1 dia, **Presença
+  por dia** (queda de comparecimento dia a dia). Evento completo e "Todos
+  os eventos" continuam exatamente como sempre.
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* — Card
+  de evento no `/dashboard` ganhou uma tag sempre visível **"Simples" /
+  "Completo"** (sky / navy, ao lado de "Destaque" quando tiver) — pedido
+  explícito do usuário, pra quem abre o Painel já entender de cara que os
+  dois tipos têm proposta diferente, sem precisar clicar em nada.
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* — Card
+  de evento no `/dashboard` (Painel) mostrava sempre "N submissões" — pra
+  evento "simples" isso é sempre 0 (não tem trabalho nenhum), não dizia
+  nada de útil. Agora mostra "N inscritos" nesse caso (métrica que faz
+  sentido pra esse tipo, já que a proposta é diferente da do evento
+  completo); evento completo não muda, continua "submissões".
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* —
+  Primeira leva de responsividade (usuário pediu uma passada geral; Fase 1
+  combinada foram os 3 fluxos que ele disse abrir pelo celular de verdade:
+  lista de eventos, contagem de inscritos, Relatórios — resto do painel
+  fica pra uma Fase 2, se topar). `/eventos` (lista de cards) e o modal de
+  Inscritos **já estavam bem construídos** pra celular (grid com
+  `sm:contents` virando lista empilhada, badges com `flex-wrap`) — nenhuma
+  mudança precisou. Achado real em `/relatorios`: a barra de "nota média
+  por área temática" tinha uma coluna de nome fixa em `w-44` (176px) sem
+  nenhum breakpoint — em tela de celular (<380px aprox.) ficava espremida
+  ou cortada pelo `overflow-x-hidden` do layout. Corrigido com o mesmo
+  truque `sm:contents` do modal de Inscritos: empilha (nome em cima, barra
+  + contagem embaixo) abaixo de `sm:`, vira linha horizontal de `sm:` pra
+  cima, igual sempre foi. De quebra, 3 cards dessa mesma página usavam
+  `bg-gradient-to-br` — proibido pelo `DESIGN.md` ("Don't use gradients
+  anywhere") — trocados por preenchimento sólido (`bg-fatec-orange-50`).
+  **Achado à parte, não corrigido ainda**: o botão "Exportar (PDF)" em
+  Relatórios não tem nenhum `onClick` — não faz nada ao clicar. Não é bug
+  de responsividade, é feature que nunca foi implementada; avisar o
+  usuário antes de decidir se entra no escopo.
+
+- **2026-10-02** *(ainda não commitado — aguardando "pode subir")* — Achado
+  real relatado por um admin: editou o e-mail de um aluno em `/usuarios` e,
+  em seguida, mandou a redefinição de senha — "não funcionou", sem erro
+  nenhum na tela. Causa: `enviarRedefinicao()` chamava
+  `sendPasswordResetEmail` **sem try/catch nenhum** — qualquer falha
+  (suspeita principal: clicar "Redefinir senha" rápido demais depois de
+  editar manda pro e-mail ANTIGO, que já não existe mais no Auth depois da
+  troca — `auth/user-not-found`) rejeitava a promise em silêncio, a tela
+  ficava do jeito que estava, sem sucesso nem erro. Corrigido: try/catch
+  com mensagem clara por código de erro (`auth/user-not-found`,
+  `auth/too-many-requests`, `auth/invalid-email`), botão mostra
+  "Enviando..." enquanto processa.
+
 - **2026-10-01** *(ainda não commitado — aguardando "pode subir")* —
   `/declaracoes` → "Emitir certificado" ganhou um **checklist por pessoa**
   (achado real testando: evento simples mostrava o botão "Baixar PDF"

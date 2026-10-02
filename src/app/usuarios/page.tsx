@@ -58,6 +58,8 @@ export default function UsuariosPage() {
 
   const [redefinindo, setRedefinindo] = useState<UsuarioRegistro | null>(null);
   const [linkEnviado, setLinkEnviado] = useState(false);
+  const [enviandoLink, setEnviandoLink] = useState(false);
+  const [erroRedefinir, setErroRedefinir] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState<UsuarioRegistro | null>(null);
 
   const [editando, setEditando] = useState<UsuarioRegistro | null>(null);
@@ -117,12 +119,39 @@ export default function UsuariosPage() {
   function fecharRedefinicao() {
     setRedefinindo(null);
     setLinkEnviado(false);
+    setErroRedefinir(null);
   }
 
+  // Sem try/catch nenhum antes (2026-10-02, achado: um admin editou o
+  // e-mail de um aluno e, na sequência, mandou a redefinição — relatou que
+  // "não funcionou", sem erro nenhum na tela). Causa mais provável: clicar
+  // rápido demais depois de editar manda pro e-mail ANTIGO (ainda guardado
+  // em `redefinindo`, que não atualiza sozinho com a edição de outra
+  // pessoa) — e-mail que já não existe mais no Auth depois da troca
+  // (auth/user-not-found). Sem captura de erro, a promise rejeitava e a
+  // tela ficava do jeito que estava, sem mensagem nenhuma — parecia que
+  // "não fez nada", mas na real deu erro e ninguém viu.
   async function enviarRedefinicao() {
     if (!redefinindo) return;
-    await sendPasswordResetEmail(auth, redefinindo.email);
-    setLinkEnviado(true);
+    setErroRedefinir(null);
+    setEnviandoLink(true);
+    try {
+      await sendPasswordResetEmail(auth, redefinindo.email);
+      setLinkEnviado(true);
+    } catch (e) {
+      const codigo = (e as { code?: string }).code;
+      const mensagem =
+        codigo === "auth/user-not-found"
+          ? "Esse e-mail não existe mais no Authentication — se você editou o e-mail há pouco, feche e abra essa tela de novo pra pegar o e-mail atualizado."
+          : codigo === "auth/too-many-requests"
+            ? "Muitas tentativas seguidas — espere um pouco e tente de novo."
+            : codigo === "auth/invalid-email"
+              ? "E-mail inválido."
+              : "Não foi possível enviar o link. Tente de novo.";
+      setErroRedefinir(mensagem);
+    } finally {
+      setEnviandoLink(false);
+    }
   }
 
   function fecharCriar() {
@@ -655,6 +684,11 @@ export default function UsuariosPage() {
               <span className="font-semibold">{redefinindo?.nome}</span> (
               {redefinindo?.email})?
             </p>
+            {erroRedefinir && (
+              <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+                {erroRedefinir}
+              </p>
+            )}
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
@@ -666,9 +700,10 @@ export default function UsuariosPage() {
               <button
                 type="button"
                 onClick={enviarRedefinicao}
-                className="rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                disabled={enviandoLink}
+                className="rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
               >
-                Enviar link
+                {enviandoLink ? "Enviando..." : "Enviar link"}
               </button>
             </div>
           </>

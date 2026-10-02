@@ -2,23 +2,37 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Calendar, FileText, ArrowRight } from "lucide-react";
+import { Calendar, FileText, Users, ArrowRight } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
+import { useInscricoesRelatorio } from "@/lib/data/inscricoes";
 
 export default function DashboardPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  // Evento "simples" (2026-10-02, achado pelo usuário) — não tem trabalho
+  // nenhum, "submissões" sempre dava 0 e não dizia nada sobre o evento; o
+  // card mostra inscritos ali, que é a métrica que faz sentido pra esse
+  // tipo (a proposta dos dois é diferente: completo mede submissão,
+  // simples mede quem se inscreveu/compareceu).
+  const eventoIds = useMemo(() => eventos.map((e) => e.id), [eventos]);
+  const { inscricoes } = useInscricoesRelatorio(eventoIds);
 
   const totalPorEvento = useMemo(() => {
     const mapa: Record<string, number> = {};
     for (const t of trabalhos) mapa[t.eventoId] = (mapa[t.eventoId] ?? 0) + 1;
     return mapa;
   }, [trabalhos]);
+
+  const inscritosPorEvento = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const i of inscricoes) mapa[i.eventoId] = (mapa[i.eventoId] ?? 0) + 1;
+    return mapa;
+  }, [inscricoes]);
 
   if (carregando || !perfil) return null;
 
@@ -73,11 +87,28 @@ export default function DashboardPage() {
                       <h2 className="font-semibold leading-snug text-fatec-navy-900">
                         {ev.nome}
                       </h2>
-                      {ev.destaque && (
-                        <span className="flex-none rounded-full bg-fatec-orange-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-orange-600">
-                          Destaque
+                      {/* Tag de tipo (2026-10-02, pedido explícito do
+                          usuário) — sempre visível, pra quem abre o Painel
+                          já entender de cara que simples e completo são
+                          propostas diferentes (um não tem trabalho/
+                          avaliação nenhuma, o outro tem o fluxo inteiro).
+                          Destaque continua do lado, quando tiver. */}
+                      <div className="flex flex-none flex-wrap items-center justify-end gap-1.5">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            ev.tipo === "simples"
+                              ? "bg-fatec-sky-100 text-fatec-sky-600"
+                              : "bg-fatec-navy-100 text-fatec-navy-800"
+                          }`}
+                        >
+                          {ev.tipo === "simples" ? "Simples" : "Completo"}
                         </span>
-                      )}
+                        {ev.destaque && (
+                          <span className="rounded-full bg-fatec-orange-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-orange-600">
+                            Destaque
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-2 flex items-center gap-1.5 text-sm text-fatec-muted">
                       <Calendar className="h-4 w-4 flex-none" strokeWidth={1.75} />
@@ -87,15 +118,24 @@ export default function DashboardPage() {
 
                   <div className="mt-5 flex items-center justify-between border-t border-fatec-line pt-4">
                     <p className="flex items-center gap-1.5">
-                      <FileText
-                        className="h-4 w-4 flex-none text-fatec-navy-800"
-                        strokeWidth={1.75}
-                      />
+                      {ev.tipo === "simples" ? (
+                        <Users
+                          className="h-4 w-4 flex-none text-fatec-navy-800"
+                          strokeWidth={1.75}
+                        />
+                      ) : (
+                        <FileText
+                          className="h-4 w-4 flex-none text-fatec-navy-800"
+                          strokeWidth={1.75}
+                        />
+                      )}
                       <span className="text-2xl font-bold tabular-nums text-fatec-navy-900">
-                        {totalPorEvento[ev.id] ?? 0}
+                        {ev.tipo === "simples"
+                          ? (inscritosPorEvento[ev.id] ?? 0)
+                          : (totalPorEvento[ev.id] ?? 0)}
                       </span>
                       <span className="text-sm text-fatec-muted">
-                        submissões
+                        {ev.tipo === "simples" ? "inscritos" : "submissões"}
                       </span>
                     </p>
                     <span className="flex items-center gap-1 text-sm font-medium text-fatec-sky-600 opacity-0 transition-opacity group-hover:opacity-100">

@@ -81,8 +81,23 @@ function ConfiguracoesForm({
     }
     setSalvandoDadosEdubox(true);
     try {
+      const cpfLimpo = cpf.replace(/\D/g, "");
+      // CPF é obrigatório e único por pessoa (2026-10-02, pedido explícito
+      // do usuário) — excluirUid pro próprio uid pra não acusar a pessoa
+      // resalvando o CPF que já é dela.
+      const respostaCpf = await fetch("/api/cadastro/checar-cpf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpf: cpfLimpo, excluirUid: uid }),
+      });
+      const dadosCpf = await respostaCpf.json().catch(() => null);
+      if (dadosCpf?.emUso) {
+        setErroDadosEdubox("Já existe uma conta cadastrada com esse CPF.");
+        return;
+      }
+
       await updateDoc(doc(db, "usuarios", uid), {
-        cpf: cpf.replace(/\D/g, ""),
+        cpf: cpfLimpo,
         dataNascimento,
       });
       setDadosEduboxSalvos(true);

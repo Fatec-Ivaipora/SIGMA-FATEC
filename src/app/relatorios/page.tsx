@@ -2,21 +2,25 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { collection, documentId, getDocs, query, where } from "firebase/firestore";
 import {
   Download,
   ChevronDown,
   Send,
   Users,
+  UserCheck,
   Wallet,
   DollarSign,
   Trophy,
 } from "lucide-react";
+import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
-import { useInscricoesRelatorio } from "@/lib/data/inscricoes";
+import { useInscricoesRelatorio, diasConfirmadosCount } from "@/lib/data/inscricoes";
+import { diasDoEvento } from "@/lib/certificadoDias";
 import { separarGrupoSubArea } from "@/lib/areasTematicas";
 
 const LIMITE_RANKING = 10;
@@ -82,6 +86,90 @@ function RelatoriosContent() {
     [pagantes],
   );
   const totalSubmissoes = trabalhosDoEvento.length;
+
+  // Evento "simples" (2026-10-02, pedido explícito do usuário) — o
+  // relatório de evento completo (submissão/nota/área temática) não faz
+  // sentido pra esse tipo, que não tem trabalho nenhum. Troca por dados que
+  // existem de verdade pra evento simples: perfil de quem se inscreveu
+  // (Fatec vs externo, curso) e presença por dia (só quando o evento tem
+  // mais de 1 dia, ver diasDoEvento em src/lib/certificadoDias.ts).
+  const eventoSelecionado = eventoId === "todos" ? undefined : eventos.find((e) => e.id === eventoId);
+  const ehSimples = eventoSelecionado?.tipo === "simples";
+
+  const presencaConfirmadaCount = useMemo(
+    () => inscricoesDoEvento.filter((i) => diasConfirmadosCount(i) > 0).length,
+    [inscricoesDoEvento],
+  );
+
+  const vinculoStats = useMemo(() => {
+    const fatec = inscricoesDoEvento.filter((i) => i.vinculoFatec !== false).length;
+    return { fatec, externo: inscricoesDoEvento.length - fatec };
+  }, [inscricoesDoEvento]);
+
+  // Curso não mora em InscricaoEvento (só em usuarios/{uid}) — busca à
+  // parte, só pra quem é da Fatec (externo não tem curso). firestore.rules
+  // libera admin/organização lerem qualquer usuarios/{uid}, então dá pra
+  // consultar direto do client, em blocos de 30 (limite do "in").
+  const [cursoPorUid, setCursoPorUid] = useState<Record<string, string>>({});
+  const uidsFatecKey = useMemo(
+    () =>
+      inscricoesDoEvento
+        .filter((i) => i.vinculoFatec !== false)
+        .map((i) => i.uid)
+        .join(","),
+    [inscricoesDoEvento],
+  );
+  useEffect(() => {
+    if (!ehSimples || !uidsFatecKey) {
+      Promise.resolve().then(() => setCursoPorUid({}));
+      return;
+    }
+    const uids = uidsFatecKey.split(",");
+    let cancelado = false;
+    (async () => {
+      const blocos: string[][] = [];
+      for (let i = 0; i < uids.length; i += 30) blocos.push(uids.slice(i, i + 30));
+      const resultados = await Promise.all(
+        blocos.map((bloco) =>
+          getDocs(query(collection(db, "usuarios"), where(documentId(), "in", bloco))),
+        ),
+      );
+      if (cancelado) return;
+      const mapa: Record<string, string> = {};
+      resultados.forEach((snap) =>
+        snap.forEach((d) => {
+          const curso = d.data().curso as string | undefined;
+          if (curso) mapa[d.id] = curso;
+        }),
+      );
+      setCursoPorUid(mapa);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [ehSimples, uidsFatecKey]);
+
+  const porCurso = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const i of inscricoesDoEvento) {
+      const curso = cursoPorUid[i.uid];
+      if (!curso) continue;
+      mapa.set(curso, (mapa.get(curso) ?? 0) + 1);
+    }
+    return Array.from(mapa.entries())
+      .map(([curso, n]) => ({ curso, n }))
+      .sort((a, b) => b.n - a.n);
+  }, [inscricoesDoEvento, cursoPorUid]);
+
+  const diasEventoSelecionado = eventoSelecionado ? diasDoEvento(eventoSelecionado) : 1;
+  const presencaPorDia = useMemo(() => {
+    if (!ehSimples || diasEventoSelecionado <= 1) return [];
+    return Array.from({ length: diasEventoSelecionado }, (_, idx) => {
+      const dia = idx + 1;
+      const n = inscricoesDoEvento.filter((i) => i.presencasConfirmadas?.[String(dia)]).length;
+      return { dia, n };
+    });
+  }, [ehSimples, diasEventoSelecionado, inscricoesDoEvento]);
 
   // Ranking por área temática — só entra quem já tem nota do avaliador,
   // ordenado da maior pra menor; áreas com mais trabalhos aparecem primeiro
@@ -241,18 +329,22 @@ function RelatoriosContent() {
             </div>
             <div className="rounded-2xl border border-fatec-line bg-white p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-100 text-fatec-navy-800">
-                <Send className="h-5 w-5" strokeWidth={1.75} />
+                {ehSimples ? (
+                  <UserCheck className="h-5 w-5" strokeWidth={1.75} />
+                ) : (
+                  <Send className="h-5 w-5" strokeWidth={1.75} />
+                )}
               </span>
               <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
-                {totalSubmissoes}
+                {ehSimples ? presencaConfirmadaCount : totalSubmissoes}
               </p>
               <p className="text-sm text-fatec-muted">
-                Submissões
+                {ehSimples ? "Presença confirmada" : "Submissões"}
                 {totalInscricoes > 0 &&
-                  ` · ${Math.round((totalSubmissoes / totalInscricoes) * 100)}% dos inscritos`}
+                  ` · ${Math.round(((ehSimples ? presencaConfirmadaCount : totalSubmissoes) / totalInscricoes) * 100)}% dos inscritos`}
               </p>
             </div>
-            <div className="rounded-2xl border border-fatec-orange-400/40 bg-gradient-to-br from-fatec-orange-100/40 to-white p-5">
+            <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
                 <Wallet className="h-5 w-5" strokeWidth={1.75} />
               </span>
@@ -265,7 +357,7 @@ function RelatoriosContent() {
                   ` · ${Math.round((pagantes.length / totalInscricoes) * 100)}% dos inscritos`}
               </p>
             </div>
-            <div className="rounded-2xl border border-fatec-orange-400/40 bg-gradient-to-br from-fatec-orange-100/40 to-white p-5">
+            <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
                 <DollarSign className="h-5 w-5" strokeWidth={1.75} />
               </span>
@@ -279,7 +371,10 @@ function RelatoriosContent() {
             </div>
           </div>
 
-          {/* Nota média por área temática */}
+          {/* Nota média por área temática — evento completo (trabalho
+              acadêmico) só; evento simples não tem trabalho/área nenhuma,
+              ver as seções abaixo. */}
+          {!ehSimples && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -327,10 +422,10 @@ function RelatoriosContent() {
                   return (
                     <div
                       key={n.area}
-                      className="group flex items-center gap-3.5"
+                      className="group flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
                       title={`${n.area}: nota média ${n.media.toFixed(1)}, ${n.n} trabalhos`}
                     >
-                      <span className="flex w-44 flex-none items-center gap-1.5 truncate text-sm text-fatec-ink">
+                      <span className="flex items-center gap-1.5 truncate text-sm text-fatec-ink sm:w-44 sm:flex-none">
                         {destaque && (
                           <Trophy
                             className="h-3.5 w-3.5 flex-none text-fatec-orange-500"
@@ -339,29 +434,38 @@ function RelatoriosContent() {
                         )}
                         <span className="truncate">{n.area}</span>
                       </span>
-                      <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
-                        <div
-                          className="flex h-6 items-center justify-end rounded-xl px-2.5 transition-[filter] duration-150 group-hover:brightness-110"
-                          style={{
-                            width: `${Math.max(8, pct)}%`,
-                            backgroundColor: destaque ? "#ea741c" : "#2376b9",
-                          }}
-                        >
-                          <span className="text-xs font-bold tabular-nums text-white">
-                            {n.media.toFixed(1)}
-                          </span>
+                      {/* sm:contents (2026-10-02) — abaixo de sm, a barra e a
+                          contagem formam uma 2ª linha própria (nome da área
+                          não fica mais espremido numa coluna de 176px fixos,
+                          que não cabia em tela de celular); de sm pra cima,
+                          os dois viram itens diretos do flex-row de cima,
+                          igual sempre foi (mesmo truque já usado em
+                          InscritosEventoModal.tsx). */}
+                      <div className="flex items-center gap-3.5 sm:contents">
+                        <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
+                          <div
+                            className="flex h-6 items-center justify-end rounded-xl px-2.5 transition-[filter] duration-150 group-hover:brightness-110"
+                            style={{
+                              width: `${Math.max(8, pct)}%`,
+                              backgroundColor: destaque ? "#ea741c" : "#2376b9",
+                            }}
+                          >
+                            <span className="text-xs font-bold tabular-nums text-white">
+                              {n.media.toFixed(1)}
+                            </span>
+                          </div>
                         </div>
+                        <span className="w-20 flex-none text-right text-xs text-fatec-muted">
+                          {n.n} trabalho{n.n === 1 ? "" : "s"}
+                        </span>
                       </div>
-                      <span className="w-20 flex-none text-right text-xs text-fatec-muted">
-                        {n.n} trabalho{n.n === 1 ? "" : "s"}
-                      </span>
                     </div>
                   );
                 })}
               </div>
 
               {areaDestaque && (
-                <div className="flex flex-col gap-3 rounded-2xl border border-fatec-orange-400/30 bg-gradient-to-br from-fatec-orange-100/40 to-white p-5">
+                <div className="flex flex-col gap-3 rounded-2xl border border-fatec-orange-400/30 bg-fatec-orange-50 p-5">
                   <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-fatec-orange-600">
                     <Trophy className="h-3.5 w-3.5" strokeWidth={2} />
                     Área destaque
@@ -397,8 +501,9 @@ function RelatoriosContent() {
               )}
             </div>
           </div>
+          )}
 
-          {/* Melhores trabalhos por área temática */}
+          {!ehSimples && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <h2 className="text-base font-semibold text-fatec-navy-900">
               Melhores trabalhos por área temática
@@ -512,6 +617,158 @@ function RelatoriosContent() {
               </button>
             )}
           </div>
+          )}
+
+          {/* Perfil dos inscritos e Inscritos por curso — só evento
+              "simples" (2026-10-02, pedido explícito do usuário: o
+              relatório de evento completo não fazia sentido aqui, era uma
+              cópia sem submissão/área nenhuma). Reaproveita o mesmo estilo
+              de barra das seções acima, com os dados que esse tipo de
+              evento realmente tem. */}
+          {ehSimples && (
+          <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
+            <h2 className="text-base font-semibold text-fatec-navy-900">
+              Perfil dos inscritos
+            </h2>
+            <p className="mt-0.5 text-sm text-fatec-muted">Vínculo com a Fatec</p>
+
+            <div className="mt-5 flex flex-col gap-3.5">
+              {[
+                { label: "Alunos da Fatec", n: vinculoStats.fatec, cor: "#2376b9" },
+                { label: "De fora", n: vinculoStats.externo, cor: "#5b6b78" },
+              ].map((linha) => {
+                const max = Math.max(vinculoStats.fatec, vinculoStats.externo, 1);
+                const pct = (linha.n / max) * 100;
+                return (
+                  <div
+                    key={linha.label}
+                    className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
+                  >
+                    <span className="truncate text-sm text-fatec-ink sm:w-32 sm:flex-none">
+                      {linha.label}
+                    </span>
+                    <div className="flex items-center gap-3.5 sm:contents">
+                      <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
+                        <div
+                          className="flex h-6 items-center justify-end rounded-xl px-2.5"
+                          style={{ width: `${Math.max(8, pct)}%`, backgroundColor: linha.cor }}
+                        >
+                          <span className="text-xs font-bold tabular-nums text-white">
+                            {linha.n}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="w-20 flex-none text-right text-xs text-fatec-muted">
+                        {totalInscricoes > 0 ? Math.round((linha.n / totalInscricoes) * 100) : 0}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          )}
+
+          {ehSimples && (
+          <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
+            <h2 className="text-base font-semibold text-fatec-navy-900">
+              Inscritos por curso
+            </h2>
+            <p className="mt-0.5 text-sm text-fatec-muted">
+              Só alunos da Fatec — quem é de fora não tem curso
+            </p>
+
+            <div className="mt-5 flex flex-col gap-3.5">
+              {porCurso.length === 0 && (
+                <p className="text-sm text-fatec-muted">
+                  Nenhum aluno da Fatec inscrito ainda.
+                </p>
+              )}
+              {porCurso.map((c, i) => {
+                const max = porCurso[0]?.n ?? 1;
+                const pct = (c.n / max) * 100;
+                const destaque = i === 0;
+                return (
+                  <div
+                    key={c.curso}
+                    className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
+                  >
+                    <span className="flex items-center gap-1.5 truncate text-sm text-fatec-ink sm:w-44 sm:flex-none">
+                      {destaque && (
+                        <Trophy
+                          className="h-3.5 w-3.5 flex-none text-fatec-orange-500"
+                          strokeWidth={1.75}
+                        />
+                      )}
+                      <span className="truncate">{c.curso}</span>
+                    </span>
+                    <div className="flex items-center gap-3.5 sm:contents">
+                      <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
+                        <div
+                          className="flex h-6 items-center justify-end rounded-xl px-2.5"
+                          style={{
+                            width: `${Math.max(8, pct)}%`,
+                            backgroundColor: destaque ? "#ea741c" : "#2376b9",
+                          }}
+                        >
+                          <span className="text-xs font-bold tabular-nums text-white">
+                            {c.n}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="w-20 flex-none text-right text-xs text-fatec-muted">
+                        {c.n} inscrito{c.n === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          )}
+
+          {/* Presença por dia — só evento simples de mais de 1 dia (ver
+              diasDoEvento). Mostra a queda de comparecimento dia a dia,
+              proporcional ao total de inscritos. */}
+          {ehSimples && presencaPorDia.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
+            <h2 className="text-base font-semibold text-fatec-navy-900">
+              Presença por dia
+            </h2>
+            <p className="mt-0.5 text-sm text-fatec-muted">
+              Quantos confirmaram presença em cada dia, de {totalInscricoes} inscritos
+            </p>
+
+            <div className="mt-5 flex flex-col gap-3.5">
+              {presencaPorDia.map((d) => {
+                const pct = totalInscricoes > 0 ? (d.n / totalInscricoes) * 100 : 0;
+                return (
+                  <div
+                    key={d.dia}
+                    className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
+                  >
+                    <span className="truncate text-sm text-fatec-ink sm:w-32 sm:flex-none">
+                      Dia {d.dia}
+                    </span>
+                    <div className="flex items-center gap-3.5 sm:contents">
+                      <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
+                        <div
+                          className="flex h-6 items-center justify-end rounded-xl px-2.5"
+                          style={{ width: `${Math.max(8, pct)}%`, backgroundColor: "#2376b9" }}
+                        >
+                          <span className="text-xs font-bold tabular-nums text-white">{d.n}</span>
+                        </div>
+                      </div>
+                      <span className="w-20 flex-none text-right text-xs text-fatec-muted">
+                        {Math.round(pct)}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          )}
         </div>
       </div>
     </main>
