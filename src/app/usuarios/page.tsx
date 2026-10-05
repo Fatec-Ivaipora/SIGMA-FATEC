@@ -1,7 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, UserPlus, KeyRound, Pencil, IdCard, Trash2, X, Plus } from "lucide-react";
+import {
+  Search,
+  UserPlus,
+  KeyRound,
+  Pencil,
+  IdCard,
+  Trash2,
+  X,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -14,7 +25,8 @@ import { PAPEIS_AVALIACAO } from "@/lib/auth";
 import { PAPEL_META } from "@/components/PapelBadge";
 import { useEventos } from "@/lib/data/eventos";
 import {
-  useUsuarios,
+  useUsuariosPaginado,
+  useBuscaUsuarios,
   atualizarAtribuicoesUsuario,
   atualizarPapeisAvaliacaoUsuario,
   type UsuarioRegistro,
@@ -39,7 +51,6 @@ const PAPEIS_COM_AREA: Papel[] = [...PAPEIS_AVALIACAO];
 
 export default function UsuariosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
-  const { usuarios } = useUsuarios();
   const { eventos } = useEventos(perfil);
 
   const [busca, setBusca] = useState("");
@@ -82,24 +93,40 @@ export default function UsuariosPage() {
   const [filtroCurso, setFiltroCurso] = useState("");
 
   const souAdmin = perfil?.papel === "admin";
+  // Organização ganha permissão de criar avaliador/orientador/moderador
+  // (2026-10-05, pedido explícito do usuário) — nunca aluno/organização/
+  // admin (escalonamento de privilégio), e só pros próprios eventos (já
+  // garantido pelo resto da tela, que escopa eventos por RN-15). O server
+  // (/api/usuarios) reforça essa mesma regra, nunca confia só na UI.
+  const souOrganizacao = perfil?.papel === "organizacao";
+  const possoCriarUsuario = souAdmin || souOrganizacao;
+
+  // Paginação + busca (2026-10-05, pedido explícito do usuário: muita
+  // requisição no banco pra carregar todo mundo de uma vez) — com busca
+  // ativa, troca pra resultado da busca (que já vem filtrada pelo
+  // Firestore, até 20 por nome + 20 por e-mail); sem busca, usa a página
+  // atual (20 usuários, filtrados por papel no servidor). Os dois ainda
+  // passam pelo filtro de vínculo/curso aqui embaixo — esses continuam só no
+  // cliente, sobre o que já veio (ver comentário em useUsuariosPaginado).
+  const temBusca = busca.trim().length > 0;
+  const paginado = useUsuariosPaginado(filtro);
+  const busca1 = useBuscaUsuarios(busca);
+  const usuarios = temBusca ? busca1.resultado : paginado.usuarios;
+  const carregandoLista = temBusca ? busca1.carregando : paginado.carregando;
+  const erroLista = temBusca ? busca1.erro : paginado.erro;
 
   const usuariosFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
     return usuarios.filter((u) => {
-      const bateFiltro = filtro === "todos" || u.papel === filtro;
-      const bateBusca =
-        !termo ||
-        u.nome.toLowerCase().includes(termo) ||
-        u.email.toLowerCase().includes(termo);
+      const bateFiltro = !temBusca || filtro === "todos" || u.papel === filtro;
       const bateVinculo =
         filtro !== "aluno" ||
         filtroVinculo === "todos" ||
         (filtroVinculo === "externo" ? u.vinculoFatec === false : u.vinculoFatec !== false);
       const bateCurso =
         filtro !== "aluno" || !filtroCurso || u.curso === filtroCurso;
-      return bateFiltro && bateBusca && bateVinculo && bateCurso;
+      return bateFiltro && bateVinculo && bateCurso;
     });
-  }, [usuarios, busca, filtro, filtroVinculo, filtroCurso]);
+  }, [usuarios, temBusca, filtro, filtroVinculo, filtroCurso]);
 
   function areasDoEvento(eventoId: string): string[] {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
@@ -325,10 +352,15 @@ export default function UsuariosPage() {
             </p>
           </div>
 
-          {souAdmin && (
+          {possoCriarUsuario && (
             <button
               type="button"
-              onClick={() => setModalCriar(true)}
+              onClick={() => {
+                // Organização nunca pode criar aluno/organização/admin —
+                // começa já no primeiro papel que ela tem permissão.
+                if (souOrganizacao) setCriarPapel("avaliador");
+                setModalCriar(true);
+              }}
               className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
             >
               <UserPlus className="h-4 w-4" strokeWidth={1.75} />
@@ -483,8 +515,11 @@ export default function UsuariosPage() {
 
                   {usuariosFiltrados.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-fatec-muted">
-                        Nenhum usuário encontrado.
+                      <td
+                        colSpan={4}
+                        className={`px-6 py-10 text-center text-sm ${erroLista ? "text-rose-600" : "text-fatec-muted"}`}
+                      >
+                        {erroLista ?? (carregandoLista ? "Carregando..." : "Nenhum usuário encontrado.")}
                       </td>
                     </tr>
                   )}
@@ -492,6 +527,37 @@ export default function UsuariosPage() {
               </table>
             </div>
           </div>
+
+          {/* Paginação (2026-10-05) — só faz sentido na listagem normal; a
+              busca já devolve um resultado pronto (até 20 por nome + 20 por
+              e-mail), sem próxima/anterior. */}
+          {!temBusca && (
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-xs text-fatec-muted">
+                Página {paginado.pagina + 1}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => paginado.setPagina((p) => Math.max(0, p - 1))}
+                  disabled={paginado.pagina === 0 || paginado.carregando}
+                  className="flex items-center gap-1 rounded-xl border border-fatec-line px-3 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={() => paginado.setPagina((p) => p + 1)}
+                  disabled={!paginado.temProximaPagina || paginado.carregando}
+                  className="flex items-center gap-1 rounded-xl border border-fatec-line px-3 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -551,13 +617,23 @@ export default function UsuariosPage() {
                 }}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               >
-                <option value="aluno">Aluno</option>
+                {!souOrganizacao && <option value="aluno">Aluno</option>}
                 <option value="avaliador">Avaliador</option>
                 <option value="orientador">Orientador</option>
                 <option value="moderador">Moderador</option>
-                <option value="organizacao">Organização</option>
-                <option value="admin">Admin</option>
+                {!souOrganizacao && (
+                  <>
+                    <option value="organizacao">Organização</option>
+                    <option value="admin">Admin</option>
+                  </>
+                )}
               </select>
+              {souOrganizacao && (
+                <span className="text-xs text-fatec-muted">
+                  Organização só pode cadastrar avaliador, orientador ou
+                  moderador — pros eventos que você mesmo tem acesso.
+                </span>
+              )}
             </label>
 
             {PAPEIS_COM_AREA.includes(criarPapel) && (

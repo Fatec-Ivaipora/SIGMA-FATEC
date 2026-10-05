@@ -54,7 +54,7 @@ import { useEventos, type Evento, type AreaTematicaComplexa } from "@/lib/data/e
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { recalcularAreasTematicas } from "@/lib/areasTematicas";
-import { ASSINANTES_DIRETOR, ASSINANTES_COORDENADOR } from "@/lib/assinantesCertificado";
+import { ASSINANTES_CERTIFICADO } from "@/lib/assinantesCertificado";
 import { diasDoEvento } from "@/lib/certificadoDias";
 
 function formatarData(iso: string): string {
@@ -319,13 +319,12 @@ function CardEventoAdmin({
   const periodoInscricao = evento.periodoSubmissao && `Inscrições: ${evento.periodoSubmissao}`;
   const periodoEnvio = evento.periodoEnvioTrabalho && `Submissão: ${evento.periodoEnvioTrabalho}`;
 
-  // Diretor e Coordenador não são mais os dois obrigatórios juntos
-  // (2026-09-29) — o evento escolhe 1 dos dois ou os dois, ver
-  // faltandoDadosEvento em src/app/api/certificados/route.ts.
+  // Pelo menos 1 assinante escolhido, não os 2 cargos fixos de antes
+  // (2026-10-05) — ver faltandoDadosEvento em src/app/api/certificados/route.ts.
   const certificadoConfigurado = !!(
     evento.dataRealizacao &&
     evento.cargaHoraria &&
-    (evento.nomeDiretorAcademico || evento.nomeCoordenadorPesquisa)
+    evento.assinantesCertificadoIds?.length
   );
 
   return (
@@ -465,6 +464,66 @@ function CardEventoAdmin({
   );
 }
 
+/** Quem assina o certificado desse evento (2026-10-05, substituiu os 2
+ * selects fixos de Diretor/Coordenador — ver assinantesCertificado.ts). Lista
+ * os já escolhidos, cada um removível, mais um select pra adicionar o
+ * próximo do catálogo (some da lista de opções assim que escolhido, não tem
+ * como adicionar o mesmo 2x). Usado tanto no wizard de criação quanto no
+ * modal de editar certificado de um evento já existente — mesmo componente,
+ * só muda o `ids`/`onChange` de fora. */
+function SeletorAssinantes({
+  ids,
+  onChange,
+}: {
+  ids: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const escolhidos = ids
+    .map((id) => ASSINANTES_CERTIFICADO.find((a) => a.id === id))
+    .filter((a): a is (typeof ASSINANTES_CERTIFICADO)[number] => !!a);
+  const disponiveis = ASSINANTES_CERTIFICADO.filter((a) => !ids.includes(a.id));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {escolhidos.map((a) => (
+        <div
+          key={a.id}
+          className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line bg-white px-4 py-2.5"
+        >
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-fatec-navy-900">{a.nome}</p>
+            <p className="truncate text-xs text-fatec-muted">{a.cargo}</p>
+          </div>
+          <button
+            type="button"
+            aria-label={`Remover ${a.nome}`}
+            onClick={() => onChange(ids.filter((id) => id !== a.id))}
+            className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-fatec-muted transition-colors hover:bg-rose-50 hover:text-rose-600"
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        </div>
+      ))}
+      {disponiveis.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) onChange([...ids, e.target.value]);
+          }}
+          className="rounded-xl border border-dashed border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-muted outline-none transition-colors focus:border-fatec-sky-600"
+        >
+          <option value="">+ Adicionar assinante</option>
+          {disponiveis.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.nome} — {a.cargo}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 export default function EventosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
@@ -509,8 +568,7 @@ export default function EventosPage() {
   const [dataRealizacao, setDataRealizacao] = useState("");
   const [dataRealizacaoFim, setDataRealizacaoFim] = useState("");
   const [cargaHoraria, setCargaHoraria] = useState("");
-  const [nomeDiretorAcademico, setNomeDiretorAcademico] = useState("");
-  const [nomeCoordenadorPesquisa, setNomeCoordenadorPesquisa] = useState("");
+  const [assinantesCertificadoIds, setAssinantesCertificadoIds] = useState<string[]>([]);
   const [criando, setCriando] = useState(false);
 
   // Configurações do evento (2026-09-09) — editar nome/descrição/datas de
@@ -534,8 +592,7 @@ export default function EventosPage() {
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
   const [dataRealizacaoFimCert, setDataRealizacaoFimCert] = useState("");
   const [cargaHorariaCert, setCargaHorariaCert] = useState("");
-  const [nomeDiretorCert, setNomeDiretorCert] = useState("");
-  const [nomeCoordenadorCert, setNomeCoordenadorCert] = useState("");
+  const [assinantesCertificadoIdsCert, setAssinantesCertificadoIdsCert] = useState<string[]>([]);
   const [numeroRegistroInicialCert, setNumeroRegistroInicialCert] = useState("");
   const [salvandoCert, setSalvandoCert] = useState(false);
 
@@ -647,8 +704,7 @@ export default function EventosPage() {
     setEventoGratuito(false);
     setDataRealizacao("");
     setCargaHoraria("");
-    setNomeDiretorAcademico("");
-    setNomeCoordenadorPesquisa("");
+    setAssinantesCertificadoIds([]);
     setFaseCriar(0);
     setTipoForm(null);
   }
@@ -707,8 +763,7 @@ export default function EventosPage() {
     setDataRealizacaoCert(evento.dataRealizacao ?? "");
     setDataRealizacaoFimCert(evento.dataRealizacaoFim ?? "");
     setCargaHorariaCert(evento.cargaHoraria?.toString() ?? "");
-    setNomeDiretorCert(evento.nomeDiretorAcademico ?? "");
-    setNomeCoordenadorCert(evento.nomeCoordenadorPesquisa ?? "");
+    setAssinantesCertificadoIdsCert(evento.assinantesCertificadoIds ?? []);
     setNumeroRegistroInicialCert(evento.numeroRegistroInicial?.toString() ?? "");
   }
 
@@ -720,8 +775,7 @@ export default function EventosPage() {
         dataRealizacao: dataRealizacaoCert || null,
         dataRealizacaoFim: dataRealizacaoFimCert || null,
         cargaHoraria: cargaHorariaCert.trim() ? Number(cargaHorariaCert) : null,
-        nomeDiretorAcademico: nomeDiretorCert.trim(),
-        nomeCoordenadorPesquisa: nomeCoordenadorCert.trim(),
+        assinantesCertificadoIds: assinantesCertificadoIdsCert,
         numeroRegistroInicial: numeroRegistroInicialCert.trim()
           ? Number(numeroRegistroInicialCert)
           : null,
@@ -1030,12 +1084,7 @@ export default function EventosPage() {
         ...(dataRealizacao ? { dataRealizacao } : {}),
         ...(tipoForm === "simples" && dataRealizacaoFim ? { dataRealizacaoFim } : {}),
         ...(cargaHoraria.trim() ? { cargaHoraria: Number(cargaHoraria) } : {}),
-        ...(nomeDiretorAcademico.trim()
-          ? { nomeDiretorAcademico: nomeDiretorAcademico.trim() }
-          : {}),
-        ...(nomeCoordenadorPesquisa.trim()
-          ? { nomeCoordenadorPesquisa: nomeCoordenadorPesquisa.trim() }
-          : {}),
+        ...(assinantesCertificadoIds.length ? { assinantesCertificadoIds } : {}),
       });
 
       if (banner) {
@@ -1584,51 +1633,23 @@ export default function EventosPage() {
                 </span>
               </label>
             )}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-fatec-navy-900">
-                  Diretor(a) Acadêmico(a)
-                </span>
-                <select
-                  value={nomeDiretorAcademico}
-                  onChange={(e) => setNomeDiretorAcademico(e.target.value)}
-                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-                >
-                  <option value="">Nenhum</option>
-                  {ASSINANTES_DIRETOR.map((nome) => (
-                    <option key={nome} value={nome}>
-                      {nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-fatec-navy-900">
-                  Coordenador(a) da Comissão de Iniciação Científica
-                </span>
-                <select
-                  value={nomeCoordenadorPesquisa}
-                  onChange={(e) => setNomeCoordenadorPesquisa(e.target.value)}
-                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-                >
-                  <option value="">Nenhum</option>
-                  {ASSINANTES_COORDENADOR.map((nome) => (
-                    <option key={nome} value={nome}>
-                      {nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Quem assina o certificado
+              </span>
+              <SeletorAssinantes
+                ids={assinantesCertificadoIds}
+                onChange={setAssinantesCertificadoIds}
+              />
             </div>
             <p className="text-xs text-fatec-muted">
-              Pode escolher só um dos dois, ou os dois — o certificado sai
-              só com quem estiver escolhido. Pode deixar os dois em
-              &quot;Nenhum&quot; e preencher depois, mas sem nenhum dos dois
-              os certificados
-              desse evento não podem ser gerados. Só aparece aqui quem já
-              tem assinatura digitalizada cadastrada — precisa de alguém
-              novo? Fala com quem mantém o sistema pra cadastrar a
-              assinatura antes.
+              Pode escolher 1 ou mais — o certificado sai com todo mundo que
+              estiver na lista. Pode deixar sem ninguém e preencher depois,
+              mas sem pelo menos 1 assinante os certificados desse evento
+              não podem ser gerados. Só aparece pra escolher quem já tem
+              assinatura digitalizada cadastrada — precisa de alguém novo?
+              Fala com quem mantém o sistema pra cadastrar a assinatura
+              antes.
             </p>
           </div>
           </>
@@ -1942,10 +1963,9 @@ export default function EventosPage() {
         <div className="flex flex-col gap-5">
           <p className="text-sm text-fatec-muted">
             Usados pra gerar o certificado de apresentação e as declarações de
-            avaliador/moderador/orientador desse evento. Diretor e
-            Coordenador não são obrigatórios os dois juntos — escolha só um
-            ou os dois; o certificado sai assinado só por quem estiver
-            escolhido.
+            avaliador/moderador/orientador desse evento. Escolha quantos
+            assinantes quiser — o certificado sai assinado só por quem
+            estiver na lista.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
@@ -2013,40 +2033,15 @@ export default function EventosPage() {
               </span>
             </label>
           )}
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
-              Diretor(a) Acadêmico(a)
+              Quem assina o certificado
             </span>
-            <select
-              value={nomeDiretorCert}
-              onChange={(e) => setNomeDiretorCert(e.target.value)}
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-            >
-              <option value="">Nenhum</option>
-              {ASSINANTES_DIRETOR.map((nome) => (
-                <option key={nome} value={nome}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-fatec-navy-900">
-              Coordenador(a) da Comissão de Iniciação Científica
-            </span>
-            <select
-              value={nomeCoordenadorCert}
-              onChange={(e) => setNomeCoordenadorCert(e.target.value)}
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-            >
-              <option value="">Nenhum</option>
-              {ASSINANTES_COORDENADOR.map((nome) => (
-                <option key={nome} value={nome}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-          </label>
+            <SeletorAssinantes
+              ids={assinantesCertificadoIdsCert}
+              onChange={setAssinantesCertificadoIdsCert}
+            />
+          </div>
           <label className="flex flex-col gap-1.5 border-t border-fatec-line pt-4">
             <span className="text-sm font-medium text-fatec-navy-900">
               Número inicial de registro

@@ -176,14 +176,22 @@ function SecaoInscritos({
 function InscritosSimplesView({ evento }: { evento: Evento }) {
   const { inscritos } = useInscritosDoEvento(evento.id);
   const [busca, setBusca] = useState("");
+  // Filtro por pagamento (2026-10-05, pedido explícito do usuário) — só faz
+  // sentido quando o evento cobra inscrição (mesmo critério de mostrarPago
+  // abaixo); evento gratuito não tem "pago/não pago", só "inscrito".
+  const [filtroPagamento, setFiltroPagamento] = useState<"todos" | "pago" | "nao_pago">("todos");
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return inscritos;
-    return inscritos.filter(
-      (i) => i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo),
-    );
-  }, [inscritos, busca]);
+    return inscritos.filter((i) => {
+      const bateBusca =
+        !termo || i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo);
+      const batePagamento =
+        filtroPagamento === "todos" ||
+        (filtroPagamento === "pago" ? i.status === "pago" : i.status !== "pago");
+      return bateBusca && batePagamento;
+    });
+  }, [inscritos, busca, filtroPagamento]);
 
   const daFatec = filtrados.filter((i) => i.vinculoFatec !== false);
   const externos = filtrados.filter((i) => i.vinculoFatec === false);
@@ -222,6 +230,34 @@ function InscritosSimplesView({ evento }: { evento: Evento }) {
             />
           </div>
         </div>
+
+        {/* Filtro por pagamento (2026-10-05, pedido explícito do usuário) —
+            só em evento pago, igual mostrarPago abaixo: gratuito não tem
+            "pago/não pago" pra filtrar. */}
+        {!!evento.valorInscricao && (
+          <div className="flex flex-wrap gap-1 self-start rounded-xl bg-fatec-navy-50 p-1">
+            {(
+              [
+                { label: "Todos", valor: "todos" },
+                { label: "Pago", valor: "pago" },
+                { label: "Não pago", valor: "nao_pago" },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.valor}
+                type="button"
+                onClick={() => setFiltroPagamento(v.valor)}
+                className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                  filtroPagamento === v.valor
+                    ? "bg-white text-fatec-navy-900 shadow-sm"
+                    : "text-fatec-muted hover:text-fatec-navy-900"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <SecaoInscritos

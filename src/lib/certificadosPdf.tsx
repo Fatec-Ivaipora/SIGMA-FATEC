@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
 import type { Style } from "@react-pdf/types";
-import { ASSINANTES_DIRETOR, ASSINANTES_COORDENADOR } from "@/lib/assinantesCertificado";
+import type { AssinanteCertificado } from "@/lib/assinantesCertificado";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -49,33 +49,29 @@ const FUNDO_APRESENTACAO = {
 // Assinaturas digitalizadas (2026-09-11) — só o rabisco, recortado da foto
 // original (que também tinha linha + nome + cargo impressos junto) pra
 // sobrepor a própria linha/nome/cargo que a gente já desenha embaixo, sem
-// duplicar nada. Se a pessoa que assina mudar, troca só o arquivo aqui —
-// nome e cargo continuam vindo dos dados do evento.
-const ASSINATURA_JOAO = {
-  data: fs.readFileSync(
-    path.join(process.cwd(), "public", "certificados", "assinatura-joao.jpg"),
-  ),
-  format: "jpg" as const,
-};
-const ASSINATURA_RONI = {
-  data: fs.readFileSync(
-    path.join(process.cwd(), "public", "certificados", "assinatura-roni.jpg"),
-  ),
-  format: "jpg" as const,
-};
-
-// Nome -> imagem (2026-09-30) — antes a imagem era fixa por cargo, sem
-// checar se o nome digitado batia com a pessoa de verdade (ver comentário
-// em src/lib/assinantesCertificado.ts). Cada mapa só tem a mesma pessoa que
-// já existia, mas agora a busca é EXPLÍCITA por nome — um nome que não bate
-// com ninguém aqui (não deveria acontecer, o formulário só deixa escolher
-// os cadastrados) cai em `undefined`, e BlocoAssinatura sabe lidar com isso
-// (mostra nome/cargo sem a imagem da assinatura, em vez de quebrar o PDF).
-const IMAGEM_POR_DIRETOR: Record<string, { data: Buffer; format: "jpg" }> = {
-  [ASSINANTES_DIRETOR[0]]: ASSINATURA_RONI,
-};
-const IMAGEM_POR_COORDENADOR: Record<string, { data: Buffer; format: "jpg" }> = {
-  [ASSINANTES_COORDENADOR[0]]: ASSINATURA_JOAO,
+// duplicar nada.
+//
+// id -> imagem (2026-10-05, generalizado — antes era um mapa por cargo fixo,
+// "diretor"/"coordenador"; agora qualquer cargo cadastrado em
+// ASSINANTES_CERTIFICADO, ver src/lib/assinantesCertificado.ts, pode ter uma
+// entrada aqui). Um id sem entrada aqui (assinante cadastrado no catálogo
+// mas sem arquivo de assinatura ainda) cai em `undefined`, e BlocoAssinatura
+// sabe lidar com isso (mostra nome/cargo sem a imagem da assinatura, em vez
+// de quebrar o PDF) — pra adicionar alguém novo, ver o comentário no topo de
+// assinantesCertificado.ts.
+const IMAGEM_POR_ASSINANTE: Record<string, { data: Buffer; format: "jpg" }> = {
+  roni: {
+    data: fs.readFileSync(
+      path.join(process.cwd(), "public", "certificados", "assinatura-roni.jpg"),
+    ),
+    format: "jpg",
+  },
+  joao: {
+    data: fs.readFileSync(
+      path.join(process.cwd(), "public", "certificados", "assinatura-joao.jpg"),
+    ),
+    format: "jpg",
+  },
 };
 
 const cores = {
@@ -85,28 +81,13 @@ const cores = {
   muted: "#5b6b78",
 };
 
-// Conferido contra o edital oficial da X MAC (2026-09-29, achado depois de
-// alguém questionar o texto) — o edital assina só "Coordenador Comissão de
-// Iniciação Científica" (sem "da" entre as duas primeiras palavras, exatamente
-// como está no documento). Antes tinha "Coordenador(a) da Pesquisa e Formação
-// Científica", que não bate com nenhum documento oficial encontrado (nem esse
-// edital, nem o certificado real antigo, que usa "Presidente da Comissão
-// Organizadora" — o comentário que citava esse certificado como fonte da
-// troca estava errado).
-const CARGO_DIRETOR = "Diretor Acadêmico";
-const CARGO_COORDENADOR = "Coordenador Comissão de Iniciação Científica";
-
 /** Bloco de uma assinatura (imagem + linha + nome + cargo) — compartilhado
  * entre CertificadoApresentacaoPDF e DeclaracaoPDF (2026-09-29, antes cada um
- * tinha o próprio JSX repetido). Diretor e Coordenador são opcionais agora
- * (evento escolhe 1 ou os 2, ver faltandoDadosEvento em
- * src/app/api/certificados/route.ts) — este componente só é chamado quando o
- * nome existe, nunca precisa lidar com nome vazio. `imagem` também é
- * opcional (2026-09-30) — só fica undefined se o nome gravado no evento não
- * bater com nenhum dos cadastrados em IMAGEM_POR_DIRETOR/COORDENADOR (dado
- * antigo de antes do select existir, ou um nome novo cadastrado sem
- * assinatura ainda); nesse caso mostra só a linha/nome/cargo, sem quebrar o
- * PDF por causa de uma imagem ausente. */
+ * tinha o próprio JSX repetido). `imagem` é opcional (2026-09-30) — só fica
+ * undefined se o id do assinante não bater com nenhum cadastrado em
+ * IMAGEM_POR_ASSINANTE (assinante novo no catálogo sem o arquivo de
+ * assinatura cadastrado ainda); nesse caso mostra só a linha/nome/cargo, sem
+ * quebrar o PDF por causa de uma imagem ausente. */
 function BlocoAssinatura({
   imagem,
   nome,
@@ -189,8 +170,14 @@ const estiloApresentacao = StyleSheet.create({
     color: cores.ink,
     marginBottom: 46,
   },
+  // flexWrap (2026-10-05) — até 2 assinaturas cabem numa linha só com
+  // width 290 cada (confortável, cargo mais longo não quebra); a partir de
+  // 3 (catálogo deixou de ter só 2 cargos fixos, ver assinantesCertificado.ts)
+  // pode não caber mais widths de 290 lado a lado na área útil da página —
+  // em vez de estourar a margem, quebra pra uma segunda linha.
   assinaturas: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
     gap: 50,
   },
@@ -242,8 +229,7 @@ export function CertificadoApresentacaoPDF({
   dataRealizacao,
   tituloTrabalho,
   registroNumero,
-  diretorNome,
-  coordenadorNome,
+  assinantes,
   premiado,
 }: {
   nomes: string[];
@@ -251,11 +237,10 @@ export function CertificadoApresentacaoPDF({
   dataRealizacao: string;
   tituloTrabalho: string;
   registroNumero: number;
-  // Opcionais (2026-09-29) — o evento escolhe 1 dos dois ou os dois; pelo
-  // menos um é exigido antes de chegar aqui (ver faltandoDadosEvento em
-  // src/app/api/certificados/route.ts), então não dá pra vir os dois vazios.
-  diretorNome?: string;
-  coordenadorNome?: string;
+  // Quem assina esse evento (2026-10-05, era diretorNome?/coordenadorNome?
+  // fixos — ver assinantesCertificado.ts) — pelo menos 1 é exigido antes de
+  // chegar aqui (ver faltandoDadosEvento em src/app/api/certificados/route.ts).
+  assinantes: AssinanteCertificado[];
   // Top 3 da área ganha CERTIFICADO ("certificamos", tom de reconhecimento,
   // edital 6.6); quem participou sem ficar entre os 3 primeiros ganha
   // DECLARAÇÃO ("declaramos", só comprova participação) — 2026-09-11, mesmo
@@ -285,22 +270,15 @@ export function CertificadoApresentacaoPDF({
             Ivaiporã, {formatarDataExtenso(dataRealizacao)}.
           </Text>
           <View style={estiloApresentacao.assinaturas}>
-            {diretorNome && (
+            {assinantes.map((a) => (
               <BlocoAssinatura
-                imagem={IMAGEM_POR_DIRETOR[diretorNome]}
-                nome={diretorNome}
-                cargo={CARGO_DIRETOR}
+                key={a.id}
+                imagem={IMAGEM_POR_ASSINANTE[a.id]}
+                nome={a.nome}
+                cargo={a.cargo}
                 estilos={estiloApresentacao}
               />
-            )}
-            {coordenadorNome && (
-              <BlocoAssinatura
-                imagem={IMAGEM_POR_COORDENADOR[coordenadorNome]}
-                nome={coordenadorNome}
-                cargo={CARGO_COORDENADOR}
-                estilos={estiloApresentacao}
-              />
-            )}
+            ))}
           </View>
         </View>
         <Text fixed style={estiloApresentacao.registro}>
@@ -387,12 +365,13 @@ const estiloDeclaracao = StyleSheet.create({
     textAlign: "center",
     marginBottom: 46,
   },
-  // Linha com 1 ou 2 blocos, centralizada (2026-09-29 — antes só existia
-  // "assinatura" singular, sempre 1 assinatura só; mesmo padrão de
-  // estiloApresentacao.assinaturas agora que a declaração também pode ter
-  // as duas).
+  // Linha com 1+ blocos, centralizada (2026-09-29 — antes só existia
+  // "assinatura" singular, sempre 1 assinatura só). flexWrap (2026-10-05) —
+  // mesmo motivo de estiloApresentacao.assinaturas, catálogo de assinantes
+  // deixou de ter só 2 cargos fixos.
   assinaturas: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
     gap: 50,
   },
@@ -442,8 +421,7 @@ export function DeclaracaoPDF({
   dataRealizacao,
   dataRealizacaoFim,
   cargaHoraria,
-  diretorNome,
-  coordenadorNome,
+  assinantes,
   dataAssinatura,
 }: {
   nome: string;
@@ -454,11 +432,9 @@ export function DeclaracaoPDF({
   // de 1 dia; ver formatarPeriodoRealizacao acima.
   dataRealizacaoFim?: string;
   cargaHoraria: number;
-  // Opcionais (2026-09-29) — mesmo espírito de CertificadoApresentacaoPDF:
-  // o evento escolhe 1 dos dois ou os dois, pelo menos um é exigido antes
-  // de chegar aqui.
-  diretorNome?: string;
-  coordenadorNome?: string;
+  // Mesmo espírito de CertificadoApresentacaoPDF (2026-10-05) — ver
+  // assinantesCertificado.ts.
+  assinantes: AssinanteCertificado[];
   dataAssinatura: string;
 }) {
   return (
@@ -500,22 +476,15 @@ export function DeclaracaoPDF({
         </Text>
 
         <View style={estiloDeclaracao.assinaturas}>
-          {diretorNome && (
+          {assinantes.map((a) => (
             <BlocoAssinatura
-              imagem={IMAGEM_POR_DIRETOR[diretorNome]}
-              nome={diretorNome}
-              cargo={CARGO_DIRETOR}
+              key={a.id}
+              imagem={IMAGEM_POR_ASSINANTE[a.id]}
+              nome={a.nome}
+              cargo={a.cargo}
               estilos={estiloDeclaracao}
             />
-          )}
-          {coordenadorNome && (
-            <BlocoAssinatura
-              imagem={IMAGEM_POR_COORDENADOR[coordenadorNome]}
-              nome={coordenadorNome}
-              cargo={CARGO_COORDENADOR}
-              estilos={estiloDeclaracao}
-            />
-          )}
+          ))}
         </View>
 
         <Text style={estiloDeclaracao.rodape}>

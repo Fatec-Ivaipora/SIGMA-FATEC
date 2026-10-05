@@ -113,6 +113,10 @@ export default function CadastroAlunoPage() {
         const batch = writeBatch(db);
         batch.set(doc(db, "usuarios", credencial.user.uid), {
           nome: nome.trim(),
+          // nomeBusca (2026-10-05) — nome em minúsculo só pra busca por
+          // prefixo em /usuarios (ver useBuscaUsuarios), já que o Firestore
+          // não ignora maiúscula/minúscula sozinho.
+          nomeBusca: nome.trim().toLowerCase(),
           email: emailNormalizado,
           papel: "aluno",
           vinculoFatec,

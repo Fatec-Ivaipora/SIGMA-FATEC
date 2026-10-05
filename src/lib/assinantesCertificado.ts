@@ -1,21 +1,34 @@
-/** Quem pode assinar o certificado, por cargo (2026-09-30) — antes
- * "Diretor Acadêmico"/"Coordenador" no formulário de Eventos eram texto
- * livre, mas a imagem da assinatura digitalizada sempre foi fixa por cargo
- * (ver ASSINATURA_RONI/ASSINATURA_JOAO em src/lib/certificadosPdf.tsx): se
- * alguém digitasse um nome diferente do esperado, o PDF saía com a
- * assinatura de outra pessoa embaixo de um nome errado — ninguém tinha
- * reparado ainda porque só um nome de cada cargo foi usado até hoje. Agora
- * o formulário (src/app/eventos/page.tsx) só deixa escolher entre esses
- * nomes, então esse descompasso não tem mais como acontecer.
+/** Quem pode assinar um certificado (2026-10-05, substituiu o modelo antigo
+ * de só 2 cargos fixos — "Diretor Acadêmico" e "Coordenador..." — que travou
+ * de verdade quando precisou assinar um terceiro cargo, Coordenador de Curso
+ * de Medicina, sem ter onde encaixar). Cada evento escolhe, na criação, quais
+ * dessas pessoas assinam o certificado DELE (ver `assinantesCertificadoIds`
+ * em src/lib/data/eventos.ts) — a lista aqui é só o catálogo de quem já tem
+ * assinatura digitalizada cadastrada, não quem assina cada evento.
  *
- * Arquivo separado de certificadosPdf.tsx (2026-09-30) de propósito: aquele
- * usa `fs`/`node:path` pra ler os arquivos de imagem (só roda no servidor),
- * este é só as strings dos nomes, importável também pelo formulário de
- * Eventos, que é client component.
+ * Cadastro continua manual, de propósito (2026-10-05, pedido explícito do
+ * usuário: ele passa nome+cargo+foto da assinatura no chat, o resto fica por
+ * conta de quem mexe no código) — pra ver a lista cadastrada sem precisar
+ * abrir esse arquivo, ver a tela /assinaturas.
  *
  * Pra adicionar alguém novo: (1) conseguir a assinatura digitalizada,
- * recortada igual as existentes em public/certificados/; (2) cadastrar o
- * arquivo + a imagem em certificadosPdf.tsx (ASSINATURA_* e o mapa
- * IMAGEM_POR_DIRETOR/IMAGEM_POR_COORDENADOR); (3) acrescentar o nome aqui. */
-export const ASSINANTES_DIRETOR = ["Ronielison Barbosa Ferreira"] as const;
-export const ASSINANTES_COORDENADOR = ["João Felipe Marques da Silva"] as const;
+ * recortada (só o rabisco, sem linha/nome/cargo — os 3 já cadastrados em
+ * public/certificados/ servem de referência de recorte); (2) escolher um
+ * `id` novo (sem espaço, sem acento — vira o nome do arquivo também); (3)
+ * salvar a imagem em public/certificados/assinatura-{id}.jpg; (4) acrescentar
+ * a entrada aqui; (5) cadastrar o arquivo no mapa IMAGEM_POR_ASSINANTE em
+ * src/lib/certificadosPdf.tsx (único lugar que ainda precisa saber onde está
+ * o arquivo — esse import usa `fs`/`node:path`, só roda no servidor). */
+export type AssinanteCertificado = {
+  id: string;
+  nome: string;
+  cargo: string;
+};
+
+export const ASSINANTES_CERTIFICADO: AssinanteCertificado[] = [
+  { id: "roni", nome: "Ronielison Barbosa Ferreira", cargo: "Diretor Acadêmico" },
+  // Conferido contra o edital oficial da X MAC (2026-09-29) — o edital
+  // assina só "Coordenador Comissão de Iniciação Científica" (sem "da"
+  // entre as duas primeiras palavras, exatamente como está no documento).
+  { id: "joao", nome: "João Felipe Marques da Silva", cargo: "Coordenador Comissão de Iniciação Científica" },
+];

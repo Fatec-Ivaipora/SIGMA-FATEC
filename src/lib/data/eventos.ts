@@ -96,20 +96,13 @@ export type Evento = {
   // cargaHoraria), nunca passa do total (arredonda só no final, não por
   // dia, pra não acumular erro quando não divide exato como 16÷3).
   cargaHoraria?: number;
-  // Diretor e Coordenador não são mais obrigatórios os dois juntos
-  // (2026-09-29) — evento escolhe 1 dos dois ou os dois; pelo menos um é
-  // exigido (ver faltandoDadosEvento em src/app/api/certificados/route.ts).
-  nomeDiretorAcademico?: string;
-  // Campo se chama "Pesquisa" por causa do nome original (nomePresidenteComissao
-  // → renomeado em 2026-09-04), mas o cargo exibido no certificado é
-  // "Coordenador Comissão de Iniciação Científica" (2026-09-29, conferido
-  // contra o edital oficial da X MAC — achado que o texto anterior,
-  // "Coordenador(a) da Pesquisa e Formação Científica", não batia com
-  // nenhum documento oficial; o comentário antigo aqui citava um certificado
-  // real como fonte da troca, mas esse certificado usa "Presidente da
-  // Comissão Organizadora", nem uma coisa nem outra — engano de sessão
-  // anterior). Ver CARGO_COORDENADOR em src/lib/certificadosPdf.tsx.
-  nomeCoordenadorPesquisa?: string;
+  // Quem assina o certificado desse evento (2026-10-05, substituiu
+  // nomeDiretorAcademico/nomeCoordenadorPesquisa — 2 cargos fixos que
+  // travaram de verdade quando precisou de um 3° cargo pra assinar, sem
+  // onde encaixar). ids de src/lib/assinantesCertificado.ts (catálogo de
+  // quem tem assinatura digitalizada cadastrada) — pelo menos 1 é exigido
+  // (ver faltandoDadosEvento em src/app/api/certificados/route.ts).
+  assinantesCertificadoIds?: string[];
   // Número do primeiro certificado desse evento no "REGISTRO SOB O N°" —
   // definido pela organização/comissão (documento próprio deles, fora do
   // sistema); os certificados seguintes desse evento saem em sequência a

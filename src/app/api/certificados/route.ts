@@ -7,6 +7,7 @@ import {
   DeclaracaoPDF,
 } from "@/lib/certificadosPdf";
 import { diasDoEvento } from "@/lib/certificadoDias";
+import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -54,22 +55,30 @@ async function obterNumeroRegistro(
   });
 }
 
-// papel não entra mais nessa checagem (2026-09-29) — antes exigia Diretor
-// sempre + Coordenador só pro certificado de aluno (os dois obrigatórios
-// juntos ali). Agora o evento escolhe 1 dos dois ou os dois — mesma regra
-// pra qualquer papel, só precisa ter pelo menos um nome preenchido. Ver
+// papel não entra mais nessa checagem (2026-09-29) — mesma regra pra
+// qualquer papel, só precisa ter pelo menos 1 assinante escolhido. Ver
 // CertificadoApresentacaoPDF/DeclaracaoPDF em src/lib/certificadosPdf.tsx,
-// que já sabem renderizar com 1 ou 2 assinaturas.
+// que já sabem renderizar com qualquer quantidade de assinaturas.
 function faltandoDadosEvento(evento: FirebaseFirestore.DocumentData): string[] {
   const faltando: string[] = [];
   if (!evento.dataRealizacao) faltando.push("data de realização");
   if (!evento.cargaHoraria) faltando.push("carga horária");
-  if (!evento.nomeDiretorAcademico && !evento.nomeCoordenadorPesquisa) {
-    faltando.push(
-      "nome de quem assina o certificado (Diretor Acadêmico e/ou Coordenador da Comissão de Iniciação Científica)",
-    );
+  if (!(evento.assinantesCertificadoIds as string[] | undefined)?.length) {
+    faltando.push("quem assina o certificado");
   }
   return faltando;
+}
+
+/** ids gravados no evento -> dados completos do catálogo (2026-10-05) — um
+ * id gravado que não bate com ninguém no catálogo (não deveria acontecer, a
+ * tela de Eventos só deixa escolher os cadastrados) é ignorado em silêncio
+ * em vez de quebrar a geração do PDF; `faltandoDadosEvento` já garante que
+ * sobra pelo menos 1 id antes de chegar aqui. */
+function resolverAssinantes(evento: FirebaseFirestore.DocumentData): AssinanteCertificado[] {
+  const ids = (evento.assinantesCertificadoIds as string[] | undefined) ?? [];
+  return ids
+    .map((id) => ASSINANTES_CERTIFICADO.find((a) => a.id === id))
+    .filter((a): a is AssinanteCertificado => !!a);
 }
 
 export async function GET(request: Request) {
@@ -162,8 +171,7 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
         cargaHoraria: evento.cargaHoraria as number,
-        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
-        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
+        assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
       }),
     );
@@ -270,8 +278,7 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         tituloTrabalho: trabalho.titulo as string,
         registroNumero: numero,
-        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
-        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
+        assinantes: resolverAssinantes(evento),
         premiado,
       }),
     );
@@ -403,8 +410,7 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
         cargaHoraria: horasConcedidas,
-        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
-        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
+        assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
       }),
     );
@@ -515,8 +521,7 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
         cargaHoraria: evento.cargaHoraria as number,
-        diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
-        coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
+        assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
       }),
     );
@@ -603,8 +608,7 @@ export async function GET(request: Request) {
       dataRealizacao: evento.dataRealizacao as string,
       dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
       cargaHoraria: evento.cargaHoraria as number,
-      diretorNome: (evento.nomeDiretorAcademico as string) || undefined,
-      coordenadorNome: (evento.nomeCoordenadorPesquisa as string) || undefined,
+      assinantes: resolverAssinantes(evento),
       dataAssinatura: hoje,
     }),
   );

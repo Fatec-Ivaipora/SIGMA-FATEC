@@ -52,9 +52,12 @@ export async function POST(request: Request) {
   // mostrar um erro legível. Loga a causa real pro log da Vercel.
   try {
     const chamadorDoc = await getAdminDb().doc(`usuarios/${chamadorUid}`).get();
-    if (chamadorDoc.data()?.papel !== "admin") {
+    const chamador = chamadorDoc.data();
+    const souAdmin = chamador?.papel === "admin";
+    const souOrganizacao = chamador?.papel === "organizacao";
+    if (!souAdmin && !souOrganizacao) {
       return NextResponse.json(
-        { erro: "Só o Admin pode criar novos usuários." },
+        { erro: "Sem permissão pra criar usuários." },
         { status: 403 },
       );
     }
@@ -64,6 +67,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ erro: "Nome, e-mail e papel são obrigatórios." }, {
         status: 400,
       });
+    }
+
+    // Organização ganha permissão de cadastrar avaliador/orientador/
+    // moderador (2026-10-05, pedido explícito do usuário) — nunca
+    // aluno/organização/admin, isso seria escalonamento de privilégio.
+    // E só pros PRÓPRIOS eventos, nunca em nome de outro evento que não é
+    // dela (RN-15, mesmo escopo que já vale pro resto do app).
+    if (souOrganizacao) {
+      const PAPEIS_QUE_ORGANIZACAO_PODE_CRIAR = ["avaliador", "orientador", "moderador"];
+      if (!PAPEIS_QUE_ORGANIZACAO_PODE_CRIAR.includes(body.papel)) {
+        return NextResponse.json(
+          { erro: "Organização só pode cadastrar avaliador, orientador ou moderador." },
+          { status: 403 },
+        );
+      }
+      const meusEventos = (chamador?.eventosPermitidos ?? []) as string[];
+      const eventosDoBody = (body.atribuicoesEventos ?? []).map((a) => a.eventoId);
+      if (eventosDoBody.some((id) => !meusEventos.includes(id))) {
+        return NextResponse.json(
+          { erro: "Você só pode atribuir eventos aos quais você mesmo tem acesso." },
+          { status: 403 },
+        );
+      }
     }
     // E-mail sempre minúsculo (2026-10-02, achado real: duas contas pra
     // mesma pessoa, uma com "Drfulano@..." outra com "drfulano@...", só
@@ -96,6 +122,8 @@ export async function POST(request: Request) {
       .doc(`usuarios/${uid}`)
       .set({
         nome: body.nome.trim(),
+        // nomeBusca (2026-10-05) — ver cadastro/aluno, mesmo critério.
+        nomeBusca: body.nome.trim().toLowerCase(),
         email: emailNormalizado,
         papel: body.papel,
         ...(body.atribuicoesEventos && body.atribuicoesEventos.length > 0
@@ -224,7 +252,9 @@ export async function PATCH(request: Request) {
     }
 
     const db = getAdminDb();
-    await db.doc(`usuarios/${uid}`).update({ nome: nomeLimpo, email: emailLimpo });
+    await db
+      .doc(`usuarios/${uid}`)
+      .update({ nome: nomeLimpo, nomeBusca: nomeLimpo.toLowerCase(), email: emailLimpo });
     // merge:true (2026-10-01) — nem todo papel tem esse doc hoje (só "aluno"
     // ganha um na criação), mas não custa manter em sincronia se existir, e
     // criar um não quebra nada pra quem ainda não tinha.

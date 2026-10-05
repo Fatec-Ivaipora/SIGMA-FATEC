@@ -7,6 +7,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Plus,
   QrCode,
@@ -119,6 +121,17 @@ function ConfirmacaoPresencaView({
   modoMonitor?: boolean;
 }) {
   const [busca, setBusca] = useState("");
+  // Paginação da lista de presenças (2026-10-05, pedido explícito do
+  // usuário) — só na EXIBIÇÃO, não na leitura: inscritos de um evento são um
+  // conjunto já limitado (não é a base inteira, como em /usuarios), e essa
+  // tela precisa continuar ao vivo (onSnapshot) pra mostrar presença
+  // confirmando na hora durante o check-in — trocar por paginação real no
+  // servidor ia custar essa atualização em tempo real por um ganho de
+  // leitura bem menor do que em /usuarios. O que pagina aqui é só quantas
+  // linhas a tela desenha de uma vez (mais leve de renderizar numa lista
+  // longa), os totais (confirmados/pagos) continuam somando todo mundo.
+  const [paginaLista, setPaginaLista] = useState(0);
+  const TAMANHO_PAGINA_LISTA = 20;
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [erroQr, setErroQr] = useState<string | null>(null);
   // Evento multi-dia (2026-09-30) — admin escolhe manualmente qual dia está
@@ -140,6 +153,12 @@ function ConfirmacaoPresencaView({
   // decidir, que é o critério que mais importa (pagamento pode vir depois
   // e libera sozinho quando cair; presença não tem como voltar atrás).
   const [alternando, setAlternando] = useState(false);
+  // Erro visível (2026-10-05, achado do usuário: clicou em "Liberar
+  // certificados", pareceu funcionar, mas o campo nunca mudou no banco) —
+  // sem isso, uma falha de permissão/rede aqui fica muda: o cache local do
+  // Firestore aplica a mudança na hora (parece ter funcionado na tela) e só
+  // desfaz em silêncio se o servidor rejeitar, sem avisar ninguém.
+  const [erroCertificados, setErroCertificados] = useState<string | null>(null);
   // Presença manual (2026-09-30, pedido explícito do usuário) — pra quando
   // a pessoa não consegue escanear (câmera com problema, sem internet no
   // local, etc). Só admin/organização (nunca monitor — ver
@@ -153,10 +172,15 @@ function ConfirmacaoPresencaView({
 
   async function alternarCertificados() {
     setAlternando(true);
+    setErroCertificados(null);
     try {
       await updateDoc(doc(db, "eventos", evento.id), {
         certificadosLiberados: !evento.certificadosLiberados,
       });
+    } catch (e) {
+      setErroCertificados(
+        e instanceof Error ? e.message : "Não foi possível salvar. Tenta de novo.",
+      );
     } finally {
       setAlternando(false);
     }
@@ -228,6 +252,17 @@ function ConfirmacaoPresencaView({
     );
   }, [inscritos, busca]);
 
+  useEffect(() => {
+    setPaginaLista(0);
+  }, [busca]);
+
+  const totalPaginasLista = Math.max(1, Math.ceil(filtrados.length / TAMANHO_PAGINA_LISTA));
+  const paginaListaAtual = Math.min(paginaLista, totalPaginasLista - 1);
+  const visiveis = filtrados.slice(
+    paginaListaAtual * TAMANHO_PAGINA_LISTA,
+    paginaListaAtual * TAMANHO_PAGINA_LISTA + TAMANHO_PAGINA_LISTA,
+  );
+
   // "Confirmados" (resumo de apoio no card de liberar + cabeçalho da lista)
   // conta quem tem PELO MENOS 1 dia confirmado — mesmo critério mínimo da
   // liberação do certificado (ver /api/certificados). Evento de 1 dia dá no
@@ -288,47 +323,53 @@ function ConfirmacaoPresencaView({
           resumo de apoio, quem trava de verdade é o botão de baixar do
           aluno (não muda nada em quem já pagou/confirmou antes de você
           decidir liberar). Escondido no modo monitor — decisão é só de
-          admin/organização. */}
+          admin/organização (texto simplificado em 2026-10-05, ficava denso
+          demais numa linha só com travessão). */}
       {!modoMonitor && (
-      <section className="flex items-start gap-3 rounded-2xl border border-fatec-line bg-white p-5">
-        <span
-          className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
-            evento.certificadosLiberados
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-fatec-navy-50 text-fatec-navy-800"
-          }`}
-        >
-          <Award className="h-5 w-5" strokeWidth={1.75} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-fatec-navy-900">
-            {evento.certificadosLiberados
-              ? "Certificados de participação liberados"
-              : "Certificados de participação ainda não liberados"}
-          </p>
-          <p className="mt-0.5 text-sm text-fatec-muted">
-            Vale pra quem tiver presença confirmada em pelo menos 1
-            {diasEvento > 1 ? ` dos ${diasEvento} dias` : " dia"}
-            {!!evento.valorInscricao && " e pagamento em dia"} —{" "}
-            <span className="font-semibold text-emerald-700">
-              {confirmados}/{inscritos.length}
-            </span>{" "}
-            com presença
-            {!!evento.valorInscricao && (
-              <>
-                ,{" "}
-                <span className="font-semibold text-emerald-700">{pagos}</span> pagos
-              </>
+      <section className="flex flex-col gap-3 rounded-2xl border border-fatec-line bg-white p-5 sm:flex-row sm:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span
+            className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
+              evento.certificadosLiberados
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-fatec-navy-50 text-fatec-navy-800"
+            }`}
+          >
+            <Award className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-fatec-navy-900">
+              {evento.certificadosLiberados
+                ? "Certificados de participação liberados"
+                : "Certificados de participação ainda não liberados"}
+            </p>
+            <p className="mt-0.5 text-sm text-fatec-muted">
+              Libera pra quem confirmar presença
+              {diasEvento > 1 ? ` em pelo menos 1 dos ${diasEvento} dias` : ""}
+              {!!evento.valorInscricao && " e pagar em dia"}.
+            </p>
+            <p className="mt-1 text-xs text-fatec-muted">
+              <span className="font-semibold text-emerald-700">
+                {confirmados}/{inscritos.length}
+              </span>{" "}
+              com presença
+              {!!evento.valorInscricao && (
+                <>
+                  , <span className="font-semibold text-emerald-700">{pagos}</span> pagos
+                </>
+              )}
+              {diasEvento > 1 && " · horas saem proporcionais aos dias confirmados"}
+            </p>
+            {erroCertificados && (
+              <p className="mt-1.5 text-xs font-medium text-rose-600">{erroCertificados}</p>
             )}
-            {diasEvento > 1 && " — horas do certificado saem proporcionais aos dias confirmados"}
-            .
-          </p>
+          </div>
         </div>
         <button
           type="button"
           onClick={alternarCertificados}
           disabled={alternando}
-          className={`flex flex-none items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`flex w-full flex-none items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
             evento.certificadosLiberados
               ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
               : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
@@ -384,18 +425,21 @@ function ConfirmacaoPresencaView({
         )}
 
         <div className="mt-4 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line">
-          {filtrados.map((i) => {
+          {visiveis.map((i, idx) => {
             const diasConfirmadosPessoa = diasConfirmadosCount(i);
             const horas = horasConcedidasAteAgora(evento, diasConfirmadosPessoa);
             return (
-            <div key={i.uid} className="flex items-center gap-3 px-4 py-3">
-              <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
-                {(i.nome || "?").slice(0, 2).toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-fatec-navy-900">{i.nome}</p>
-                <p className="truncate text-xs text-fatec-muted">{i.email}</p>
+            <div key={i.uid} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fatec-navy-800 text-xs font-semibold text-white">
+                  {(i.nome || "?").slice(0, 2).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-fatec-navy-900">{i.nome}</p>
+                  <p className="truncate text-xs text-fatec-muted">{i.email}</p>
+                </div>
               </div>
+              <div className="flex flex-none flex-wrap items-center gap-1.5 pl-11 sm:justify-end sm:pl-0">
               {!modoMonitor && horas !== null && (
                 <span className="flex-none rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-navy-800">
                   {horas}h
@@ -437,7 +481,15 @@ function ConfirmacaoPresencaView({
                         </button>
                         {confirmado && timestamp && (
                           <div
-                            className={`absolute bottom-full left-1/2 z-10 mb-1.5 w-max -translate-x-1/2 rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-opacity ${
+                            className={`absolute left-1/2 z-10 w-max -translate-x-1/2 rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-opacity ${
+                              // Linha 0 (2026-10-05, achado do usuário no modo
+                              // monitor): abrir pra cima cortava embaixo do
+                              // topo arredondado da lista (overflow-hidden),
+                              // o balão sumia atrás do card. Só a primeira
+                              // linha abre pra baixo — as demais têm espaço
+                              // de sobra acima.
+                              idx === 0 ? "top-full mt-1.5" : "bottom-full mb-1.5"
+                            } ${
                               aberto
                                 ? "opacity-100"
                                 : "pointer-events-none opacity-0 group-hover:opacity-100"
@@ -501,6 +553,7 @@ function ConfirmacaoPresencaView({
                   );
                 })()
               )}
+              </div>
             </div>
             );
           })}
@@ -508,6 +561,34 @@ function ConfirmacaoPresencaView({
             <p className="px-4 py-3 text-sm text-fatec-muted">Ninguém encontrado.</p>
           )}
         </div>
+
+        {totalPaginasLista > 1 && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-xs text-fatec-muted">
+              Página {paginaListaAtual + 1} de {totalPaginasLista}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPaginaLista((p) => Math.max(0, p - 1))}
+                disabled={paginaListaAtual === 0}
+                className="flex items-center gap-1 rounded-xl border border-fatec-line px-3 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaLista((p) => Math.min(totalPaginasLista - 1, p + 1))}
+                disabled={paginaListaAtual >= totalPaginasLista - 1}
+                className="flex items-center gap-1 rounded-xl border border-fatec-line px-3 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Próxima
+                <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

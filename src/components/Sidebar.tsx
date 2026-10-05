@@ -185,8 +185,17 @@ export function Sidebar({
     <>
       {/* Sanduíche à esquerda, logo à direita (2026-09-09, pedido do
           usuário) — o menu abre do mesmo lado do botão (esquerda, ver aside
-          abaixo), pra não ficar desalinhado. */}
-      <header className="flex flex-none items-center justify-between bg-fatec-navy-900 px-4 py-3 md:hidden">
+          abaixo), pra não ficar desalinhado. fixed, não sticky (2026-10-05,
+          pedido explícito do usuário, com print circulando só essa barra
+          navy — NÃO o cabeçalho branco de cada página, isso foi tentado e
+          ficou ruim, sobrepondo conteúdo; sticky também não grudou de
+          verdade no simulador do usuário — html/body têm overflow-x:hidden
+          global, que por regra do CSS força overflow-y:auto nos dois, então
+          o "scroll real" fica ambíguo entre html e body e o sticky não tinha
+          um scroller previsível pra acompanhar; fixed ignora isso e sempre
+          gruda na viewport). Por sair do fluxo, o espaçador logo abaixo
+          reserva a altura certinha pra nada ficar escondido atrás dela. */}
+      <header className="fixed inset-x-0 top-0 z-30 flex flex-none items-center justify-between bg-fatec-navy-900 px-4 py-3 md:hidden">
         <button
           type="button"
           onClick={() => setAberto(true)}
@@ -197,6 +206,7 @@ export function Sidebar({
         </button>
         <LogoLockup className="mr-1 h-12 w-auto" variant="branco" />
       </header>
+      <div className="h-[72px] flex-none md:hidden" aria-hidden="true" />
 
       {aberto && (
         <div className="fixed inset-0 z-50 md:hidden">

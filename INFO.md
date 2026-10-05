@@ -381,6 +381,85 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
+  **Catálogo de assinantes de certificado**, tela nova `/assinaturas`
+  (pedido explícito do usuário) — antes o evento só podia escolher entre 2
+  cargos fixos no código, "Diretor Acadêmico" e "Coordenador Comissão de
+  Iniciação Científica" (`ASSINANTES_DIRETOR`/`ASSINANTES_COORDENADOR` em
+  `src/lib/assinantesCertificado.ts`), e travou de verdade quando precisou
+  assinar um 3° cargo (Coordenador de Curso de Medicina, Bruno). Agora é 1
+  catálogo só (`ASSINANTES_CERTIFICADO: {id, nome, cargo}[]`, mesmo
+  arquivo), e cada evento escolhe quem assina ELE (`evento.
+  assinantesCertificadoIds: string[]`) por um seletor "+ Adicionar
+  assinante" em Eventos (tanto no wizard de criação quanto no modal "Dados
+  do certificado" de evento já existente) — `SeletorAssinantes`, componente
+  compartilhado entre os dois. `/api/certificados` e os PDFs
+  (`CertificadoApresentacaoPDF`/`DeclaracaoPDF` em `certificadosPdf.tsx`)
+  agora recebem uma lista de assinantes, não mais 2 nomes fixos — o layout
+  da linha de assinaturas ganhou `flexWrap` pra aguentar mais de 2 sem
+  estourar a margem da página. Cadastro de gente nova continua MANUAL de
+  propósito (pedido explícito do usuário: ele passa nome+cargo+foto da
+  assinatura pelo chat, quem mantém o sistema cadastra no código) — a
+  imagem da assinatura em si (`IMAGEM_POR_ASSINANTE` em
+  `certificadosPdf.tsx`) não tem como vir de uma tela, só o catálogo de
+  nome/cargo e a escolha por evento viraram self-service.
+  Migração rodada (script descartável, já apagado): os 2 eventos existentes
+  passaram de `nomeDiretorAcademico`/`nomeCoordenadorPesquisa` pros novos
+  `assinantesCertificadoIds` (X MAC manteve Roni+João; Semana de Medicina
+  não tinha nenhum dos dois preenchido, continua vazio até a organização
+  decidir quem assina).
+
+- **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
+  **Paginação em `/usuarios` e `/ensalamento`** (pedido explícito do
+  usuário: as duas carregavam tudo de uma vez, muita leitura no Firestore).
+  `/usuarios` ganhou paginação de verdade — 20 por página, lida sob demanda
+  (`useUsuariosPaginado`, `src/lib/data/usuarios.ts`), filtro por papel
+  rodando no servidor (precisa do índice composto `papel`+`nome`, já criado
+  no Firestore); busca por nome/e-mail virou uma consulta direta
+  (`useBuscaUsuarios`), por PREFIXO — criou o campo `nomeBusca` (nome em
+  minúsculo, migração já rodada pros 148 usuários existentes) gravado em
+  toda criação/edição de conta. `/ensalamento` manteve a leitura ao vivo
+  (a lista é só de 1 evento, não a base inteira, e essa tela precisa
+  atualizar sozinha durante o check-in por QR) — só a EXIBIÇÃO da lista de
+  presenças ficou paginada (20 por vez), os totais (confirmados/pagos)
+  continuam somando todo mundo certo.
+
+- **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
+  Responsividade mobile de `/ensalamento` (pedido explícito do usuário,
+  com prints do celular real) — menu sanduíche da `Sidebar` virou `fixed`
+  (não `sticky`: o `overflow-x:hidden` global do `html`/`body` força
+  `overflow-y:auto` nos dois, deixava ambíguo quem é o scroller de verdade
+  e o `sticky` não grudava); card "Liberar certificados" e a linha de cada
+  inscrito na lista de presença ganharam `flex-1`/empilhamento
+  `flex-col`→`sm:flex-row` que faltava (texto/selos ficavam espremidos ou
+  desalinhados à esquerda no celular); balão de "Dia X confirmado" da
+  primeira linha da lista abre pra baixo em vez de pra cima (abrindo pra
+  cima ficava cortado pelo `overflow-hidden` do topo arredondado do card).
+  Texto do card de certificados também simplificado (ficava denso demais
+  numa linha só com travessão).
+
+- **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
+  Filtro por situação de pagamento (Pago/Não pago) em `/trabalhos`, na
+  visão de evento "simples" (pedido explícito do usuário) — mesmo padrão
+  de pílula já usado em `/usuarios`, só aparece em evento que cobra
+  inscrição.
+
+- **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
+  **Organização ganha permissão de cadastrar avaliador/orientador/
+  moderador** (pedido explícito do usuário) — antes `/api/usuarios` POST
+  era 100% exclusivo do Admin (`"Só o Admin pode criar novos usuários."`).
+  Agora organização também pode, mas só esses 3 papéis (nunca aluno/
+  organização/admin — seria escalonamento de privilégio) e só atribuindo
+  eventos aos quais ela mesma já tem acesso (reforçado no servidor, não só
+  escondido na UI — mesmo escopo RN-15 do resto do app). Divisão de
+  trabalhos entre avaliadores (`/trabalhos`) já era liberada pra
+  organização antes, não precisou mudar nada ali. Edição de nome/e-mail,
+  redefinir senha e excluir conta continuam exclusivos do Admin.
+  Aplicado pra Abel Felipe Freitag (`abel_freitag@hotmail.com`) — virou
+  organização, escopado só pra X MAC (`OdZNgwxjhGkSYyrwLyyM`); como ele
+  deixou de ser "aluno", o espelho `usuariosPublicos` dele (busca de
+  colega/convite de turma) foi removido.
+
 - **2026-10-02** *(ainda não commitado — aguardando "pode subir")* —
   Checagem de **CPF duplicado** (pedido explícito do usuário, mesma linha
   do e-mail normalizado acima: CPF é obrigatório e único por pessoa, mas
