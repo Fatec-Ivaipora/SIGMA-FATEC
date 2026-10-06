@@ -173,6 +173,7 @@ export async function GET(request: Request) {
         cargaHoraria: evento.cargaHoraria as number,
         assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
+        logoCabecalhoId: evento.logoCertificadoId as string | undefined,
       }),
     );
     return new NextResponse(new Uint8Array(buffer), {
@@ -412,6 +413,7 @@ export async function GET(request: Request) {
         cargaHoraria: horasConcedidas,
         assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
+        logoCabecalhoId: evento.logoCertificadoId as string | undefined,
       }),
     );
 
@@ -523,6 +525,7 @@ export async function GET(request: Request) {
         cargaHoraria: evento.cargaHoraria as number,
         assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
+        logoCabecalhoId: evento.logoCertificadoId as string | undefined,
       }),
     );
 
@@ -610,6 +613,7 @@ export async function GET(request: Request) {
       cargaHoraria: evento.cargaHoraria as number,
       assinantes: resolverAssinantes(evento),
       dataAssinatura: hoje,
+      logoCabecalhoId: evento.logoCertificadoId as string | undefined,
     }),
   );
 

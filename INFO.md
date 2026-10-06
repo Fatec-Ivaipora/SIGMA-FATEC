@@ -374,12 +374,85 @@ ativa no projeto Firebase).
   scroll em telas de PC (2026-09-11) — não tirar essas classes achando que
   são sobra.
 
+## Como preparar a imagem de uma assinatura nova (catálogo de certificados)
+
+Receita usada pela 1ª vez em 2026-10-06, pra cadastrar o Bruno (ver
+`src/lib/assinantesCertificado.ts`) — a pessoa manda uma FOTO CRUA da
+assinatura (folha inteira, tinta colorida, com a textura/sombra do papel
+em volta), e o resultado final precisa ser um traço limpo sobre fundo
+transparente, do jeito que fica em `public/certificados/assinatura-*.png`.
+Fazer isso à mão (recortar no editor de imagem, apagar fundo manualmente)
+dá trabalho e sai torto; o jeito que funcionou bem foi um script
+descartável em Node usando `sharp` (já está em `node_modules`, não
+precisa instalar nada):
+
+1. **Achar onde está a tinta**: ler a foto ORIGINAL (não uma cópia já
+   recortada/comprimida — perde qualidade a cada recompressão) como RGB
+   cru (`sharp(caminho).raw().toBuffer({resolveWithObject: true})`) e
+   varrer pixel a pixel procurando `azul - vermelho > 25` — tinta de
+   caneta (azul ou preta) tem o canal azul nitidamente mais alto que o
+   vermelho; papel e sombra ficam neutros (R≈G≈B), então não entram.
+   Guardar o menor/maior X e Y onde isso bateu = a caixa que envolve a
+   assinatura inteira.
+2. **Recortar** (`sharp().extract({left, top, width, height})`) nessa
+   caixa + ~18px de margem — direto na foto original, não na já
+   processada do passo 1.
+3. **Trocar a cor da tinta pra preto E remover o fundo, na mesma
+   passada**: ler esse recorte como RGBA cru de novo e, pra cada pixel,
+   calcular `alpha = clamp((azul - vermelho - 10) / (45 - 10) × 255, 0, 255)`
+   — isso dá uma transição suave entre "é fundo" (alpha 0) e "é tinta"
+   (alpha 255) em vez de uma borda dura/serrilhada (anti-aliasing). A cor
+   de cada pixel vira preto puro (0,0,0) sempre, não importa a cor
+   original da tinta — só o alpha desenha o traço.
+4. **Salvar como `.png`**, nunca `.jpg` — jpeg não tem canal alpha, não
+   segura transparência nenhuma. Nome do arquivo:
+   `public/certificados/assinatura-{id}.png`.
+5. Cadastrar o `id`/nome/cargo em `ASSINANTES_CERTIFICADO`
+   (`src/lib/assinantesCertificado.ts`) e o arquivo em
+   `IMAGEM_POR_ASSINANTE` (`src/lib/certificadosPdf.tsx`, `format: "png"`).
+   Apagar o script descartável depois de rodar, mesmo padrão de sempre.
+
+Essa receita só funciona bem se a tinta tiver uma cor que se distinga do
+papel (qualquer tinta colorida — preta pura já teria R≈G≈B igual ao
+fundo, não dava pra separar pelo mesmo critério; nesse caso o limiar
+precisaria ser por brilho/luminosidade, não por `azul - vermelho`, e o
+script teria que mudar esse detalhe específico).
+
 ## Histórico de mudanças
 
 Uma entrada por `git push`, mais recente no topo, curta (o commit em si já
 tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
+
+- **2026-10-06** *(ainda não commitado — aguardando "pode subir")* —
+  **Logo por evento no cabeçalho da declaração** (pedido explícito do
+  usuário, só pra Semana de Medicina — nunca global) — `evento.
+  logoCertificadoId` (`src/lib/data/eventos.ts`) troca o texto "FATEC/IVP"
+  do cabeçalho pela logo cadastrada em `LOGO_CABECALHO`
+  (`certificadosPdf.tsx`), ausente/sem match cai no texto padrão (igual
+  todo evento continua hoje). Cadastro manual, mesmo espírito dos
+  assinantes — sem UI própria ainda, setado direto no Firestore.
+  Primeira logo cadastrada: `medfatec` (fundo cinza-claro da imagem
+  original removido, mesma técnica de recorte por distância de cor usada
+  nas assinaturas — ver a receita de assinaturas acima, serve pra logo
+  também). Também corrigido nessa leva: no certificado de **declaração**
+  (`estiloDeclaracao`), o espaço entre as assinaturas e o rodapé (endereço)
+  — com 3 assinantes (não cabem mais numa linha só numa página retrato)
+  o bloco quebrava pra 2 linhas e colava no rodapé; `assinatura.width`
+  passou de 260 pra 210 e `assinaturas` ganhou `marginBottom`.
+
+- **2026-10-06** *(ainda não commitado — aguardando "pode subir")* —
+  **Bruno Maschio Neto** (Coordenação de Medicina) cadastrado no catálogo
+  de assinantes de certificado — primeiro uso da receita "assinatura
+  preto sobre fundo transparente" documentada acima (a foto que ele mandou
+  era tinta azul numa folha branca fotografada; antes a imagem só trocava
+  de arquivo, sempre `.jpg` com o fundo da foto visível — a do Bruno
+  destacava feio, tipo um retângulo, por cima do fundo ilustrado do
+  certificado de apresentação). `IMAGEM_POR_ASSINANTE` em
+  `certificadosPdf.tsx` passou a aceitar `.png` além de `.jpg` (Roni/João
+  continuam `.jpg`, sem necessidade de reprocessar os dois); `/assinaturas`
+  tenta `.png` primeiro e cai pra `.jpg` sozinho.
 
 - **2026-10-05** *(ainda não commitado — aguardando "pode subir")* —
   **Catálogo de assinantes de certificado**, tela nova `/assinaturas`

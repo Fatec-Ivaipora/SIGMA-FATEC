@@ -8,28 +8,30 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { ASSINANTES_CERTIFICADO } from "@/lib/assinantesCertificado";
 
 /** Cartão de 1 assinante — a imagem é só visual aqui (2026-10-05), lida
- * direto de public/certificados/assinatura-{id}.jpg pela convenção de nome
- * de arquivo (ver comentário em assinantesCertificado.ts); quem decide se o
- * PDF sai com ela ou não é o mapa IMAGEM_POR_ASSINANTE em certificadosPdf.tsx
- * (server-only, não dá pra importar aqui). Se o arquivo ainda não existir
- * (assinante cadastrado no catálogo mas sem a imagem ainda), cai no
- * placeholder em vez de mostrar um ícone de imagem quebrada. */
+ * direto de public/certificados/assinatura-{id}.{png|jpg} pela convenção de
+ * nome de arquivo (ver comentário em assinantesCertificado.ts); quem decide
+ * se o PDF sai com ela ou não é o mapa IMAGEM_POR_ASSINANTE em
+ * certificadosPdf.tsx (server-only, não dá pra importar aqui). Tenta .png
+ * primeiro (formato preferido agora, traço preto sobre fundo transparente),
+ * cai pra .jpg se não achar (assinantes antigos, fundo branco da foto), e só
+ * mostra o placeholder se nenhum dos dois existir (assinante cadastrado no
+ * catálogo mas sem a imagem ainda). */
 function CartaoAssinante({ nome, cargo, id }: { nome: string; cargo: string; id: string }) {
-  const [semImagem, setSemImagem] = useState(false);
+  const [extensao, setExtensao] = useState<"png" | "jpg" | null>("png");
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl border border-fatec-line bg-white p-6 text-center">
       <div className="flex h-16 w-full items-center justify-center">
-        {semImagem ? (
+        {extensao === null ? (
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-fatec-navy-50 text-fatec-muted">
             <UserRound className="h-5 w-5" strokeWidth={1.75} />
           </span>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/certificados/assinatura-${id}.jpg`}
+            src={`/certificados/assinatura-${id}.${extensao}`}
             alt={`Assinatura de ${nome}`}
             className="h-16 w-auto object-contain"
-            onError={() => setSemImagem(true)}
+            onError={() => setExtensao((atual) => (atual === "png" ? "jpg" : null))}
           />
         )}
       </div>
@@ -37,7 +39,7 @@ function CartaoAssinante({ nome, cargo, id }: { nome: string; cargo: string; id:
         <p className="font-medium text-fatec-navy-900">{nome}</p>
         <p className="text-sm text-fatec-muted">{cargo}</p>
       </div>
-      {semImagem && (
+      {extensao === null && (
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
           Sem assinatura digitalizada ainda
         </span>

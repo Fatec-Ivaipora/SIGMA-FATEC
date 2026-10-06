@@ -59,7 +59,7 @@ const FUNDO_APRESENTACAO = {
 // sabe lidar com isso (mostra nome/cargo sem a imagem da assinatura, em vez
 // de quebrar o PDF) — pra adicionar alguém novo, ver o comentário no topo de
 // assinantesCertificado.ts.
-const IMAGEM_POR_ASSINANTE: Record<string, { data: Buffer; format: "jpg" }> = {
+const IMAGEM_POR_ASSINANTE: Record<string, { data: Buffer; format: "jpg" | "png" }> = {
   roni: {
     data: fs.readFileSync(
       path.join(process.cwd(), "public", "certificados", "assinatura-roni.jpg"),
@@ -71,6 +71,31 @@ const IMAGEM_POR_ASSINANTE: Record<string, { data: Buffer; format: "jpg" }> = {
       path.join(process.cwd(), "public", "certificados", "assinatura-joao.jpg"),
     ),
     format: "jpg",
+  },
+  // .png, não .jpg (2026-10-06, pedido explícito do usuário) — tinta preta
+  // (era azul) sobre fundo TRANSPARENTE (era a folha branca da foto
+  // aparecendo, destacava feio sobre o fundo ilustrado do certificado de
+  // apresentação) — .jpg não tem canal alpha, só .png segura isso.
+  bruno: {
+    data: fs.readFileSync(
+      path.join(process.cwd(), "public", "certificados", "assinatura-bruno.png"),
+    ),
+    format: "png",
+  },
+};
+
+/** Logo alternativa no cabeçalho da declaração, no lugar do texto
+ * "FATEC/IVP" padrão (2026-10-06) — ver `logoCertificadoId` em
+ * src/lib/data/eventos.ts. Catálogo code-level, mesmo espírito de
+ * IMAGEM_POR_ASSINANTE (cadastro manual, sem UI própria ainda). Fundo
+ * removido (era um cinza bem claro, #f7f7f7, da imagem original — contra o
+ * fundo branco puro da página destacava como um retângulo). */
+const LOGO_CABECALHO: Record<string, { data: Buffer; format: "png" }> = {
+  medfatec: {
+    data: fs.readFileSync(
+      path.join(process.cwd(), "public", "certificados", "logo-medfatec.png"),
+    ),
+    format: "png",
   },
 };
 
@@ -94,7 +119,7 @@ function BlocoAssinatura({
   cargo,
   estilos,
 }: {
-  imagem: { data: Buffer; format: "jpg" } | undefined;
+  imagem: { data: Buffer; format: "jpg" | "png" } | undefined;
   nome: string;
   cargo: string;
   estilos: {
@@ -329,6 +354,12 @@ const estiloDeclaracao = StyleSheet.create({
     color: "#2376b9",
     letterSpacing: 1,
   },
+  // Altura fixa, largura livre (2026-10-06) — mesmo critério de
+  // imagemAssinatura acima: a logo tem proporção própria (bem larga),
+  // travar a largura também distorceria.
+  logoCabecalho: {
+    height: 34,
+  },
   textoCredenciamento: {
     flex: 1,
     fontSize: 8,
@@ -369,15 +400,22 @@ const estiloDeclaracao = StyleSheet.create({
   // "assinatura" singular, sempre 1 assinatura só). flexWrap (2026-10-05) —
   // mesmo motivo de estiloApresentacao.assinaturas, catálogo de assinantes
   // deixou de ter só 2 cargos fixos.
+  // width 210, não mais 260 (2026-10-06) — 260×2+gap já passava da largura
+  // útil da página (A4 retrato, paddingHorizontal 55 nos dois lados ≈ 485pt
+  // disponíveis), e com 3 assinantes (catálogo deixou de ter só 2 cargos
+  // fixos) quase sempre precisa quebrar pra uma 2ª linha mesmo — o
+  // marginBottom abaixo garante respiro antes do rodapé nesse caso, achado
+  // do usuário testando com 3 assinantes (cargo do Bruno colou no endereço).
   assinaturas: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 50,
+    gap: 40,
+    marginBottom: 24,
   },
   assinatura: {
     alignItems: "center",
-    width: 260,
+    width: 210,
   },
   // Altura fixa, não largura (2026-09-11) — as duas assinaturas têm
   // proporções diferentes; travar a largura igual deixava alturas
@@ -423,6 +461,7 @@ export function DeclaracaoPDF({
   cargaHoraria,
   assinantes,
   dataAssinatura,
+  logoCabecalhoId,
 }: {
   nome: string;
   papel: "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
@@ -436,15 +475,24 @@ export function DeclaracaoPDF({
   // assinantesCertificado.ts.
   assinantes: AssinanteCertificado[];
   dataAssinatura: string;
+  // Logo no lugar do texto "FATEC/IVP" (2026-10-06) — ver
+  // evento.logoCertificadoId em src/lib/data/eventos.ts. Sem id, ou id sem
+  // entrada em LOGO_CABECALHO, cai no texto padrão (nunca quebra o PDF).
+  logoCabecalhoId?: string;
 }) {
+  const logo = logoCabecalhoId ? LOGO_CABECALHO[logoCabecalhoId] : undefined;
   return (
     <Document>
       <Page size="A4" wrap={false} style={estiloDeclaracao.page}>
         <View style={estiloDeclaracao.cabecalho}>
-          <View>
-            <Text style={estiloDeclaracao.marcaFatec}>FATEC</Text>
-            <Text style={estiloDeclaracao.marcaIvp}>IVP</Text>
-          </View>
+          {logo ? (
+            <Image src={logo} style={estiloDeclaracao.logoCabecalho} />
+          ) : (
+            <View>
+              <Text style={estiloDeclaracao.marcaFatec}>FATEC</Text>
+              <Text style={estiloDeclaracao.marcaIvp}>IVP</Text>
+            </View>
+          )}
           <Text style={estiloDeclaracao.textoCredenciamento}>
             Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
             UNESVI{"\n"}

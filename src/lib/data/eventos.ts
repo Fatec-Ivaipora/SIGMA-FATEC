@@ -103,6 +103,14 @@ export type Evento = {
   // quem tem assinatura digitalizada cadastrada) — pelo menos 1 é exigido
   // (ver faltandoDadosEvento em src/app/api/certificados/route.ts).
   assinantesCertificadoIds?: string[];
+  // Logo no cabeçalho da declaração, no lugar do texto "FATEC/IVP" padrão
+  // (2026-10-06, pedido explícito do usuário pra Semana de Medicina — quis
+  // a logo MEDFATEC só nesse evento, não em todos). Ausente = cabeçalho
+  // padrão (a maioria dos eventos). id de um catálogo code-level em
+  // src/lib/certificadosPdf.tsx (LOGO_CABECALHO) — cadastro manual, de
+  // propósito, mesmo padrão dos assinantes de certificado; sem UI própria
+  // ainda (só esse 1 evento usa até agora). Setado direto no Firestore.
+  logoCertificadoId?: string;
   // Número do primeiro certificado desse evento no "REGISTRO SOB O N°" —
   // definido pela organização/comissão (documento próprio deles, fora do
   // sistema); os certificados seguintes desse evento saem em sequência a

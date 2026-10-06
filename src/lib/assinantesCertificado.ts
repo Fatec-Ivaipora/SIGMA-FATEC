@@ -12,13 +12,18 @@
  * abrir esse arquivo, ver a tela /assinaturas.
  *
  * Pra adicionar alguém novo: (1) conseguir a assinatura digitalizada,
- * recortada (só o rabisco, sem linha/nome/cargo — os 3 já cadastrados em
- * public/certificados/ servem de referência de recorte); (2) escolher um
- * `id` novo (sem espaço, sem acento — vira o nome do arquivo também); (3)
- * salvar a imagem em public/certificados/assinatura-{id}.jpg; (4) acrescentar
- * a entrada aqui; (5) cadastrar o arquivo no mapa IMAGEM_POR_ASSINANTE em
- * src/lib/certificadosPdf.tsx (único lugar que ainda precisa saber onde está
- * o arquivo — esse import usa `fs`/`node:path`, só roda no servidor). */
+ * recortada (só o rabisco, sem linha/nome/cargo — os já cadastrados em
+ * public/certificados/ servem de referência de recorte), de preferência já
+ * em traço preto sobre fundo transparente (.png — fica melhor sobre o fundo
+ * ilustrado do certificado de apresentação do que tinta colorida numa foto
+ * de papel branco, que destaca como um "retângulo" por cima do fundo; ver
+ * assinatura-bruno.png); (2) escolher um `id` novo (sem espaço, sem acento —
+ * vira o nome do arquivo também); (3) salvar a imagem em
+ * public/certificados/assinatura-{id}.png (ou .jpg, se não tiver como gerar
+ * com fundo transparente); (4) acrescentar a entrada aqui; (5) cadastrar o
+ * arquivo no mapa IMAGEM_POR_ASSINANTE em src/lib/certificadosPdf.tsx (único
+ * lugar que ainda precisa saber onde está o arquivo — esse import usa
+ * `fs`/`node:path`, só roda no servidor). */
 export type AssinanteCertificado = {
   id: string;
   nome: string;
@@ -31,4 +36,5 @@ export const ASSINANTES_CERTIFICADO: AssinanteCertificado[] = [
   // assina só "Coordenador Comissão de Iniciação Científica" (sem "da"
   // entre as duas primeiras palavras, exatamente como está no documento).
   { id: "joao", nome: "João Felipe Marques da Silva", cargo: "Coordenador Comissão de Iniciação Científica" },
+  { id: "bruno", nome: "Bruno Maschio Neto", cargo: "Coordenação de Medicina" },
 ];
