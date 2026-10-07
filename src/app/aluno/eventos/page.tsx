@@ -165,15 +165,32 @@ function CardEvento({
                       : "Presença confirmada"}
                   </span>
                 ) : (
+                  // "Líquido" subindo (2026-10-07, pedido explícito do
+                  // usuário) — só faz sentido em evento de vários dias, onde
+                  // existe uma fração real de progresso (1/3, 2/3...); em
+                  // evento de 1 dia só é um botão binário (sem/com presença),
+                  // não tem o que encher. overflow-hidden recorta a camada
+                  // de preenchimento pro mesmo contorno arredondado do
+                  // botão; o conteúdo (ícone+texto) fica numa camada acima
+                  // (z-10), sempre legível por cima do nível de água.
                   <button
                     type="button"
                     onClick={() => setConfirmandoPresenca(true)}
-                    className="inline-flex w-fit items-center gap-1.5 rounded-full border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                    className="relative inline-flex w-fit items-center gap-1.5 overflow-hidden rounded-full border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                   >
-                    <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
-                    {diasEventoSimples > 1
-                      ? `Confirmar presença (${diasConfirmados}/${diasEventoSimples} dias)`
-                      : "Confirmar presença"}
+                    {diasEventoSimples > 1 && diasConfirmados > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="sigma-liquid-fill absolute inset-y-0 left-0 w-full border-r-2 border-fatec-sky-600 bg-fatec-sky-600/20"
+                        style={{ transform: `scaleX(${diasConfirmados / diasEventoSimples})` }}
+                      />
+                    )}
+                    <span className="relative z-10 inline-flex items-center gap-1.5">
+                      <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
+                      {diasEventoSimples > 1
+                        ? `Confirmar presença (${diasConfirmados}/${diasEventoSimples} dias)`
+                        : "Confirmar presença"}
+                    </span>
                   </button>
                 )}
                 {/* Mesma regra de /api/certificados (papel "participante",
@@ -201,7 +218,6 @@ function CardEvento({
                   eventoId={evento.id}
                   user={user}
                   onClose={() => setConfirmandoPresenca(false)}
-                  onConfirmado={() => setConfirmandoPresenca(false)}
                 />
               </>
             ) : inscrito ? (

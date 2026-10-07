@@ -104,3 +104,68 @@ body {
   outline: 2px solid var(--color-fatec-orange-500);
   outline-offset: 2px;
 }
+
+/* Animações de feedback (2026-10-07, pedido explícito do usuário: confirmar
+   presença por QR "tá muito seco", sem nada visual de que deu certo) —
+   classes reutilizáveis em vez de inline, pra poder desligar tudo junto no
+   prefers-reduced-motion abaixo sem precisar caçar estilo inline por aí. */
+@keyframes sigma-pop-in {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes sigma-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.sigma-anim-pop {
+  animation: sigma-pop-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* círculo e check do ícone de sucesso (ConfirmarPresencaModal) — desenham em
+   sequência: círculo primeiro, check logo depois que o círculo termina. */
+.sigma-anim-circle {
+  stroke-dasharray: 170;
+  stroke-dashoffset: 170;
+  animation: sigma-draw 500ms cubic-bezier(0.65, 0, 0.35, 1) 80ms forwards;
+}
+.sigma-anim-check {
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: sigma-draw 320ms cubic-bezier(0.65, 0, 0.35, 1) 480ms forwards;
+}
+
+/* nível "líquido" subindo dentro do botão "Confirmar presença" em evento de
+   vários dias (proporção dias confirmados/total) — scaleX, não width, pra
+   não disparar reflow/layout thrash (transform é só compositor); a camada
+   já nasce 100% de largura, só "comprimida" visualmente pela escala. */
+.sigma-liquid-fill {
+  transform-origin: left;
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigma-anim-pop {
+    animation: none;
+  }
+  .sigma-anim-circle,
+  .sigma-anim-check {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .sigma-liquid-fill {
+    transition: none;
+  }
+}

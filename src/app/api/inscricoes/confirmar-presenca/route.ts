@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { codigoParaJanela, interpretarTextoQr, janelaValida } from "@/lib/qrPresenca";
+import { diasDoEvento } from "@/lib/certificadoDias";
+import { registrarAtividade } from "@/lib/atividadesAdmin";
 
 /** Confirma a presença do próprio uid num evento "simples" (2026-09-23) a
  * partir do texto lido da câmera. Self-service — qualquer logado confirma a
@@ -73,6 +75,27 @@ export async function POST(request: Request) {
   await inscricaoRef.update({
     [`presencasConfirmadas.${chaveDia}`]: FieldValue.serverTimestamp(),
   });
+
+  // Feed "Atividade recente" (2026-10-07, achado real: aluno confirmava
+  // presença e não aparecia nada lá — único gatilho que nunca tinha sido
+  // ligado). Melhor esforço, igual todo outro trigger de atividade — nunca
+  // derruba a confirmação em si, que já aconteceu acima.
+  try {
+    const evento = (await db.doc(`eventos/${eventoId}`).get()).data();
+    const nomeEvento = (evento?.nome as string | undefined) ?? "um evento";
+    const multiDia = evento && diasDoEvento(evento) > 1;
+    await registrarAtividade({
+      uid,
+      tipo: "presenca",
+      texto: multiDia
+        ? `Você confirmou presença no dia ${dia} de ${nomeEvento}.`
+        : `Você confirmou presença em ${nomeEvento}.`,
+      negritos: [nomeEvento],
+      eventoId,
+    });
+  } catch {
+    // melhor esforço
+  }
 
   return NextResponse.json({ ok: true, jaConfirmada: false });
 }

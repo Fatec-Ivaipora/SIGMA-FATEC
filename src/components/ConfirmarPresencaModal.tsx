@@ -5,6 +5,39 @@ import { Html5Qrcode } from "html5-qrcode";
 import type { User } from "firebase/auth";
 import { Modal } from "@/components/Modal";
 
+/** Ícone de sucesso animado (2026-10-07, pedido explícito do usuário — "tá
+ * muito seco, escaneia e não tem nada visual que deu certo") — círculo e
+ * check desenhando via stroke-dashoffset (keyframes `sigma-draw`/
+ * `sigma-pop-in` em globals.css), mesma técnica clássica de "pagamento
+ * confirmado". `prefers-reduced-motion` desliga o desenho e mostra tudo
+ * já completo na hora (ver @media em globals.css) — a confirmação em si
+ * nunca depende da animação pra ser compreendida. */
+function IconeSucesso() {
+  return (
+    <div className="sigma-anim-pop flex h-16 w-16 items-center justify-center">
+      <svg viewBox="0 0 64 64" className="h-16 w-16" fill="none" aria-hidden="true">
+        <circle
+          cx="32"
+          cy="32"
+          r="27"
+          stroke="currentColor"
+          strokeWidth="4"
+          strokeLinecap="round"
+          className="sigma-anim-circle text-emerald-500"
+        />
+        <path
+          d="M18 34 L27 43 L47 21"
+          stroke="currentColor"
+          strokeWidth="4.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="sigma-anim-check text-emerald-600"
+        />
+      </svg>
+    </div>
+  );
+}
+
 /** Confirmação de presença por QR (2026-09-23, evento "simples") — abre a
  * câmera do aluno (html5-qrcode cuida de pedir permissão/mostrar preview),
  * decodifica o QR exibido pela organização no local do evento e manda pra
@@ -15,13 +48,11 @@ export function ConfirmarPresencaModal({
   eventoId,
   user,
   onClose,
-  onConfirmado,
 }: {
   open: boolean;
   eventoId: string;
   user: User | null | undefined;
   onClose: () => void;
-  onConfirmado: () => void;
 }) {
   const [status, setStatus] = useState<"escaneando" | "enviando" | "erro" | "sucesso">(
     "escaneando",
@@ -105,7 +136,6 @@ export function ConfirmarPresencaModal({
               return;
             }
             setStatus("sucesso");
-            onConfirmado();
           } catch {
             setErro("Falha de conexão. Tente de novo.");
             setStatus("erro");
@@ -167,18 +197,34 @@ export function ConfirmarPresencaModal({
           }
         });
     };
-  }, [open, eventoId, user, onConfirmado]);
+  }, [open, eventoId, user]);
+
+  // Fecha sozinho depois de mostrar a animação de sucesso (2026-10-07) —
+  // antes o modal fechava na MESMA hora que confirmava (onConfirmado batia
+  // junto com setStatus("sucesso"), React processa os dois na mesma
+  // renderização), então a pessoa nunca chegava a ver nada, só via o
+  // scanner sumir e voltar pra tela de trás — exatamente o "muito seco"
+  // relatado. Agora quem fecha é o próprio modal, depois de dar tempo de
+  // ver o check e o texto.
+  useEffect(() => {
+    if (status !== "sucesso") return;
+    const id = setTimeout(onClose, 1900);
+    return () => clearTimeout(id);
+  }, [status, onClose]);
 
   return (
     <Modal open={open} onClose={onClose} title="Confirmar presença">
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-fatec-muted">
-          Aponte a câmera pro QR exibido pela organização no local do evento.
-        </p>
+        {status !== "sucesso" && (
+          <p className="text-sm text-fatec-muted">
+            Aponte a câmera pro QR exibido pela organização no local do evento.
+          </p>
+        )}
 
         {status === "sucesso" ? (
-          <div className="rounded-xl bg-emerald-50 p-6 text-center text-sm font-semibold text-emerald-700">
-            Presença confirmada!
+          <div className="flex flex-col items-center gap-3 rounded-xl bg-emerald-50 py-8 text-center">
+            <IconeSucesso />
+            <p className="text-base font-semibold text-emerald-700">Presença confirmada!</p>
           </div>
         ) : (
           <div id="confirmar-presenca-leitor" className="overflow-hidden rounded-xl" />

@@ -62,6 +62,7 @@ const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: st
     fundo: "bg-fatec-navy-50",
   },
   pagamento: { icone: Wallet, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+  presenca: { icone: QrCode, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
   // Destaque proposital em âmbar (2026-09-11) — é um aviso de segurança
   // (alguém da coordenação mexeu no trabalho por fora do fluxo normal),
   // precisa chamar mais atenção que uma atualização de rotina.
@@ -392,15 +393,27 @@ export default function AlunoPainelPage() {
                           </span>
                         )}
                         {evento.tipo === "simples" && !todosDiasConfirmados && (
+                          // "Líquido" subindo — mesmo critério de
+                          // src/app/aluno/eventos/page.tsx: só em evento de
+                          // vários dias, onde existe fração de verdade.
                           <button
                             type="button"
                             onClick={() => setConfirmandoPresencaEventoId(evento.id)}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-fatec-line px-2.5 py-1 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                            className="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-fatec-line px-2.5 py-1 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                           >
-                            <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
-                            {diasEvento > 1
-                              ? `Confirmar presença (${diasConfirmados}/${diasEvento} dias)`
-                              : "Confirmar presença"}
+                            {diasEvento > 1 && diasConfirmados > 0 && (
+                              <span
+                                aria-hidden="true"
+                                className="sigma-liquid-fill absolute inset-y-0 left-0 w-full border-r-2 border-fatec-sky-600 bg-fatec-sky-600/20"
+                                style={{ transform: `scaleX(${diasConfirmados / diasEvento})` }}
+                              />
+                            )}
+                            <span className="relative z-10 inline-flex items-center gap-1.5">
+                              <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
+                              {diasEvento > 1
+                                ? `Confirmar presença (${diasConfirmados}/${diasEvento} dias)`
+                                : "Confirmar presença"}
+                            </span>
                           </button>
                         )}
                         {/* Mesma regra de /api/certificados (2026-09-30):
@@ -525,7 +538,6 @@ export default function AlunoPainelPage() {
         eventoId={confirmandoPresencaEventoId ?? ""}
         user={user}
         onClose={() => setConfirmandoPresencaEventoId(null)}
-        onConfirmado={() => setConfirmandoPresencaEventoId(null)}
       />
     </main>
   );

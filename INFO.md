@@ -478,6 +478,36 @@ fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
 - **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Feedback visual da confirmação de presença por QR** (pedido explícito
+  do usuário: "tá muito seco") — o modal fechava na MESMA hora que
+  confirmava (achado real: `onConfirmado` e `setStatus("sucesso")`
+  disparavam juntos, React processa os dois na mesma renderização, a
+  pessoa nunca via nada). Agora mostra um ícone de sucesso animado (círculo
+  + check desenhando via stroke-dashoffset, keyframes novas em
+  `globals.css`) e só fecha sozinho ~2s depois; `prefers-reduced-motion`
+  mostra tudo já completo, sem perder o feedback. Botão "Confirmar
+  presença" (evento de vários dias) ganhou um preenchimento tipo "líquido"
+  (`scaleX`, não `width` — evita layout thrash) representando a fração de
+  dias confirmados, em `/aluno` e `/aluno/eventos`.
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Atividade recente nunca registrava confirmação de presença por QR** —
+  achado real, único gatilho da lista que nunca tinha sido ligado (ver
+  `TipoAtividade` em `src/lib/atividadesAdmin.ts`). Corrigido em
+  `/api/inscricoes/confirmar-presenca`.
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Curso obrigatório também ao criar aluno pelo admin** (`/usuarios`) —
+  achado real: uma aluna (Maria Gabriela) ficou sem curso porque esse
+  formulário nunca teve esse campo, só o autocadastro público já exigia.
+  Validado nos dois lados (tela + servidor, nunca só no cliente).
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Relatório do evento completo ganhou 2 abas** (pedido explícito do
+  usuário) — "Perfil dos inscritos" (vínculo Fatec/fora, curso, modalidade
+  de apresentação escolhida na submissão — informativo pro planejamento do
+  PRÓXIMO evento, útil mesmo antes de qualquer avaliação) e "Avaliação dos
+  trabalhos" (nota média por área + melhores trabalhos, sem mudança — só
+  reorganizado). "Inscritos por curso" também passou a funcionar pro
+  evento completo (antes só evento simples).
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
   **Link quebrado no e-mail de "você foi cadastrado como avaliador/
   moderador/orientador"** (achado real testando — link saía
   `https://sigma.fatecivaipora.com.brundefined`). Causa: `ROTA_POR_PAPEL`

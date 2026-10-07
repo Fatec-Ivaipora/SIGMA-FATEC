@@ -16,6 +16,11 @@ export type TipoAtividade =
   | "convite_aceito"
   | "pagamento"
   | "atribuicao"
+  // Confirmação de presença por QR em evento "simples" (2026-10-07, achado
+  // real: aluno confirmava a presença e não aparecia nada no feed — único
+  // gatilho dessa lista que nunca tinha sido ligado). Ver
+  // /api/inscricoes/confirmar-presenca.
+  | "presenca"
   // Admin corrigiu um trabalho por fora do fluxo normal (2026-09-11) —
   // avisa TODOS os autores, sempre, mesmo sem eles pedirem nada: é uma
   // transparência de segurança (ver /api/trabalhos/alterado-admin), pra

@@ -220,7 +220,6 @@ export function DestaqueEventoBanner({
               eventoId={destaque.id}
               user={user}
               onClose={() => setConfirmandoPresenca(false)}
-              onConfirmado={() => setConfirmandoPresenca(false)}
             />
           </div>
         ) : (

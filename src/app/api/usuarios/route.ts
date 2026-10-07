@@ -25,6 +25,11 @@ type CriarUsuarioBody = {
   atribuicoesEventos?: AtribuicaoEvento[];
   // Papéis combináveis (2026-08-26) — ver PAPEIS_AVALIACAO em src/lib/auth.tsx.
   papeisAvaliacao?: ("avaliador" | "orientador" | "moderador")[];
+  // Curso (2026-10-07, pedido explícito do usuário — achado real: aluno
+  // cadastrado pelo admin ficava sem curso, nunca tinha essa trava aqui,
+  // só no autocadastro). Obrigatório sempre que papel === "aluno" — admin
+  // não coleta vinculoFatec nesse form, sempre equivale a Fatec.
+  curso?: string;
 };
 
 function senhaTemporaria(): string {
@@ -67,6 +72,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ erro: "Nome, e-mail e papel são obrigatórios." }, {
         status: 400,
       });
+    }
+    // Nunca confia só na validação do cliente (princípio #1 do projeto) —
+    // mesma trava de curso obrigatório que já existe no autocadastro.
+    if (body.papel === "aluno" && !body.curso?.trim()) {
+      return NextResponse.json({ erro: "Curso é obrigatório pra aluno." }, { status: 400 });
     }
 
     // Organização ganha permissão de cadastrar avaliador/orientador/
@@ -135,6 +145,7 @@ export async function POST(request: Request) {
         ...(body.papeisAvaliacao && body.papeisAvaliacao.length > 0
           ? { papeisAvaliacao: body.papeisAvaliacao }
           : {}),
+        ...(body.papel === "aluno" ? { curso: body.curso!.trim() } : {}),
         // Conta criada pelo admin com senha gerada na hora (nunca escolhida pela
         // pessoa) — força trocar no primeiro login via SenhaTemporariaGate,
         // senão a pessoa loga uma vez, nunca troca, e esquece a senha depois

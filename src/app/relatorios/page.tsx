@@ -32,6 +32,49 @@ function nomeAutores(t: Trabalho): string {
   return extras > 0 ? `${t.alunoNome} + ${extras}` : t.alunoNome;
 }
 
+/** Linha de barra horizontal (2026-10-07) — extraído pra não repetir o
+ * mesmo markup 3x na aba "Perfil dos inscritos" (vínculo, curso,
+ * modalidade); mesmo visual (sm:contents pra empilhar no celular) já
+ * usado nas seções de evento simples abaixo, só não reaproveitado lá pra
+ * não arriscar mexer em código que já funciona. */
+function BarraHorizontal({
+  label,
+  n,
+  pct,
+  cor,
+  destaque,
+  extra,
+}: {
+  label: string;
+  n: number;
+  pct: number;
+  cor: string;
+  destaque?: boolean;
+  extra: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5">
+      <span className="flex items-center gap-1.5 truncate text-sm text-fatec-ink sm:w-44 sm:flex-none">
+        {destaque && (
+          <Trophy className="h-3.5 w-3.5 flex-none text-fatec-orange-500" strokeWidth={1.75} />
+        )}
+        <span className="truncate">{label}</span>
+      </span>
+      <div className="flex items-center gap-3.5 sm:contents">
+        <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">
+          <div
+            className="flex h-6 items-center justify-end rounded-xl px-2.5"
+            style={{ width: `${Math.max(8, pct)}%`, backgroundColor: cor }}
+          >
+            <span className="text-xs font-bold tabular-nums text-white">{n}</span>
+          </div>
+        </div>
+        <span className="w-20 flex-none text-right text-xs text-fatec-muted">{extra}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function RelatoriosPage() {
   return (
     <Suspense fallback={null}>
@@ -120,7 +163,10 @@ function RelatoriosContent() {
     [inscricoesDoEvento],
   );
   useEffect(() => {
-    if (!ehSimples || !uidsFatecKey) {
+    // Antes só rodava pra evento simples (2026-10-07, pedido explícito do
+    // usuário: "Inscritos por curso" também importa pro evento completo,
+    // pra planejar o próximo — quantos alunos de cada curso participam).
+    if (!uidsFatecKey) {
       Promise.resolve().then(() => setCursoPorUid({}));
       return;
     }
@@ -147,7 +193,7 @@ function RelatoriosContent() {
     return () => {
       cancelado = true;
     };
-  }, [ehSimples, uidsFatecKey]);
+  }, [uidsFatecKey]);
 
   const porCurso = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -170,6 +216,33 @@ function RelatoriosContent() {
       return { dia, n };
     });
   }, [ehSimples, diasEventoSelecionado, inscricoesDoEvento]);
+
+  // Modalidade de apresentação (2026-10-07, pedido explícito do usuário) —
+  // escolhida pelo aluno já na submissão (ver modalidadeApresentacao em
+  // src/lib/data/trabalhos.ts), então dá pra contar independente da etapa
+  // do pipeline — útil pra planejar salas/horário do PRÓXIMO evento antes
+  // mesmo da avaliação acontecer, não só depois.
+  const modalidadeStats = useMemo(() => {
+    let oral = 0;
+    let rodaConversa = 0;
+    let semEscolha = 0;
+    for (const t of trabalhosDoEvento) {
+      if (t.modalidadeApresentacao === "oral") oral++;
+      else if (t.modalidadeApresentacao === "roda_conversa") rodaConversa++;
+      else semEscolha++;
+    }
+    return { oral, rodaConversa, semEscolha };
+  }, [trabalhosDoEvento]);
+
+  // Abas do relatório de evento completo (2026-10-07, pedido explícito do
+  // usuário): "Perfil" é informativo pro planejamento (serve o processo
+  // inteiro, desde antes da avaliação existir); "Avaliação" é a parte
+  // pedagógica (nota média, melhores trabalhos — só faz sentido depois que
+  // os trabalhos já têm nota). Evento simples não usa essas abas, tem as
+  // próprias seções fixas mais abaixo.
+  const [abaRelatorioCompleto, setAbaRelatorioCompleto] = useState<"perfil" | "avaliacao">(
+    "perfil",
+  );
 
   // Ranking por área temática — só entra quem já tem nota do avaliador,
   // ordenado da maior pra menor; áreas com mais trabalhos aparecem primeiro
@@ -371,10 +444,136 @@ function RelatoriosContent() {
             </div>
           </div>
 
-          {/* Nota média por área temática — evento completo (trabalho
-              acadêmico) só; evento simples não tem trabalho/área nenhuma,
-              ver as seções abaixo. */}
+          {/* Abas do evento completo (2026-10-07, pedido explícito do
+              usuário) — "Perfil dos inscritos" é informativo pro
+              planejamento do PRÓXIMO evento (vínculo, curso, modalidade —
+              dá pra ver mesmo antes de qualquer avaliação acontecer);
+              "Avaliação dos trabalhos" é a parte pedagógica de sempre
+              (nota média, melhores trabalhos — só faz sentido depois que
+              os trabalhos já têm nota). Evento simples não usa isso, tem
+              as próprias seções fixas mais abaixo. */}
           {!ehSimples && (
+          <div className="mt-6 flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
+            {(
+              [
+                { key: "perfil", label: "Perfil dos inscritos" },
+                { key: "avaliacao", label: "Avaliação dos trabalhos" },
+              ] as { key: "perfil" | "avaliacao"; label: string }[]
+            ).map((aba) => (
+              <button
+                key={aba.key}
+                type="button"
+                onClick={() => setAbaRelatorioCompleto(aba.key)}
+                className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                  abaRelatorioCompleto === aba.key
+                    ? "bg-white text-fatec-navy-900 shadow-sm"
+                    : "text-fatec-muted hover:text-fatec-navy-900"
+                }`}
+              >
+                {aba.label}
+              </button>
+            ))}
+          </div>
+          )}
+
+          {!ehSimples && abaRelatorioCompleto === "perfil" && (
+          <div className="mt-6 flex flex-col gap-6">
+            <div className="rounded-2xl border border-fatec-line bg-white p-6">
+              <h2 className="text-base font-semibold text-fatec-navy-900">
+                Perfil dos inscritos
+              </h2>
+              <p className="mt-0.5 text-sm text-fatec-muted">Vínculo com a Fatec</p>
+
+              <div className="mt-5 flex flex-col gap-3.5">
+                {[
+                  { label: "Alunos da Fatec", n: vinculoStats.fatec, cor: "#2376b9" },
+                  { label: "De fora", n: vinculoStats.externo, cor: "#5b6b78" },
+                ].map((linha) => {
+                  const max = Math.max(vinculoStats.fatec, vinculoStats.externo, 1);
+                  return (
+                    <BarraHorizontal
+                      key={linha.label}
+                      label={linha.label}
+                      n={linha.n}
+                      pct={(linha.n / max) * 100}
+                      cor={linha.cor}
+                      extra={
+                        totalInscricoes > 0
+                          ? `${Math.round((linha.n / totalInscricoes) * 100)}%`
+                          : "0%"
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-fatec-line bg-white p-6">
+              <h2 className="text-base font-semibold text-fatec-navy-900">
+                Inscritos por curso
+              </h2>
+              <p className="mt-0.5 text-sm text-fatec-muted">
+                Só alunos da Fatec — quem é de fora não tem curso
+              </p>
+
+              <div className="mt-5 flex flex-col gap-3.5">
+                {porCurso.length === 0 && (
+                  <p className="text-sm text-fatec-muted">
+                    Nenhum aluno da Fatec inscrito ainda.
+                  </p>
+                )}
+                {porCurso.map((c, i) => (
+                  <BarraHorizontal
+                    key={c.curso}
+                    label={c.curso}
+                    n={c.n}
+                    pct={(c.n / (porCurso[0]?.n ?? 1)) * 100}
+                    cor={i === 0 ? "#ea741c" : "#2376b9"}
+                    destaque={i === 0}
+                    extra={`${c.n} inscrito${c.n === 1 ? "" : "s"}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-fatec-line bg-white p-6">
+              <h2 className="text-base font-semibold text-fatec-navy-900">
+                Modalidade de apresentação
+              </h2>
+              <p className="mt-0.5 text-sm text-fatec-muted">
+                Escolhida por cada autor na submissão — ajuda a planejar salas
+                e horário do próximo evento
+              </p>
+
+              <div className="mt-5 flex flex-col gap-3.5">
+                {totalSubmissoes === 0 ? (
+                  <p className="text-sm text-fatec-muted">
+                    Nenhum trabalho submetido ainda neste evento.
+                  </p>
+                ) : (
+                  [
+                    { label: "Apresentação Oral", n: modalidadeStats.oral, cor: "#2376b9" },
+                    { label: "Roda de Conversa", n: modalidadeStats.rodaConversa, cor: "#ea741c" },
+                    ...(modalidadeStats.semEscolha > 0
+                      ? [{ label: "Ainda não escolhida", n: modalidadeStats.semEscolha, cor: "#5b6b78" }]
+                      : []),
+                  ].map((linha) => (
+                    <BarraHorizontal
+                      key={linha.label}
+                      label={linha.label}
+                      n={linha.n}
+                      pct={(linha.n / totalSubmissoes) * 100}
+                      cor={linha.cor}
+                      extra={`${Math.round((linha.n / totalSubmissoes) * 100)}%`}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          )}
+
+          {!ehSimples && abaRelatorioCompleto === "avaliacao" && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -503,7 +702,7 @@ function RelatoriosContent() {
           </div>
           )}
 
-          {!ehSimples && (
+          {!ehSimples && abaRelatorioCompleto === "avaliacao" && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <h2 className="text-base font-semibold text-fatec-navy-900">
               Melhores trabalhos por área temática

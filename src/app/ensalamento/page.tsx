@@ -424,8 +424,15 @@ function ConfirmacaoPresencaView({
           </p>
         )}
 
-        <div className="mt-4 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line">
-          {visiveis.map((i, idx) => {
+        {/* overflow-hidden removido (2026-10-07, achado do usuário) — cortava
+            o balão "Dia X confirmado" de quem ficasse na borda da lista
+            (primeira linha abrindo pra cima, ou — depois de filtrar a busca
+            — a mesma linha virando a ÚLTIMA e cortando embaixo com a
+            correção anterior). Nenhuma linha tem fundo de hover (só a
+            borda/divide-y), então não tem nada pra "vazar" feio sem essa
+            classe — era só isso que cortava o balão. */}
+        <div className="mt-4 flex flex-col divide-y divide-fatec-line rounded-xl border border-fatec-line">
+          {visiveis.map((i) => {
             const diasConfirmadosPessoa = diasConfirmadosCount(i);
             const horas = horasConcedidasAteAgora(evento, diasConfirmadosPessoa);
             return (
@@ -481,15 +488,7 @@ function ConfirmacaoPresencaView({
                         </button>
                         {confirmado && timestamp && (
                           <div
-                            className={`absolute left-1/2 z-10 w-max -translate-x-1/2 rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-opacity ${
-                              // Linha 0 (2026-10-05, achado do usuário no modo
-                              // monitor): abrir pra cima cortava embaixo do
-                              // topo arredondado da lista (overflow-hidden),
-                              // o balão sumia atrás do card. Só a primeira
-                              // linha abre pra baixo — as demais têm espaço
-                              // de sobra acima.
-                              idx === 0 ? "top-full mt-1.5" : "bottom-full mb-1.5"
-                            } ${
+                            className={`absolute bottom-full left-1/2 z-10 mb-1.5 w-max -translate-x-1/2 rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg transition-opacity ${
                               aberto
                                 ? "opacity-100"
                                 : "pointer-events-none opacity-0 group-hover:opacity-100"

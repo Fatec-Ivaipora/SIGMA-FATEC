@@ -61,6 +61,13 @@ export default function UsuariosPage() {
   const [criarPapeisExtras, setCriarPapeisExtras] = useState<PapelAvaliacao[]>([]);
   const [criarEvento, setCriarEvento] = useState("");
   const [criarAreas, setCriarAreas] = useState<string[]>([]);
+  // Curso (2026-10-07, pedido explícito do usuário — achado real: aluno
+  // criado pelo admin ficava sem curso, único jeito de "escapar" da
+  // obrigatoriedade que já existia no autocadastro, ver cadastro/aluno).
+  // Admin não coleta vinculoFatec aqui, sempre equivale a true (Fatec) —
+  // por isso curso é obrigatório pra "aluno" sempre, sem condicional de
+  // vínculo (diferente do autocadastro, que só exige quando marca Fatec).
+  const [criarCurso, setCriarCurso] = useState("");
   const [criando, setCriando] = useState(false);
   const [erroCriar, setErroCriar] = useState<string | null>(null);
   const [senhaGerada, setSenhaGerada] = useState<string | null>(null);
@@ -201,6 +208,7 @@ export default function UsuariosPage() {
     setCriarPapeisExtras([]);
     setCriarEvento("");
     setCriarAreas([]);
+    setCriarCurso("");
     setErroCriar(null);
     setSenhaGerada(null);
   }
@@ -219,8 +227,14 @@ export default function UsuariosPage() {
 
   async function criarUsuario() {
     if (!user) return;
-    setCriando(true);
     setErroCriar(null);
+
+    if (criarPapel === "aluno" && !criarCurso) {
+      setErroCriar("Selecione o curso do aluno.");
+      return;
+    }
+
+    setCriando(true);
 
     const atribuicoesEventos: AtribuicaoEvento[] =
       PAPEIS_COM_AREA.includes(criarPapel) && criarEvento && criarAreas.length > 0
@@ -246,6 +260,7 @@ export default function UsuariosPage() {
           papel: criarPapel,
           atribuicoesEventos,
           papeisAvaliacao,
+          ...(criarPapel === "aluno" ? { curso: criarCurso } : {}),
         }),
       });
       // 2026-09-28: um 500 inesperado pode vir sem corpo (erro não tratado no
@@ -626,6 +641,7 @@ export default function UsuariosPage() {
                   setCriarPapeisExtras([]);
                   setCriarEvento("");
                   setCriarAreas([]);
+                  setCriarCurso("");
                 }}
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               >
@@ -647,6 +663,24 @@ export default function UsuariosPage() {
                 </span>
               )}
             </label>
+
+            {criarPapel === "aluno" && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-fatec-navy-900">Curso</span>
+                <select
+                  value={criarCurso}
+                  onChange={(e) => setCriarCurso(e.target.value)}
+                  className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                >
+                  <option value="">Selecione o curso</option>
+                  {CURSOS_FATEC.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {PAPEIS_COM_AREA.includes(criarPapel) && (
               <div className="flex flex-col gap-1.5">
@@ -749,7 +783,12 @@ export default function UsuariosPage() {
             <button
               type="button"
               onClick={criarUsuario}
-              disabled={criando || !criarNome.trim() || !criarEmail.trim()}
+              disabled={
+                criando ||
+                !criarNome.trim() ||
+                !criarEmail.trim() ||
+                (criarPapel === "aluno" && !criarCurso)
+              }
               className="mt-1 w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
             >
               {criando ? "Criando..." : "Criar usuário"}
