@@ -4,9 +4,25 @@ import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
 async function gerarEEnviar(emailNormalizado: string) {
   const usuario = await getAdminAuth().getUserByEmail(emailNormalizado);
-  const link = await getAdminAuth().generatePasswordResetLink(emailNormalizado, {
+  // generatePasswordResetLink sempre devolve um link que passa primeiro
+  // pela página intermediária hospedada pelo próprio Firebase
+  // (`{authDomain}/__/auth/action`, que só depois redireciona pra `url`)
+  // — `handleCodeInApp` NÃO muda isso (só afeta o sendPasswordResetEmail
+  // do client, que já não usamos mais). Achado real (2026-10-07): essa
+  // página intermediária chama a API do Google com referer
+  // `fateclab-4cc74.firebaseapp.com`, e a chave de API do projeto só
+  // libera o domínio de produção como referer permitido — a chamada
+  // tomava 403 (API_KEY_HTTP_REFERRER_BLOCKED), página em branco com erro
+  // cru em JSON. Solução: extrai só o oobCode do link gerado e monta o
+  // link do e-mail apontando DIRETO pra nosso /redefinir-senha (que já lê
+  // oobCode da URL sozinho, ver redefinir-senha/page.tsx) — nunca passa
+  // pela intermediária do Firebase, não depende de mais nenhuma
+  // configuração no Google Cloud Console.
+  const linkGerado = await getAdminAuth().generatePasswordResetLink(emailNormalizado, {
     url: `${URL_SISTEMA}/redefinir-senha`,
   });
+  const oobCode = new URL(linkGerado).searchParams.get("oobCode");
+  const link = `${URL_SISTEMA}/redefinir-senha?oobCode=${encodeURIComponent(oobCode ?? "")}`;
   await enviarEmail({
     to: emailNormalizado,
     subject: "Redefinição de senha — SIGMA",

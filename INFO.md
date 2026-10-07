@@ -363,6 +363,24 @@ vinha — foi o que quebrava a recuperação de senha pro aluno (nunca
 chegava nenhum e-mail) até ser adicionado manualmente no Console. Se um
 dia trocar de domínio customizado, lembrar de autorizar ele aqui também.
 
+**`generatePasswordResetLink` (Admin SDK) sempre passa pela página
+hospedada do Firebase** (2026-10-07, achado real — 2ª camada do mesmo
+problema acima, descoberta só depois de corrigir a 1ª): mesmo com o
+domínio autorizado, o link gerado aponta pra
+`https://{authDomain}/__/auth/action?...&continueUrl=...`, uma página
+intermediária hospedada pelo PRÓPRIO Firebase que só depois redireciona
+pra `continueUrl`. `handleCodeInApp: true` **não muda isso** (só afeta o
+`sendPasswordResetEmail` do client, que esse projeto não usa mais pra
+isso). Essa página intermediária chama a API do Google com referer
+`fateclab-4cc74.firebaseapp.com`, e a chave de API do projeto (Google
+Cloud Console → Credentials → restrição de HTTP referrer) só libera o
+domínio de produção — a chamada tomava 403
+(`API_KEY_HTTP_REFERRER_BLOCKED`), página em branco com o erro cru em
+JSON. Solução usada em `/api/auth/recuperar-senha`: extrai só o `oobCode`
+do link gerado e monta o link do e-mail apontando DIRETO pra
+`/redefinir-senha?oobCode=...` — nunca passa pela intermediária do
+Firebase, não depende de mexer em mais nada no Google Cloud Console.
+
 ## Convenções de código estabelecidas
 
 - Nomes de variável/função/comentário em **português**, código
@@ -452,8 +470,15 @@ commit que sobe pro git.
   pelo canal confiável de todo outro e-mail do sistema (`enviarEmail()` →
   `mail` → Trigger Email) em vez do envio próprio do Firebase Auth.
   `/recuperar-senha` (aluno) e o botão "Redefinir senha" em `/usuarios`
-  (admin) chamam essa rota. Testado de ponta a ponta depois do domínio
-  autorizado: e-mail chegou com `delivery.state: SUCCESS`.
+  (admin) chamam essa rota. **2ª volta** (achado real testando com um
+  avaliador de verdade): o link ainda dava erro — 403
+  `API_KEY_HTTP_REFERRER_BLOCKED`, página em branco. Causa: o link do
+  Admin SDK sempre passa pela página hospedada do Firebase antes de
+  redirecionar, e essa página tomava bloqueio de referer na chave de API
+  (ver pegadinha acima). Corrigido extraindo só o `oobCode` e montando o
+  link do e-mail direto pra `/redefinir-senha?oobCode=...`, sem passar
+  pela intermediária do Firebase. Validado com uma chamada direta à API
+  do Google simulando o referer de produção: 200 OK.
 
 - **2026-10-06** *(ainda não commitado — aguardando "pode subir")* —
   **Logo por evento no cabeçalho da declaração** (pedido explícito do
