@@ -13,8 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { PapelBadge } from "@/components/PapelBadge";
@@ -159,23 +157,37 @@ export default function UsuariosPage() {
   // tela ficava do jeito que estava, sem mensagem nenhuma — parecia que
   // "não fez nada", mas na real deu erro e ninguém viu.
   async function enviarRedefinicao() {
-    if (!redefinindo) return;
+    if (!redefinindo || !user) return;
     setErroRedefinir(null);
     setEnviandoLink(true);
     try {
-      await sendPasswordResetEmail(auth, redefinindo.email);
+      // Rota própria, não mais sendPasswordResetEmail direto (2026-10-07,
+      // achado real: o link que o admin mandava chegava "já expirado" —
+      // o envio pelo próprio servidor de e-mail do Firebase é separado de
+      // todo o resto do sistema e parece pouco confiável aqui; agora passa
+      // pelo mesmo canal (`mail` + Trigger Email) de todo outro e-mail do
+      // SIGMA. Authorization identifica o chamador como admin, então a
+      // rota devolve o erro de verdade em vez de sempre "ok" — ver
+      // /api/auth/recuperar-senha.
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/auth/recuperar-senha", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: redefinindo.email }),
+      });
+      const corpo = await res.json().catch(() => null);
+      if (!res.ok) {
+        const codigo = corpo?.codigo as string | undefined;
+        const mensagem =
+          codigo === "auth/user-not-found"
+            ? "Esse e-mail não existe mais no Authentication — se você editou o e-mail há pouco, feche e abra essa tela de novo pra pegar o e-mail atualizado."
+            : (corpo?.erro ?? "Não foi possível enviar o link. Tente de novo.");
+        setErroRedefinir(mensagem);
+        return;
+      }
       setLinkEnviado(true);
-    } catch (e) {
-      const codigo = (e as { code?: string }).code;
-      const mensagem =
-        codigo === "auth/user-not-found"
-          ? "Esse e-mail não existe mais no Authentication — se você editou o e-mail há pouco, feche e abra essa tela de novo pra pegar o e-mail atualizado."
-          : codigo === "auth/too-many-requests"
-            ? "Muitas tentativas seguidas — espere um pouco e tente de novo."
-            : codigo === "auth/invalid-email"
-              ? "E-mail inválido."
-              : "Não foi possível enviar o link. Tente de novo.";
-      setErroRedefinir(mensagem);
+    } catch {
+      setErroRedefinir("Falha de conexão — tente de novo.");
     } finally {
       setEnviandoLink(false);
     }

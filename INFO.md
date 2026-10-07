@@ -352,6 +352,17 @@ manda de verdade. Sem a extensão instalada, o doc só fica parado ali sem
 erro nenhum (não é falha silenciosa nossa, é a extensão que precisa estar
 ativa no projeto Firebase).
 
+**Authorized domains do Firebase Auth** (2026-10-07, achado real): e-mail
+de redefinição de senha (`generatePasswordResetLink`/`sendPasswordResetEmail`
+com `actionCodeSettings.url` apontando pra um domínio próprio) **falha em
+silêncio** se esse domínio não estiver em Authentication → Settings →
+Authorized domains no Console — erro é `auth/unauthorized-continue-uri`.
+`localhost` vem autorizado por padrão (por isso nunca dava pra notar isso
+testando local); domínio de produção (`sigma.fatecivaipora.com.br`) não
+vinha — foi o que quebrava a recuperação de senha pro aluno (nunca
+chegava nenhum e-mail) até ser adicionado manualmente no Console. Se um
+dia trocar de domínio customizado, lembrar de autorizar ele aqui também.
+
 ## Convenções de código estabelecidas
 
 - Nomes de variável/função/comentário em **português**, código
@@ -424,6 +435,25 @@ Uma entrada por `git push`, mais recente no topo, curta (o commit em si já
 tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
+
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Recuperação de senha reescrita** (pedido explícito do usuário — achado
+  real: aluno relatou que o e-mail de "esqueci minha senha" nunca chegava;
+  admin relatou que o link que ele mandava manualmente chegava "já
+  expirado"). Causa raiz: `sigma.fatecivaipora.com.br` não estava em
+  Authorized domains no Firebase Console (ver pegadinha acima) — o
+  `sendPasswordResetEmail` do aluno sempre falhava em silêncio por causa
+  disso; o do admin "funcionava" só porque não pedia um domínio próprio
+  (caía no padrão do Firebase, sempre autorizado), mas aí o link não tinha
+  a cara do SIGMA. Rota nova `/api/auth/recuperar-senha` (Authorization
+  opcional — sem token é o autoatendimento, sempre responde `{ok:true}`
+  mesmo pra e-mail que não existe; com token de Admin devolve o erro de
+  verdade, ex. `auth/user-not-found`) gera o link pelo Admin SDK e manda
+  pelo canal confiável de todo outro e-mail do sistema (`enviarEmail()` →
+  `mail` → Trigger Email) em vez do envio próprio do Firebase Auth.
+  `/recuperar-senha` (aluno) e o botão "Redefinir senha" em `/usuarios`
+  (admin) chamam essa rota. Testado de ponta a ponta depois do domínio
+  autorizado: e-mail chegou com `delivery.state: SUCCESS`.
 
 - **2026-10-06** *(ainda não commitado — aguardando "pode subir")* —
   **Logo por evento no cabeçalho da declaração** (pedido explícito do

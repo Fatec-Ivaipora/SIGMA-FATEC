@@ -1,21 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { sendPasswordResetEmail, type AuthError } from "firebase/auth";
 import { CheckCircle2, Loader2, Mail } from "lucide-react";
-import { auth } from "@/lib/firebase";
 import { AuthSplitLayout } from "@/components/AuthSplitLayout";
-
-function mensagemErro(erro: AuthError): string {
-  switch (erro.code) {
-    case "auth/invalid-email":
-      return "Digite um e-mail válido.";
-    case "auth/too-many-requests":
-      return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
-    default:
-      return "Não foi possível enviar o e-mail agora. Tente novamente.";
-  }
-}
 
 export default function RecuperarSenhaPage() {
   const [email, setEmail] = useState("");
@@ -28,29 +15,24 @@ export default function RecuperarSenhaPage() {
     setErro(null);
     setEnviando(true);
 
+    // Rota própria (2026-10-07) — antes era sendPasswordResetEmail direto
+    // do client, que manda o e-mail pelo próprio servidor do Firebase
+    // (achado real: e-mail não chegava, provável filtro de spam/entrega).
+    // Agora o servidor gera o link e manda pelo mesmo canal confiável de
+    // todo outro e-mail do sistema (ver /api/auth/recuperar-senha). Essa
+    // rota SEMPRE responde ok, mesmo pra e-mail que não existe — nunca
+    // confirma pro visitante se uma conta existe (mesmo critério de
+    // privacidade de antes).
     try {
-      // url aqui (2026-09-10) — sem isso, o link do e-mail levaria pra tela
-      // genérica hospedada pelo próprio Firebase (sem a cara do SIGMA);
-      // com isso, o Firebase já redireciona pra nossa página com
-      // ?mode=resetPassword&oobCode=... na URL, sem precisar mexer em nada
-      // no Console. window.location.origin (não uma URL fixa) pra funcionar
-      // certinho tanto em produção quanto testando local.
-      await sendPasswordResetEmail(auth, email.trim(), {
-        url: `${window.location.origin}/redefinir-senha`,
+      const res = await fetch("/api/auth/recuperar-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
       });
+      if (!res.ok) throw new Error("Falha ao enviar.");
       setEnviado(true);
-    } catch (e) {
-      const erroAuth = e as AuthError;
-      // auth/user-not-found vira a MESMA tela de sucesso (2026-09-10) — nunca
-      // confirma pro visitante se um e-mail existe ou não na base (evita
-      // alguém usar essa tela pra descobrir quem tem conta no sistema).
-      // Só erros de verdade (e-mail mal formatado, rate limit) mostram algo
-      // diferente.
-      if (erroAuth.code === "auth/user-not-found") {
-        setEnviado(true);
-      } else {
-        setErro(mensagemErro(erroAuth));
-      }
+    } catch {
+      setErro("Não foi possível enviar o e-mail agora. Tente novamente.");
     } finally {
       setEnviando(false);
     }
