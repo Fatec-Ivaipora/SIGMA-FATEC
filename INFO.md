@@ -477,7 +477,19 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
-- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+- **2026-10-07** — **Edição de papéis de avaliação (`/usuarios`) não
+  refletia na tabela sem F5** — achado real: a gravação no Firestore
+  funcionava, mas `useUsuariosPaginado`/`useBuscaUsuarios` leem uma vez (sem
+  tempo real, por desenho — ver comentário em `src/lib/data/usuarios.ts`),
+  então o checkbox "Também atua como" não aparecia/sumia na tabela até
+  recarregar a página. Corrigido com atualização otimista da lista local
+  (as duas fontes — página normal e resultado de busca — ganharam
+  `setUsuarios`/`setResultado` expostos pelo hook), desfeita sozinha se a
+  gravação falhar. Também escondido **por hora** o papel "Orientador" de
+  toda seleção nova (`<select>` de Criar usuário e os dois checklists
+  "Também atua como") — contas que já são orientador continuam intactas
+  (filtro, badge, dados).
+- **2026-10-07** —
   **Feedback visual da confirmação de presença por QR** (pedido explícito
   do usuário: "tá muito seco") — o modal fechava na MESMA hora que
   confirmava (achado real: `onConfirmado` e `setStatus("sucesso")`

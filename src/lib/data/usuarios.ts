@@ -138,7 +138,7 @@ export function useUsuariosPaginado(papel: Papel | "todos") {
     };
   }, [papel, pagina]);
 
-  return { usuarios, carregando, pagina, setPagina, temProximaPagina, erro };
+  return { usuarios, setUsuarios, carregando, pagina, setPagina, temProximaPagina, erro };
 }
 
 /** Busca por nome ou e-mail (2026-10-05) — dispara direto no Firestore em
@@ -209,7 +209,7 @@ export function useBuscaUsuarios(termoBruto: string) {
     };
   }, [termo]);
 
-  return { resultado, carregando, erro };
+  return { resultado, setResultado, carregando, erro };
 }
 
 export type AlunoParaBusca = { uid: string; nome: string; email: string };

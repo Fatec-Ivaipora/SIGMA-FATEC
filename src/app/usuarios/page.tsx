@@ -47,6 +47,12 @@ const FILTROS: { label: string; papel: Papel | "todos" }[] = [
 // orientador pode ser alocado como avaliador ou moderador de um evento.
 const PAPEIS_COM_AREA: Papel[] = [...PAPEIS_AVALIACAO];
 
+// Orientador escondido por hora de toda seleção nova (2026-10-07, pedido
+// explícito do usuário) — contas que já são orientador continuam
+// funcionando normalmente (filtro "Orientador" na lista, badge, dados); só
+// não aparece mais como opção pra criar nem pra adicionar como papel extra.
+const PAPEIS_AVALIACAO_VISIVEIS = PAPEIS_AVALIACAO.filter((p) => p !== "orientador");
+
 export default function UsuariosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
@@ -117,6 +123,20 @@ export default function UsuariosPage() {
   const paginado = useUsuariosPaginado(filtro);
   const busca1 = useBuscaUsuarios(busca);
   const usuarios = temBusca ? busca1.resultado : paginado.usuarios;
+
+  // Reflete uma alteração (papéis, hoje) direto na lista já carregada na tela
+  // (2026-10-07 — achado real do usuário: a gravação no Firestore funcionava,
+  // mas a tabela só refletia depois de atualizar a página, porque
+  // useUsuariosPaginado/useBuscaUsuarios leem uma vez, sem tempo real — ver
+  // comentário em useUsuariosPaginado). Atualiza as duas fontes possíveis
+  // (paginação normal e resultado de busca), já que só uma está em uso por
+  // vez mas não dá pra saber qual sem duplicar a lógica de `temBusca` aqui.
+  function atualizarUsuarioLocal(uid: string, patch: Partial<UsuarioRegistro>) {
+    const aplicar = (lista: UsuarioRegistro[]) =>
+      lista.map((u) => (u.uid === uid ? { ...u, ...patch } : u));
+    paginado.setUsuarios(aplicar);
+    busca1.setResultado(aplicar);
+  }
   const carregandoLista = temBusca ? busca1.carregando : paginado.carregando;
   const erroLista = temBusca ? busca1.erro : paginado.erro;
 
@@ -647,7 +667,6 @@ export default function UsuariosPage() {
               >
                 {!souOrganizacao && <option value="aluno">Aluno</option>}
                 <option value="avaliador">Avaliador</option>
-                <option value="orientador">Orientador</option>
                 <option value="moderador">Moderador</option>
                 {!souOrganizacao && (
                   <>
@@ -658,8 +677,8 @@ export default function UsuariosPage() {
               </select>
               {souOrganizacao && (
                 <span className="text-xs text-fatec-muted">
-                  Organização só pode cadastrar avaliador, orientador ou
-                  moderador — pros eventos que você mesmo tem acesso.
+                  Organização só pode cadastrar avaliador ou moderador — pros
+                  eventos que você mesmo tem acesso.
                 </span>
               )}
             </label>
@@ -688,7 +707,7 @@ export default function UsuariosPage() {
                   Também atua como
                 </span>
                 <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
-                  {PAPEIS_AVALIACAO.filter((p) => p !== criarPapel).map((p) => (
+                  {PAPEIS_AVALIACAO_VISIVEIS.filter((p) => p !== criarPapel).map((p) => (
                     <label key={p} className="flex items-center gap-2.5 text-sm text-fatec-ink">
                       <input
                         type="checkbox"
@@ -921,20 +940,30 @@ export default function UsuariosPage() {
           <div className="mb-5 flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">Também atua como</span>
             <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
-              {PAPEIS_AVALIACAO.filter((p) => p !== editando.papel).map((p) => (
+              {PAPEIS_AVALIACAO_VISIVEIS.filter((p) => p !== editando.papel).map((p) => (
                 <label key={p} className="flex items-center gap-2.5 text-sm text-fatec-ink">
                   <input
                     type="checkbox"
                     checked={!!editando.papeisAvaliacao?.includes(p)}
                     onChange={() => {
+                      const uid = editando.uid;
                       const atuais = editando.papeisAvaliacao ?? [editando.papel as PapelAvaliacao];
                       const ganhando = !atuais.includes(p);
                       const novos = ganhando ? [...atuais, p] : atuais.filter((x) => x !== p);
-                      atualizarPapeisAvaliacaoUsuario(editando.uid, editando.papel, novos);
+                      // Otimista: já reflete no modal e na tabela por trás,
+                      // sem esperar o Firestore confirmar — se a gravação
+                      // falhar, desfaz os dois abaixo.
+                      setEditando({ ...editando, papeisAvaliacao: novos });
+                      atualizarUsuarioLocal(uid, { papeisAvaliacao: novos });
                       // Avisa por e-mail só ao GANHAR um papel (2026-09-11) —
                       // desmarcar não notifica ninguém.
-                      if (ganhando && user) notificarNovoPapel(user, editando.uid, p);
-                      setEditando({ ...editando, papeisAvaliacao: novos });
+                      if (ganhando && user) notificarNovoPapel(user, uid, p);
+                      atualizarPapeisAvaliacaoUsuario(uid, editando.papel, novos).catch(() => {
+                        setEditando((prev) =>
+                          prev && prev.uid === uid ? { ...prev, papeisAvaliacao: atuais } : prev,
+                        );
+                        atualizarUsuarioLocal(uid, { papeisAvaliacao: atuais });
+                      });
                     }}
                     className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
                   />
