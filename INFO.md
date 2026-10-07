@@ -381,10 +381,33 @@ do link gerado e monta o link do e-mail apontando DIRETO pra
 `/redefinir-senha?oobCode=...` — nunca passa pela intermediária do
 Firebase, não depende de mexer em mais nada no Google Cloud Console.
 
+**Valor em tempo de execução exportado de um arquivo `"use client"`, importado
+por uma rota de servidor, vira `undefined` em silêncio** (2026-10-07,
+achado real — e-mail de "você foi cadastrado como avaliador" saía com o
+link `https://sigma.fatecivaipora.com.brundefined`): `src/lib/auth.tsx`
+tem `"use client"` (por causa do hook `useAuth()`), e quando uma rota
+`/api/*` importa um export dele, o Next.js substitui TODAS as exportações
+por referências opacas — certo pra componente React, mas
+`ROTA_POR_PAPEL[papel]` virava `undefined` sem nenhum erro no log. `type
+Papel` (e qualquer outro `import type`) continua seguro de importar de um
+módulo `"use client"` em qualquer lugar — só **valor** em tempo de
+execução precisa morar num arquivo sem `"use client"` pra poder ser lido
+de dentro de uma rota de servidor. Corrigido extraindo `ROTA_POR_PAPEL`
+pra `src/lib/rotaPorPapel.ts` (sem `"use client"`); `auth.tsx` reexporta
+pra manter os imports client-side de sempre funcionando. Varrido o resto
+de `src/lib/` (todos os outros arquivos `"use client"`) — nenhum outro
+caso desse igual, só esse.
+
 ## Convenções de código estabelecidas
 
 - Nomes de variável/função/comentário em **português**, código
   (identificadores de biblioteca, tipos do React) em inglês normal.
+- Constante/função que uma rota `/api/*` precisa usar em tempo de execução
+  NUNCA deve morar num arquivo `"use client"` (ver pegadinha
+  `ROTA_POR_PAPEL` acima) — só `import type` é seguro cruzando essa
+  fronteira. Se um valor assim só existe hoje num arquivo client, extrai
+  pra um arquivo `.ts` próprio sem `"use client"` antes de importar numa
+  rota de servidor.
 - `react-hooks/set-state-in-effect`: nunca chamar `setState` síncrono direto
   no corpo de um `useEffect` — sempre `Promise.resolve().then(() => setX(...))`.
 - Escrita client-side direta (`updateDoc`) quando quem escreve já é dono do
@@ -453,6 +476,18 @@ Uma entrada por `git push`, mais recente no topo, curta (o commit em si já
 tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
+
+- **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
+  **Link quebrado no e-mail de "você foi cadastrado como avaliador/
+  moderador/orientador"** (achado real testando — link saía
+  `https://sigma.fatecivaipora.com.brundefined`). Causa: `ROTA_POR_PAPEL`
+  morava em `src/lib/auth.tsx`, um arquivo `"use client"` — importado por
+  uma rota de servidor (`/api/usuarios`, `/api/mail/novo-papel`), vira
+  `undefined` em silêncio (ver pegadinha nova acima). Corrigido extraindo
+  `ROTA_POR_PAPEL` pra `src/lib/rotaPorPapel.ts` (sem `"use client"`),
+  `auth.tsx` reexporta pra não quebrar os imports client-side existentes.
+  Reproduzido e confirmado corrigido com um script de ponta a ponta
+  (criar usuário real pela rota, conferir o link no e-mail gerado).
 
 - **2026-10-07** *(ainda não commitado — aguardando "pode subir")* —
   **Recuperação de senha reescrita** (pedido explícito do usuário — achado

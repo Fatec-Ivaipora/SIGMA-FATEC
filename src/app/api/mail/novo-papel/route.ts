@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
-import { ROTA_POR_PAPEL } from "@/lib/auth";
+import { ROTA_POR_PAPEL } from "@/lib/rotaPorPapel";
 
 const LABEL_PAPEL: Record<string, string> = {
   avaliador: "avaliador(a)",

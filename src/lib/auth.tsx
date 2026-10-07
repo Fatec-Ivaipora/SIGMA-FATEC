@@ -66,14 +66,14 @@ export type PerfilUsuario = {
   senhaTemporaria?: boolean;
 };
 
-export const ROTA_POR_PAPEL: Record<Papel, string> = {
-  aluno: "/aluno",
-  avaliador: "/avaliador",
-  organizacao: "/dashboard",
-  admin: "/dashboard",
-  orientador: "/orientador",
-  moderador: "/avaliador",
-};
+// Mora em src/lib/rotaPorPapel.ts, não aqui (2026-10-07, achado real) —
+// esse arquivo tem "use client" (por causa do useAuth() abaixo), e um
+// valor exportado daqui vira uma referência opaca quando importado por uma
+// rota de servidor (ROTA_POR_PAPEL[papel] virava undefined em silêncio nas
+// rotas /api/*). Reexportado aqui só pra manter todo import client-side
+// existente (`from "@/lib/auth"`) funcionando sem precisar trocar — rota de
+// servidor deve importar direto de "@/lib/rotaPorPapel", nunca daqui.
+export { ROTA_POR_PAPEL } from "@/lib/rotaPorPapel";
 
 /** Único jeito correto de checar se alguém "tem" um papel — cobre tanto o
  * papel primário quanto os extras de papeisAvaliacao (avaliador/orientador/
