@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import type { User } from "firebase/auth";
+import { Camera } from "lucide-react";
 import { Modal } from "@/components/Modal";
 
 /** Ícone de sucesso animado (2026-10-07, pedido explícito do usuário — "tá
@@ -54,11 +55,25 @@ export function ConfirmarPresencaModal({
   user: User | null | undefined;
   onClose: () => void;
 }) {
-  const [status, setStatus] = useState<"escaneando" | "enviando" | "erro" | "sucesso">(
-    "escaneando",
-  );
+  const [status, setStatus] = useState<
+    "intro" | "escaneando" | "enviando" | "erro" | "sucesso"
+  >("intro");
   const [erro, setErro] = useState<string | null>(null);
   const processandoRef = useRef(false);
+
+  // Pedido explícito do usuário (2026-10-07: "o único problema do sistema é
+  // o usuário ter bloqueado a câmera... não temos como burlar esse pedido de
+  // abrir a câmera") — não dá pra pular o prompt nativo do navegador, mas dá
+  // pra avisar ANTES dele aparecer, pra pessoa já saber que vem uma
+  // pergunta e que precisa tocar em "Permitir". Só depois desse clique o
+  // efeito abaixo chama scanner.start(), que é o que de fato dispara o
+  // prompt — ver `cameraSolicitada`.
+  const [cameraSolicitada, setCameraSolicitada] = useState(false);
+  // Força o efeito a tentar de novo mesmo com cameraSolicitada já true (ex.:
+  // depois que a pessoa ajustou a permissão nas configurações do navegador
+  // e volta pro app — sem isso o botão "Tentar de novo" não mudaria
+  // nenhuma dependência do efeito).
+  const [tentativa, setTentativa] = useState(0);
 
   // Reseta o estado visual quando o modal abre — ajuste de estado durante a
   // renderização (padrão recomendado pelo React pra "adjusting state when a
@@ -68,13 +83,14 @@ export function ConfirmarPresencaModal({
   if (open !== abertoAnterior) {
     setAbertoAnterior(open);
     if (open) {
-      setStatus("escaneando");
+      setStatus("intro");
       setErro(null);
+      setCameraSolicitada(false);
     }
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !cameraSolicitada) return;
     processandoRef.current = false;
 
     // Html5Qrcode (2026-09-30, era Html5QrcodeScanner) — o "Scanner" com UI
@@ -170,11 +186,13 @@ export function ConfirmarPresencaModal({
           });
       })
       .catch(() => {
-        // start() rejeita se a pessoa negar a permissão da câmera, ou se o
-        // navegador/dispositivo não tiver câmera nenhuma disponível.
+        // start() rejeita se a pessoa negar a permissão da câmera, se já
+        // tinha negado antes (navegador não pergunta de novo sozinho — por
+        // isso o botão "Tentar de novo" é importante aqui), ou se o
+        // dispositivo não tiver câmera nenhuma disponível.
         if (cancelado) return;
         setErro(
-          "Não foi possível acessar a câmera — verifique se a permissão foi liberada nas configurações do navegador.",
+          "A câmera está bloqueada pro SIGMA nesse navegador. Toque no cadeado (ou ícone de câmera) ao lado do endereço do site, permita o acesso à câmera e tente de novo.",
         );
         setStatus("erro");
       });
@@ -197,7 +215,7 @@ export function ConfirmarPresencaModal({
           }
         });
     };
-  }, [open, eventoId, user]);
+  }, [open, eventoId, user, cameraSolicitada, tentativa]);
 
   // Fecha sozinho depois de mostrar a animação de sucesso (2026-10-07) —
   // antes o modal fechava na MESMA hora que confirmava (onConfirmado batia
@@ -215,25 +233,73 @@ export function ConfirmarPresencaModal({
   return (
     <Modal open={open} onClose={onClose} title="Confirmar presença">
       <div className="flex flex-col gap-4">
-        {status !== "sucesso" && (
-          <p className="text-sm text-fatec-muted">
-            Aponte a câmera pro QR exibido pela organização no local do evento.
-          </p>
-        )}
-
-        {status === "sucesso" ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-emerald-50 py-8 text-center">
-            <IconeSucesso />
-            <p className="text-base font-semibold text-emerald-700">Presença confirmada!</p>
+        {status === "intro" ? (
+          <div className="flex flex-col items-center gap-4 rounded-xl bg-fatec-sky-100/60 py-8 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-fatec-sky-600 shadow-sm">
+              <Camera className="h-7 w-7" strokeWidth={1.75} />
+            </div>
+            <div className="flex flex-col gap-1 px-6">
+              <p className="text-sm font-semibold text-fatec-navy-900">
+                Vamos pedir acesso à sua câmera
+              </p>
+              <p className="text-sm text-fatec-muted">
+                É só pra ler o QR da organização — quando o navegador
+                perguntar, toque em &quot;Permitir&quot;.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setErro(null);
+                setStatus("escaneando");
+                setCameraSolicitada(true);
+              }}
+              className="flex items-center gap-2 rounded-xl bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+            >
+              <Camera className="h-4 w-4" strokeWidth={1.75} />
+              Abrir câmera
+            </button>
           </div>
         ) : (
-          <div id="confirmar-presenca-leitor" className="overflow-hidden rounded-xl" />
-        )}
+          <>
+            {status !== "sucesso" && (
+              <p className="text-sm text-fatec-muted">
+                Aponte a câmera pro QR exibido pela organização no local do evento.
+              </p>
+            )}
 
-        {status === "enviando" && (
-          <p className="text-sm text-fatec-muted">Confirmando...</p>
+            {status === "sucesso" ? (
+              <div className="flex flex-col items-center gap-3 rounded-xl bg-emerald-50 py-8 text-center">
+                <IconeSucesso />
+                <p className="text-base font-semibold text-emerald-700">Presença confirmada!</p>
+              </div>
+            ) : (
+              <div id="confirmar-presenca-leitor" className="overflow-hidden rounded-xl" />
+            )}
+
+            {status === "enviando" && (
+              <p className="text-sm text-fatec-muted">Confirmando...</p>
+            )}
+            {erro && (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-rose-600">{erro}</p>
+                {status === "erro" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErro(null);
+                      setStatus("escaneando");
+                      setTentativa((t) => t + 1);
+                    }}
+                    className="self-start rounded-xl border border-fatec-line px-4 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    Tentar de novo
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
-        {erro && <p className="text-sm text-rose-600">{erro}</p>}
       </div>
     </Modal>
   );

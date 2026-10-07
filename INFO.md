@@ -477,6 +477,17 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-07** — **Tela de introdução antes do prompt de câmera na
+  confirmação de presença por QR** (pedido explícito do usuário — maior
+  causa real de gente não conseguir confirmar presença é o navegador ter
+  bloqueado a câmera, ou a pessoa negar sem entender o porquê do pedido).
+  Não dá pra pular o prompt nativo do navegador, mas agora o modal mostra
+  um cartão explicando "vamos pedir acesso à câmera... toque em Permitir"
+  ANTES de chamar `scanner.start()` (só esse clique dispara o pedido de
+  verdade). Se a câmera já estava bloqueada (navegador não repete o prompt
+  nativo sozinho nesse caso), a mensagem de erro agora orienta a liberar
+  pelo cadeado/ícone ao lado do endereço, com botão "Tentar de novo" que
+  refaz a tentativa sem fechar o modal. `src/components/ConfirmarPresencaModal.tsx`.
 - **2026-10-07** — **Edição de papéis de avaliação (`/usuarios`) não
   refletia na tabela sem F5** — achado real: a gravação no Firestore
   funcionava, mas `useUsuariosPaginado`/`useBuscaUsuarios` leem uma vez (sem
