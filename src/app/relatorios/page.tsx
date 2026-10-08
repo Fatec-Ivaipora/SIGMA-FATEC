@@ -20,7 +20,7 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import { useInscricoesRelatorio, diasConfirmadosCount } from "@/lib/data/inscricoes";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { separarGrupoSubArea } from "@/lib/areasTematicas";
 
 const LIMITE_RANKING = 10;
@@ -207,7 +207,10 @@ function RelatoriosContent() {
       .sort((a, b) => b.n - a.n);
   }, [inscricoesDoEvento, cursoPorUid]);
 
-  const diasEventoSelecionado = eventoSelecionado ? diasDoEvento(eventoSelecionado) : 1;
+  const diasEventoSelecionado = eventoSelecionado ? periodosDoEvento(eventoSelecionado) : 1;
+  // "Período" em vez de "Dia" quando o evento tem mais janelas de presença
+  // que dias de calendário (2026-10-08, ver periodosDoEvento).
+  const rotuloDiaSelecionado = eventoSelecionado?.periodosPresenca ? "Período" : "Dia";
   const presencaPorDia = useMemo(() => {
     if (!ehSimples || diasEventoSelecionado <= 1) return [];
     return Array.from({ length: diasEventoSelecionado }, (_, idx) => {
@@ -932,10 +935,11 @@ function RelatoriosContent() {
           {ehSimples && presencaPorDia.length > 0 && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <h2 className="text-base font-semibold text-fatec-navy-900">
-              Presença por dia
+              Presença por {rotuloDiaSelecionado.toLowerCase()}
             </h2>
             <p className="mt-0.5 text-sm text-fatec-muted">
-              Quantos confirmaram presença em cada dia, de {totalInscricoes} inscritos
+              Quantos confirmaram presença em cada {rotuloDiaSelecionado.toLowerCase()}, de{" "}
+              {totalInscricoes} inscritos
             </p>
 
             <div className="mt-5 flex flex-col gap-3.5">
@@ -947,7 +951,7 @@ function RelatoriosContent() {
                     className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
                   >
                     <span className="truncate text-sm text-fatec-ink sm:w-32 sm:flex-none">
-                      Dia {d.dia}
+                      {rotuloDiaSelecionado} {d.dia}
                     </span>
                     <div className="flex items-center gap-3.5 sm:contents">
                       <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">

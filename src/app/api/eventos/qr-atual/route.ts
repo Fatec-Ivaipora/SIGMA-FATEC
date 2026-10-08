@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { janelaAtual, codigoParaJanela, gerarSegredo, montarTextoQr } from "@/lib/qrPresenca";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 
 /** Código atual do QR de confirmação de presença de um evento "simples"
  * (2026-09-23) — admin/organização do evento, OU monitor DESSE evento
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   // dia (2026-09-30, evento multi-dia) — admin escolhe manualmente qual dia
   // está projetando (ver seletor em /ensalamento); default 1 cobre o caso de
   // sempre (evento de 1 dia só, sem dataRealizacaoFim definida).
-  const diasEvento = diasDoEvento(evento);
+  const diasEvento = periodosDoEvento(evento);
   const diaParam = Number(url.searchParams.get("dia") ?? "1");
   const dia = Number.isInteger(diaParam) && diaParam >= 1 && diaParam <= diasEvento ? diaParam : 1;
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 
 /** Marca/desmarca presença manualmente, sem QR (2026-09-30) — pedido
  * explícito do usuário: às vezes a pessoa não consegue escanear (câmera com
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });
   }
 
-  const diasEvento = diasDoEvento(evento);
+  const diasEvento = periodosDoEvento(evento);
   if (dia! < 1 || dia! > diasEvento) {
     return NextResponse.json({ erro: "Dia inválido pra esse evento." }, { status: 400 });
   }

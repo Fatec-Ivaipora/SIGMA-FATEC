@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { codigoParaJanela, interpretarTextoQr, janelaValida } from "@/lib/qrPresenca";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 
 /** Confirma a presença do próprio uid num evento "simples" (2026-09-23) a
@@ -83,12 +83,16 @@ export async function POST(request: Request) {
   try {
     const evento = (await db.doc(`eventos/${eventoId}`).get()).data();
     const nomeEvento = (evento?.nome as string | undefined) ?? "um evento";
-    const multiDia = evento && diasDoEvento(evento) > 1;
+    const multiPeriodo = evento && periodosDoEvento(evento) > 1;
+    // "período" em vez de "dia" quando o evento tem mais janelas de presença
+    // do que dias de calendário (2026-10-08, ver periodosDoEvento) — senão
+    // "dia 4" soaria errado num evento de só 3 dias.
+    const rotulo = evento?.periodosPresenca ? "período" : "dia";
     await registrarAtividade({
       uid,
       tipo: "presenca",
-      texto: multiDia
-        ? `Você confirmou presença no dia ${dia} de ${nomeEvento}.`
+      texto: multiPeriodo
+        ? `Você confirmou presença no ${rotulo} ${dia} de ${nomeEvento}.`
         : `Você confirmou presença em ${nomeEvento}.`,
       negritos: [nomeEvento],
       eventoId,

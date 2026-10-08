@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import {
   useMinhaInscricao,
@@ -184,8 +184,15 @@ function LinhaCertificadoParticipacao({
   // saem proporcionais na hora de gerar o PDF, ver /api/certificados). Ver
   // diasDoEvento em src/lib/certificadoDias.ts.
   const diasConfirmados = diasConfirmadosCount(inscricao);
-  const semPresenca = diasConfirmados === 0;
-  const diasEvento = diasDoEvento(evento);
+  const diasEvento = periodosDoEvento(evento);
+  // Mínimo configurável (2026-10-08, pedido explícito do usuário — Semana
+  // de Medicina exige 4 dos 5 períodos, não só 1 — ver presencaMinimaDoEvento
+  // em src/lib/periodosPresenca.ts). O botão só libera quando bate o
+  // mínimo; o servidor (/api/certificados) é quem garante de verdade, isso
+  // aqui é só pra não mostrar um botão que vai dar erro ao clicar.
+  const minimoExigido = presencaMinimaDoEvento(evento);
+  const presencaInsuficiente = diasConfirmados < minimoExigido;
+  const rotuloDias = evento.periodosPresenca ? "períodos" : "dias";
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-fatec-line bg-white p-5">
@@ -204,10 +211,12 @@ function LinhaCertificadoParticipacao({
             <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
             Pagamento pendente
           </span>
-        ) : semPresenca ? (
+        ) : presencaInsuficiente ? (
           <span className="flex flex-none items-center gap-1.5 text-xs font-medium text-fatec-muted">
             <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Sem presença confirmada
+            {diasConfirmados === 0
+              ? "Sem presença confirmada"
+              : `Presença insuficiente (${diasConfirmados}/${minimoExigido} ${rotuloDias})`}
           </span>
         ) : (
           <button
@@ -227,7 +236,8 @@ function LinhaCertificadoParticipacao({
       </div>
       {diasEvento > 1 && !pagamentoPendente && (
         <p className="pl-[60px] text-xs text-fatec-muted">
-          Presença confirmada em {diasConfirmados}/{diasEvento} dias — horas
+          Presença confirmada em {diasConfirmados}/{diasEvento} {rotuloDias}
+          {minimoExigido > 1 && ` (mínimo de ${minimoExigido} pro certificado)`} — horas
           do certificado saem proporcionais.
         </p>
       )}

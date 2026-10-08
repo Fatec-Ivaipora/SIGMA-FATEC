@@ -13,7 +13,7 @@ import { DestaqueEventoBanner } from "@/components/DestaqueEventoBanner";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useMinhaInscricao, useMinhasInscricoes, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
@@ -48,10 +48,14 @@ function CardEvento({
   // pagamento, corrigida aqui junto — antes esse card específico ainda
   // usava OR entre liberação e presença, desatualizado desde a correção de
   // 2026-09-30 nos outros 3 lugares).
-  const diasEventoSimples = diasDoEvento(evento);
+  const diasEventoSimples = periodosDoEvento(evento);
   const diasConfirmados = diasConfirmadosCount(inscricao);
   const algumaPresenca = diasConfirmados > 0;
   const todosDiasConfirmados = diasConfirmados >= diasEventoSimples;
+  // "períodos" em vez de "dias" quando o evento tem mais janelas de
+  // presença que dias de calendário (2026-10-08, ver periodosDoEvento em
+  // src/lib/periodosPresenca.ts).
+  const rotuloDias = evento.periodosPresenca ? "períodos" : "dias";
   const [participando, setParticipando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [baixandoCertificado, setBaixandoCertificado] = useState(false);
@@ -161,7 +165,7 @@ function CardEvento({
                   <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     {diasEventoSimples > 1
-                      ? `Presença confirmada (${diasConfirmados}/${diasEventoSimples} dias)`
+                      ? `Presença confirmada (${diasConfirmados}/${diasEventoSimples} ${rotuloDias})`
                       : "Presença confirmada"}
                   </span>
                 ) : (
@@ -188,7 +192,7 @@ function CardEvento({
                     <span className="relative z-10 inline-flex items-center gap-1.5">
                       <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
                       {diasEventoSimples > 1
-                        ? `Confirmar presença (${diasConfirmados}/${diasEventoSimples} dias)`
+                        ? `Confirmar presença (${diasConfirmados}/${diasEventoSimples} ${rotuloDias})`
                         : "Confirmar presença"}
                     </span>
                   </button>

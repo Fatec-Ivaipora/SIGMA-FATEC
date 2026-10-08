@@ -6,7 +6,7 @@ import {
   CertificadoApresentacaoPDF,
   DeclaracaoPDF,
 } from "@/lib/certificadosPdf";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
@@ -363,10 +363,18 @@ export async function GET(request: Request) {
       );
     }
     const diasConfirmados = Object.keys(inscricao.presencasConfirmadas ?? {}).length;
-    if (diasConfirmados === 0 && !ehStaff) {
+    // Mínimo configurável (2026-10-08, pedido explícito do usuário — Semana
+    // de Medicina exige 4 dos 5 períodos, não só 1) — ver
+    // presencaMinimaDoEvento em src/lib/periodosPresenca.ts, ausente = "pelo
+    // menos 1", comportamento de sempre.
+    const minimoExigido = presencaMinimaDoEvento(evento);
+    if (diasConfirmados < minimoExigido && !ehStaff) {
       return NextResponse.json(
         {
-          erro: "Sua presença nesse evento ainda não foi confirmada — escaneie o QR no local do evento.",
+          erro:
+            minimoExigido > 1
+              ? `Sua presença confirmada (${diasConfirmados}/${periodosDoEvento(evento)}) não atinge o mínimo exigido (${minimoExigido}) pra emitir o certificado.`
+              : "Sua presença nesse evento ainda não foi confirmada — escaneie o QR no local do evento.",
         },
         { status: 400 },
       );
@@ -394,7 +402,7 @@ export async function GET(request: Request) {
     // emitindo sem nenhuma presença gravada, conta como 1 dia (nunca 0).
     // Evento de 1 dia sempre cai em round(1/1 × cargaHoraria) = o total de
     // sempre.
-    const diasEvento = diasDoEvento(evento);
+    const diasEvento = periodosDoEvento(evento);
     const diasParaCalculo = diasConfirmados > 0 ? diasConfirmados : 1;
     const cargaHorariaTotal = evento.cargaHoraria as number;
     const horasConcedidas = Math.min(

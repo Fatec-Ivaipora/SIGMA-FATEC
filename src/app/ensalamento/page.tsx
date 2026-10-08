@@ -36,7 +36,7 @@ import {
   type InscricaoEvento,
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import {
   useSessoesDoEvento,
   montarGradeAutomatica,
@@ -87,7 +87,7 @@ function formatarHorario(d: Date): string {
 function horasConcedidasAteAgora(evento: Evento, diasConfirmados: number): number | null {
   if (!evento.cargaHoraria) return null;
   if (diasConfirmados === 0) return 0;
-  const dias = diasDoEvento(evento);
+  const dias = periodosDoEvento(evento);
   return Math.min(Math.round((diasConfirmados / dias) * evento.cargaHoraria), evento.cargaHoraria);
 }
 
@@ -139,7 +139,7 @@ function ConfirmacaoPresencaView({
   // scan do aluno grava (ver /api/eventos/qr-atual e
   // /api/inscricoes/confirmar-presenca). dataRealizacaoFim ausente = 1 dia,
   // sem seletor, comportamento de sempre (ver diasDoEvento).
-  const diasEvento = diasDoEvento(evento);
+  const diasEvento = periodosDoEvento(evento);
   const [diaSelecionado, setDiaSelecionado] = useState(1);
   // Auditoria de fraude (2026-09-30, pedido explícito do usuário, pensando
   // num futuro monitor-aluno com acesso só ao QR desta tela): clicar/passar
@@ -345,7 +345,9 @@ function ConfirmacaoPresencaView({
             </p>
             <p className="mt-0.5 text-sm text-fatec-muted">
               Libera pra quem confirmar presença
-              {diasEvento > 1 ? ` em pelo menos 1 dos ${diasEvento} dias` : ""}
+              {diasEvento > 1
+                ? ` em pelo menos ${presencaMinimaDoEvento(evento)} dos ${diasEvento} dias`
+                : ""}
               {!!evento.valorInscricao && " e pagar em dia"}.
             </p>
             <p className="mt-1 text-xs text-fatec-muted">

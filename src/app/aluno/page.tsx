@@ -30,7 +30,7 @@ import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio } from "@/lib/data/eventos";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { useTrabalhos, responderConvite } from "@/lib/data/trabalhos";
 import { useMinhasInscricoes, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
@@ -337,10 +337,14 @@ export default function AlunoPainelPage() {
                   // dias), não vira "Presença confirmada" terminal como no
                   // evento de 1 dia só. Ver diasDoEvento em
                   // src/lib/certificadoDias.ts.
-                  const diasEvento = diasDoEvento(evento);
+                  const diasEvento = periodosDoEvento(evento);
                   const diasConfirmados = diasConfirmadosCount(inscricao);
                   const algumaPresenca = diasConfirmados > 0;
                   const todosDiasConfirmados = diasConfirmados >= diasEvento;
+                  // "períodos" em vez de "dias" quando o evento tem mais
+                  // janelas de presença que dias de calendário (2026-10-08,
+                  // ver periodosDoEvento em src/lib/periodosPresenca.ts).
+                  const rotuloDias = evento.periodosPresenca ? "períodos" : "dias";
                   return (
                     <div
                       key={evento.id}
@@ -388,7 +392,7 @@ export default function AlunoPainelPage() {
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                             <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
                             {diasEvento > 1
-                              ? `Presença confirmada (${diasConfirmados}/${diasEvento} dias)`
+                              ? `Presença confirmada (${diasConfirmados}/${diasEvento} ${rotuloDias})`
                               : "Presença confirmada"}
                           </span>
                         )}
@@ -411,7 +415,7 @@ export default function AlunoPainelPage() {
                             <span className="relative z-10 inline-flex items-center gap-1.5">
                               <QrCode className="h-3.5 w-3.5" strokeWidth={2} />
                               {diasEvento > 1
-                                ? `Confirmar presença (${diasConfirmados}/${diasEvento} dias)`
+                                ? `Confirmar presença (${diasConfirmados}/${diasEvento} ${rotuloDias})`
                                 : "Confirmar presença"}
                             </span>
                           </button>

@@ -477,6 +477,26 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-08** — **Presença por período, não só por dia de calendário**
+  (pedido explícito e urgente do usuário, evento em andamento — Semana de
+  Medicina tem 5 sessões reais — ontem à noite, hoje manhã+tarde, amanhã
+  manhã+tarde — em só 3 dias de calendário; aluno precisa participar de 4
+  dos 5 períodos, não de 1 dos 3 dias). Novo campo opcional no evento,
+  `periodosPresenca` (quantas janelas de presença existem, sobrescreve
+  `diasDoEvento` só pra esse fim — mesmo padrão de `logoCertificadoId`, sem
+  UI própria ainda, setado direto no Firestore) e `presencaMinimaPeriodos`
+  (mínimo pra liberar certificado, ausente = "pelo menos 1", igual a
+  sempre). Ver `periodosDoEvento`/`presencaMinimaDoEvento` em
+  `src/lib/periodosPresenca.ts` — usado em todo lugar que antes usava
+  `diasDoEvento` pra CONTAR presença (seletor de QR no Ensalamento,
+  validação de dia no QR/confirmação manual, cálculo de horas
+  proporcionais do certificado e do Edubox, gráfico de presença por dia em
+  Relatórios); o texto do certificado (datas, período) continua vindo de
+  `dataRealizacao`/`dataRealizacaoFim` direto, sem mudança. Dados já
+  gravados (ontem à noite = chave "1", hoje de manhã em andamento = chave
+  "2") continuam válidos sem migração — só passaram a ter mais 3 chaves
+  possíveis (3, 4, 5) disponíveis daqui pra frente. Configurado na Semana
+  de Medicina: `periodosPresenca: 5`, `presencaMinimaPeriodos: 4`.
 - **2026-10-07** — **Tela de introdução antes do prompt de câmera na
   confirmação de presença por QR** (pedido explícito do usuário — maior
   causa real de gente não conseguir confirmar presença é o navegador ter

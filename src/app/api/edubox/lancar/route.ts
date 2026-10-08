@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
-import { diasDoEvento } from "@/lib/certificadoDias";
+import { periodosDoEvento } from "@/lib/periodosPresenca";
 
 type ParticipanteEnvio = {
   uid: string;
@@ -159,7 +159,7 @@ export async function POST(request: Request) {
   // proporcional de quem já confirmou), e cada reenvio novo atualiza
   // conforme a presença dos dias for sendo confirmada.
   const chpinsFixo = typeof evento.cargaHoraria === "number" ? evento.cargaHoraria : null;
-  const diasEvento = diasDoEvento(evento);
+  const diasEvento = periodosDoEvento(evento);
   function chpinsParaUid(uid: string): number | null {
     if (evento?.tipo !== "simples") return chpinsFixo;
     if (typeof evento.cargaHoraria !== "number") return null;
