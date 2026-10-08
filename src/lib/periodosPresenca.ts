@@ -5,8 +5,8 @@ import { diasDoEvento } from "./certificadoDias";
  * 1 sessão por dia (2026-10-08, pedido explícito do usuário — Semana de
  * Medicina: ontem à noite, hoje manhã+tarde, amanhã manhã+tarde = 5
  * períodos em só 3 dias de calendário) sobrescrevem com `periodosPresenca`
- * direto no Firestore (mesmo padrão de `logoCertificadoId` em
- * src/lib/data/eventos.ts — sem UI própria ainda, é configuração pontual).
+ * — escolha "Por dia" vs. "Por período" no formulário de Eventos (criação
+ * e "Dados do certificado", só pra evento "simples") grava os dois campos.
  * O número do "dia" gravado em presencasConfirmadas continua sendo só um
  * índice 1..N (ver /api/inscricoes/confirmar-presenca) — nada muda na
  * gravação em si, só quantas janelas existem pra escolher/validar.
@@ -29,4 +29,16 @@ export function presencaMinimaDoEvento(evento: { presencaMinimaPeriodos?: number
   return evento.presencaMinimaPeriodos && evento.presencaMinimaPeriodos >= 1
     ? evento.presencaMinimaPeriodos
     : 1;
+}
+
+/** Nome de um período específico (2026-10-08, pedido explícito do usuário
+ * — "a onde eu vou colocar o nome de cada período?"), 1-based pra bater
+ * com o "dia" gravado em presencasConfirmadas. Sem rótulo definido (ou
+ * vazio) cai no genérico "Dia N" — comportamento de sempre. */
+export function rotuloPeriodo(
+  evento: { periodosPresencaLabels?: string[] },
+  periodo: number,
+): string {
+  const label = evento.periodosPresencaLabels?.[periodo - 1]?.trim();
+  return label || `Dia ${periodo}`;
 }

@@ -211,14 +211,20 @@ function RelatoriosContent() {
   // "Período" em vez de "Dia" quando o evento tem mais janelas de presença
   // que dias de calendário (2026-10-08, ver periodosDoEvento).
   const rotuloDiaSelecionado = eventoSelecionado?.periodosPresenca ? "Período" : "Dia";
+  // Nome de cada período (2026-10-08, ver rotuloPeriodo em
+  // src/lib/periodosPresenca.ts) — capturado fora do useMemo abaixo pra não
+  // precisar depender de eventoSelecionado inteiro ali dentro, só do array
+  // de rótulos em si.
+  const labelsPeriodosEvento = eventoSelecionado?.periodosPresencaLabels;
   const presencaPorDia = useMemo(() => {
     if (!ehSimples || diasEventoSelecionado <= 1) return [];
     return Array.from({ length: diasEventoSelecionado }, (_, idx) => {
       const dia = idx + 1;
       const n = inscricoesDoEvento.filter((i) => i.presencasConfirmadas?.[String(dia)]).length;
-      return { dia, n };
+      const rotulo = labelsPeriodosEvento?.[idx]?.trim() || `${rotuloDiaSelecionado} ${dia}`;
+      return { dia, n, rotulo };
     });
-  }, [ehSimples, diasEventoSelecionado, inscricoesDoEvento]);
+  }, [ehSimples, diasEventoSelecionado, inscricoesDoEvento, labelsPeriodosEvento, rotuloDiaSelecionado]);
 
   // Modalidade de apresentação (2026-10-07, pedido explícito do usuário) —
   // escolhida pelo aluno já na submissão (ver modalidadeApresentacao em
@@ -951,7 +957,7 @@ function RelatoriosContent() {
                     className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3.5"
                   >
                     <span className="truncate text-sm text-fatec-ink sm:w-32 sm:flex-none">
-                      {rotuloDiaSelecionado} {d.dia}
+                      {d.rotulo}
                     </span>
                     <div className="flex items-center gap-3.5 sm:contents">
                       <div className="h-6 flex-1 rounded-xl bg-fatec-navy-50">

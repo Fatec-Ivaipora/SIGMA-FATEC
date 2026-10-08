@@ -85,6 +85,10 @@ const FASES_CRIAR = [
   { numero: 2, label: "Áreas temáticas" },
   { numero: 3, label: "Inscrições e submissão" },
   { numero: 4, label: "Certificado e valores" },
+  // Só evento "simples" (2026-10-08, pedido explícito do usuário) — evento
+  // "académico" não tem Ensalamento de presença por QR, tem avaliação de
+  // trabalho, então não precisa desse passo.
+  { numero: 5, label: "Ensalamento" },
 ] as const;
 
 /** Indicador de progresso do wizard "Criar evento" (2026-08-31, área
@@ -96,13 +100,16 @@ function PassosCriarEvento({
   fase,
   tipoForm,
 }: {
-  fase: 1 | 2 | 3 | 4;
+  fase: 1 | 2 | 3 | 4 | 5;
   tipoForm: "academico" | "simples" | null;
 }) {
-  // Evento simples pula "Áreas temáticas" — indicador visual acompanha
-  // (2026-09-22), senão fica um passo sobrando que nunca é visitado.
+  // Evento simples pula "Áreas temáticas" mas ganha "Ensalamento"; evento
+  // académico é o oposto (2026-09-22, estendido em 2026-10-08) — indicador
+  // visual acompanha, senão fica um passo sobrando que nunca é visitado.
   const fasesVisiveis =
-    tipoForm === "simples" ? FASES_CRIAR.filter((f) => f.numero !== 2) : FASES_CRIAR;
+    tipoForm === "simples"
+      ? FASES_CRIAR.filter((f) => f.numero !== 2)
+      : FASES_CRIAR.filter((f) => f.numero !== 5);
   return (
     <div className="mb-1 flex items-center gap-2">
       {fasesVisiveis.map((f) => (
@@ -524,13 +531,104 @@ function SeletorAssinantes({
   );
 }
 
+/** Lista de períodos de presença (2026-10-08, reformulado depois do
+ * usuário testar a 1ª versão e achar confuso — "não gostei de como é
+ * feito a inscrição disso" — a versão anterior pedia uma QUANTIDADE num
+ * campo numérico solto, que a pessoa tinha que depois contar visualmente
+ * contra uma grade de caixas de texto sem numeração própria pra saber
+ * onde parava. Aqui a quantidade é só o TAMANHO da lista — cada linha já
+ * nasce numerada, sem campo numérico separado pra sincronizar; mesmo
+ * padrão visual de SeletorAssinantes acima (linha com borda + X remover,
+ * botão tracejado "+ Adicionar" no fim), que já era um componente
+ * conhecido desse mesmo formulário. "Mínimo pro certificado" virou um
+ * select travado ao tamanho atual da lista (nunca aceita um número maior
+ * que a quantidade de períodos, nunca precisa digitar), lido como frase:
+ * "Mínimo pra liberar certificado: 4 de 5 períodos". */
+function SeletorPeriodos({
+  labels,
+  minimo,
+  onChange,
+}: {
+  labels: string[];
+  minimo: string;
+  onChange: (labels: string[], minimo: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        {labels.map((valor, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-2.5 rounded-xl border border-fatec-line bg-white px-3 py-1.5 transition-colors focus-within:border-fatec-sky-600"
+          >
+            <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-fatec-navy-50 text-xs font-semibold text-fatec-navy-800">
+              {idx + 1}
+            </span>
+            <input
+              type="text"
+              value={valor}
+              onChange={(e) => {
+                const novos = [...labels];
+                novos[idx] = e.target.value;
+                onChange(novos, minimo);
+              }}
+              placeholder={`Ex.: ${idx === 0 ? "Hoje de manhã" : "Hoje à tarde"} (opcional)`}
+              className="min-w-0 flex-1 border-0 bg-transparent px-0 py-1 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none"
+            />
+            {labels.length > 1 && (
+              <button
+                type="button"
+                aria-label={`Remover período ${idx + 1}`}
+                onClick={() => {
+                  const novos = labels.filter((_, i) => i !== idx);
+                  const novoMinimo = String(Math.min(Number(minimo) || novos.length, novos.length));
+                  onChange(novos, novoMinimo);
+                }}
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-fatec-muted transition-colors hover:bg-rose-50 hover:text-rose-600"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...labels, ""], minimo)}
+        className="rounded-xl border border-dashed border-fatec-line bg-white px-4 py-2.5 text-left text-sm text-fatec-muted transition-colors hover:border-fatec-sky-600 hover:text-fatec-sky-600"
+      >
+        + Adicionar período
+      </button>
+      <label className="flex flex-wrap items-center gap-2 text-sm text-fatec-ink">
+        <span className="font-medium text-fatec-navy-900">
+          Mínimo pra liberar certificado:
+        </span>
+        <select
+          value={Number(minimo) > 0 && Number(minimo) <= labels.length ? minimo : String(labels.length)}
+          onChange={(e) => onChange(labels, e.target.value)}
+          className="rounded-xl border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+        >
+          {Array.from({ length: labels.length }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <span className="text-fatec-muted">
+          de {labels.length} período{labels.length === 1 ? "" : "s"}
+        </span>
+      </label>
+    </div>
+  );
+}
+
 export default function EventosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
 
   const [modalCriar, setModalCriar] = useState(false);
-  const [faseCriar, setFaseCriar] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [faseCriar, setFaseCriar] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   // Tipo de evento (2026-09-22) — escolhido na fase 0, decide se o wizard
   // pula a fase "Áreas temáticas" (só existe pra trabalho acadêmico). null
   // só antes de escolher; o footer trata isso como "não avança" (mesma
@@ -568,6 +666,16 @@ export default function EventosPage() {
   const [dataRealizacao, setDataRealizacao] = useState("");
   const [dataRealizacaoFim, setDataRealizacaoFim] = useState("");
   const [cargaHoraria, setCargaHoraria] = useState("");
+  // Presença por dia vs. por período (2026-10-08, pedido explícito do
+  // usuário — evento simples agora pode ter mais de 1 verificação de
+  // presença no mesmo dia, ex.: Semana de Medicina com manhã+tarde). "dia"
+  // (padrão) é o comportamento de sempre, 1 janela por dia de calendário —
+  // serve pra palestra, evento de sessão única etc. "periodo" sobrescreve
+  // quantas janelas existem (periodosPresenca) e o mínimo exigido pro
+  // certificado (presencaMinimaPeriodos) — ver src/lib/periodosPresenca.ts.
+  const [modoPresenca, setModoPresenca] = useState<"dia" | "periodo">("dia");
+  const [minimoPeriodos, setMinimoPeriodos] = useState("");
+  const [labelsPeriodos, setLabelsPeriodos] = useState<string[]>([]);
   const [assinantesCertificadoIds, setAssinantesCertificadoIds] = useState<string[]>([]);
   const [criando, setCriando] = useState(false);
 
@@ -592,6 +700,9 @@ export default function EventosPage() {
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
   const [dataRealizacaoFimCert, setDataRealizacaoFimCert] = useState("");
   const [cargaHorariaCert, setCargaHorariaCert] = useState("");
+  const [modoPresencaCert, setModoPresencaCert] = useState<"dia" | "periodo">("dia");
+  const [minimoPeriodosCert, setMinimoPeriodosCert] = useState("");
+  const [labelsPeriodosCert, setLabelsPeriodosCert] = useState<string[]>([]);
   const [assinantesCertificadoIdsCert, setAssinantesCertificadoIdsCert] = useState<string[]>([]);
   const [numeroRegistroInicialCert, setNumeroRegistroInicialCert] = useState("");
   const [salvandoCert, setSalvandoCert] = useState(false);
@@ -704,6 +815,9 @@ export default function EventosPage() {
     setEventoGratuito(false);
     setDataRealizacao("");
     setCargaHoraria("");
+    setModoPresenca("dia");
+    setMinimoPeriodos("");
+    setLabelsPeriodos([]);
     setAssinantesCertificadoIds([]);
     setFaseCriar(0);
     setTipoForm(null);
@@ -763,6 +877,15 @@ export default function EventosPage() {
     setDataRealizacaoCert(evento.dataRealizacao ?? "");
     setDataRealizacaoFimCert(evento.dataRealizacaoFim ?? "");
     setCargaHorariaCert(evento.cargaHoraria?.toString() ?? "");
+    setModoPresencaCert(evento.periodosPresenca ? "periodo" : "dia");
+    setMinimoPeriodosCert(evento.presencaMinimaPeriodos?.toString() ?? "");
+    // Sem rótulos salvos ainda (ex.: Medicina, configurada via script antes
+    // dessa UI existir) mas com periodosPresenca definido — preenche a
+    // lista com linhas em branco do tamanho certo, não com lista vazia.
+    setLabelsPeriodosCert(
+      evento.periodosPresencaLabels ??
+        (evento.periodosPresenca ? Array(evento.periodosPresenca).fill("") : []),
+    );
     setAssinantesCertificadoIdsCert(evento.assinantesCertificadoIds ?? []);
     setNumeroRegistroInicialCert(evento.numeroRegistroInicial?.toString() ?? "");
   }
@@ -775,6 +898,18 @@ export default function EventosPage() {
         dataRealizacao: dataRealizacaoCert || null,
         dataRealizacaoFim: dataRealizacaoFimCert || null,
         cargaHoraria: cargaHorariaCert.trim() ? Number(cargaHorariaCert) : null,
+        periodosPresenca:
+          modoPresencaCert === "periodo" && labelsPeriodosCert.length > 0
+            ? labelsPeriodosCert.length
+            : null,
+        presencaMinimaPeriodos:
+          modoPresencaCert === "periodo" && minimoPeriodosCert.trim()
+            ? Number(minimoPeriodosCert)
+            : null,
+        periodosPresencaLabels:
+          modoPresencaCert === "periodo" && labelsPeriodosCert.some((l) => l.trim())
+            ? labelsPeriodosCert.map((l) => l.trim())
+            : null,
         assinantesCertificadoIds: assinantesCertificadoIdsCert,
         numeroRegistroInicial: numeroRegistroInicialCert.trim()
           ? Number(numeroRegistroInicialCert)
@@ -1084,6 +1219,17 @@ export default function EventosPage() {
         ...(dataRealizacao ? { dataRealizacao } : {}),
         ...(tipoForm === "simples" && dataRealizacaoFim ? { dataRealizacaoFim } : {}),
         ...(cargaHoraria.trim() ? { cargaHoraria: Number(cargaHoraria) } : {}),
+        ...(tipoForm === "simples" && modoPresenca === "periodo" && labelsPeriodos.length > 0
+          ? { periodosPresenca: labelsPeriodos.length }
+          : {}),
+        ...(tipoForm === "simples" && modoPresenca === "periodo" && minimoPeriodos.trim()
+          ? { presencaMinimaPeriodos: Number(minimoPeriodos) }
+          : {}),
+        ...(tipoForm === "simples" &&
+        modoPresenca === "periodo" &&
+        labelsPeriodos.some((l) => l.trim())
+          ? { periodosPresencaLabels: labelsPeriodos.map((l) => l.trim()) }
+          : {}),
         ...(assinantesCertificadoIds.length ? { assinantesCertificadoIds } : {}),
       });
 
@@ -1655,10 +1801,75 @@ export default function EventosPage() {
           </>
           )}
 
+          {/* Fase 5 (2026-10-08, pedido explícito do usuário — só evento
+              "simples": "Básico, Inscrição, Certificado e Ensalamento").
+              Virou passo próprio pra não ficar escondido dentro de "Dados
+              do certificado" — é configuração de como o Ensalamento conta
+              presença, não dado do certificado em si. */}
+          {faseCriar === 5 && (
+          <>
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Como contar presença?
+            </span>
+            <div className="flex flex-col gap-2.5 rounded-xl border border-fatec-line bg-white px-4 py-3 sm:flex-row sm:gap-5">
+              <label className="flex flex-1 items-start gap-2 text-sm text-fatec-ink">
+                <input
+                  type="radio"
+                  name="modoPresenca"
+                  checked={modoPresenca === "dia"}
+                  onChange={() => setModoPresenca("dia")}
+                  className="mt-0.5 h-4 w-4 text-fatec-orange-500 focus:ring-fatec-orange-500"
+                />
+                <span>
+                  <span className="font-medium">Por dia</span> — 1
+                  confirmação de presença por dia de calendário. Ex.:
+                  palestra, evento de 1 sessão por dia.
+                </span>
+              </label>
+              <label className="flex flex-1 items-start gap-2 text-sm text-fatec-ink">
+                <input
+                  type="radio"
+                  name="modoPresenca"
+                  checked={modoPresenca === "periodo"}
+                  onChange={() => {
+                    setModoPresenca("periodo");
+                    if (labelsPeriodos.length === 0) {
+                      setLabelsPeriodos(["", ""]);
+                      setMinimoPeriodos("2");
+                    }
+                  }}
+                  className="mt-0.5 h-4 w-4 text-fatec-orange-500 focus:ring-fatec-orange-500"
+                />
+                <span>
+                  <span className="font-medium">Por período</span> — os
+                  alunos confirmam mais de 1 vez no mesmo dia (ex.: manhã e
+                  tarde).
+                </span>
+              </label>
+            </div>
+            {modoPresenca === "periodo" && (
+              <SeletorPeriodos
+                labels={labelsPeriodos}
+                minimo={minimoPeriodos}
+                onChange={(novosLabels, novoMinimo) => {
+                  setLabelsPeriodos(novosLabels);
+                  setMinimoPeriodos(novoMinimo);
+                }}
+              />
+            )}
+          </div>
+          </>
+          )}
+
           {/* Fase 0 (escolha de tipo) não tem footer — os dois cards já
-              selecionam e avançam sozinhos. Fases 1-4 (2026-09-22): "Voltar"/
-              "Próximo" pulam a fase 2 (Áreas temáticas) quando o evento é
-              simples, senão fica um passo vazio no meio do caminho. */}
+              selecionam e avançam sozinhos. Fases 1-4/5 (2026-09-22,
+              estendido em 2026-10-08): "Voltar"/"Próximo" pulam a fase 2
+              (Áreas temáticas) quando o evento é simples, senão fica um
+              passo vazio no meio do caminho; a última fase visitável
+              também muda por tipo — simples ganha a fase 5 (Ensalamento),
+              académico pára na 4 (não tem Ensalamento de presença por
+              QR). */}
           {faseCriar > 0 && (
           <div className="mt-1 flex items-center justify-between border-t border-fatec-line pt-5">
             {faseCriar > 1 ? (
@@ -1666,7 +1877,7 @@ export default function EventosPage() {
                 type="button"
                 onClick={() =>
                   setFaseCriar((f) =>
-                    (f === 3 && tipoForm === "simples" ? 1 : f - 1) as 0 | 1 | 2 | 3 | 4,
+                    (f === 3 && tipoForm === "simples" ? 1 : f - 1) as 0 | 1 | 2 | 3 | 4 | 5,
                   )
                 }
                 className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
@@ -1683,12 +1894,12 @@ export default function EventosPage() {
               </button>
             )}
 
-            {faseCriar < 4 ? (
+            {faseCriar < (tipoForm === "simples" ? 5 : 4) ? (
               <button
                 type="button"
                 onClick={() =>
                   setFaseCriar((f) =>
-                    (f === 1 && tipoForm === "simples" ? 3 : f + 1) as 0 | 1 | 2 | 3 | 4,
+                    (f === 1 && tipoForm === "simples" ? 3 : f + 1) as 0 | 1 | 2 | 3 | 4 | 5,
                   )
                 }
                 disabled={
@@ -2032,6 +2243,59 @@ export default function EventosPage() {
                 pra evento de um dia só.
               </span>
             </label>
+          )}
+          {certSimples && (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Como contar presença?
+              </span>
+              <div className="flex flex-col gap-2.5 rounded-xl border border-fatec-line bg-white px-4 py-3 sm:flex-row sm:gap-5">
+                <label className="flex flex-1 items-start gap-2 text-sm text-fatec-ink">
+                  <input
+                    type="radio"
+                    name="modoPresencaCert"
+                    checked={modoPresencaCert === "dia"}
+                    onChange={() => setModoPresencaCert("dia")}
+                    className="mt-0.5 h-4 w-4 text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span>
+                    <span className="font-medium">Por dia</span> — 1
+                    confirmação de presença por dia de calendário. Ex.:
+                    palestra, evento de 1 sessão por dia.
+                  </span>
+                </label>
+                <label className="flex flex-1 items-start gap-2 text-sm text-fatec-ink">
+                  <input
+                    type="radio"
+                    name="modoPresencaCert"
+                    checked={modoPresencaCert === "periodo"}
+                    onChange={() => {
+                      setModoPresencaCert("periodo");
+                      if (labelsPeriodosCert.length === 0) {
+                        setLabelsPeriodosCert(["", ""]);
+                        setMinimoPeriodosCert("2");
+                      }
+                    }}
+                    className="mt-0.5 h-4 w-4 text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span>
+                    <span className="font-medium">Por período</span> — os
+                    alunos confirmam mais de 1 vez no mesmo dia (ex.: manhã
+                    e tarde).
+                  </span>
+                </label>
+              </div>
+              {modoPresencaCert === "periodo" && (
+                <SeletorPeriodos
+                  labels={labelsPeriodosCert}
+                  minimo={minimoPeriodosCert}
+                  onChange={(novosLabels, novoMinimo) => {
+                    setLabelsPeriodosCert(novosLabels);
+                    setMinimoPeriodosCert(novoMinimo);
+                  }}
+                />
+              )}
+            </div>
           )}
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">

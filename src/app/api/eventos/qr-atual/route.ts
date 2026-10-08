@@ -78,7 +78,7 @@ export async function GET(request: Request) {
   const janela = janelaAtual();
   const codigo = codigoParaJanela(segredo, eventoId, dia, janela);
   return NextResponse.json({
-    texto: montarTextoQr(eventoId, dia, janela, codigo),
+    texto: montarTextoQr(eventoId, dia, janela, codigo, uid),
     // duraçãoMs da janela (2026-09-23) — o client usa isso só pra saber de
     // quanto em quanto tempo pedir um código novo, não afeta a validação.
     expiraEmMs: 60_000,

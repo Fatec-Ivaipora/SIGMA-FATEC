@@ -42,26 +42,38 @@ export function gerarSegredo(): string {
 }
 
 /** Texto codificado no QR — o organizador exibe isso, o aluno escaneia e
- * manda de volta pra rota de confirmação validar. */
+ * manda de volta pra rota de confirmação validar. `operadorUid` (2026-10-08,
+ * pedido explícito do usuário — achado real: monitor deixou o QR de um
+ * período errado/futuro projetado, e ninguém conseguia saber depois de
+ * qual tela aquele scan tinha vindo) é só metadado de auditoria, de quem
+ * estava logado gerando esse QR especificamente — NÃO entra no HMAC de
+ * `codigoParaJanela` (não precisa: validade do scan continua garantida só
+ * por eventoId+dia+janela+codigo; adulterar esse campo não permite forjar
+ * presença nenhuma, só faria a atribuição ficar errada, e só quem já
+ * controla o que o QR mostra — o próprio operador logado — poderia mudar
+ * esse texto antes de exibir). */
 export function montarTextoQr(
   eventoId: string,
   dia: number,
   janela: number,
   codigo: string,
+  operadorUid: string,
 ): string {
-  return `${eventoId}|${dia}|${janela}|${codigo}`;
+  return `${eventoId}|${dia}|${janela}|${codigo}|${operadorUid}`;
 }
 
 export function interpretarTextoQr(
   texto: string,
-): { eventoId: string; dia: number; janela: number; codigo: string } | null {
+): { eventoId: string; dia: number; janela: number; codigo: string; operadorUid: string } | null {
   const partes = texto.split("|");
-  if (partes.length !== 4) return null;
-  const [eventoId, diaStr, janelaStr, codigo] = partes;
+  if (partes.length !== 5) return null;
+  const [eventoId, diaStr, janelaStr, codigo, operadorUid] = partes;
   const dia = Number(diaStr);
   const janela = Number(janelaStr);
-  if (!eventoId || !codigo || !Number.isFinite(dia) || !Number.isFinite(janela)) return null;
-  return { eventoId, dia, janela, codigo };
+  if (!eventoId || !codigo || !operadorUid || !Number.isFinite(dia) || !Number.isFinite(janela)) {
+    return null;
+  }
+  return { eventoId, dia, janela, codigo, operadorUid };
 }
 
 /** true se `janela` ainda está dentro da tolerância aceita, a partir de

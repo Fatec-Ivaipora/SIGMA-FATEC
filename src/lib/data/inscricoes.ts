@@ -32,6 +32,16 @@ export type InscricaoEvento = {
   // /api/certificados, papel "participante") — mas qualquer 1 dia confirmado
   // já basta pro certificado aparecer (com horas proporcionais).
   presencasConfirmadas?: Record<string, Timestamp>;
+  // Quem operava o QR escaneado, ou quem confirmou na mão (2026-10-08,
+  // pedido explícito do usuário — achado real: monitor deixava o QR de um
+  // período errado/futuro projetado, e não dava pra saber depois de qual
+  // tela um scan tinha vindo). Mesma chave de dia que presencasConfirmadas
+  // (1 pra 1), gravado pelas mesmas 2 rotas Admin SDK — nunca pelo client.
+  // "tipo: qr" vem do campo operadorUid embutido no próprio texto do QR
+  // (ver montarTextoQr em src/lib/qrPresenca.ts); "tipo: manual" é sempre
+  // quem chamou /api/inscricoes/confirmar-presenca-manual (só admin/
+  // organização, nunca monitor).
+  presencasConfirmadasPor?: Record<string, { nome: string; tipo: "qr" | "manual" }>;
 };
 
 /** Quantos dias distintos essa pessoa já teve presença confirmada — 0 se

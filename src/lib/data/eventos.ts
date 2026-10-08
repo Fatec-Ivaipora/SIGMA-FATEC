@@ -92,13 +92,21 @@ export type Evento = {
   // tarde, amanhã manhã+tarde, mas só 3 dias de calendário). Sobrescreve
   // diasDoEvento() só pra contagem de presença/QR/horas proporcionais — ver
   // periodosDoEvento em src/lib/periodosPresenca.ts. Ausente = cada dia de
-  // calendário é 1 janela só, comportamento de sempre. Sem UI própria ainda
-  // (mesmo padrão de logoCertificadoId abaixo) — setado direto no Firestore.
+  // calendário é 1 janela só, comportamento de sempre. Escolha "Por dia"
+  // vs. "Por período" no formulário de Eventos (criação e "Dados do
+  // certificado") grava/limpa esses dois campos — não é mais só Firestore
+  // direto (2026-10-08, formalizado depois do uso emergencial na Medicina).
   periodosPresenca?: number;
   // Mínimo de janelas confirmadas pra liberar o certificado (2026-10-08) —
   // ver presencaMinimaDoEvento em src/lib/periodosPresenca.ts. Ausente =
   // "pelo menos 1", comportamento de sempre.
   presencaMinimaPeriodos?: number;
+  // Nome de cada período (2026-10-08, pedido explícito do usuário — "a
+  // onde eu vou colocar o nome de cada período?"), índice 0 = período 1.
+  // Opcional, por período: um ausente/vazio cai pro genérico "Dia N". Só
+  // usado quando periodosPresenca está definido — aparece no seletor de QR
+  // do Ensalamento e no gráfico de Relatórios no lugar de "Dia N".
+  periodosPresencaLabels?: string[];
   // Carga horária: SEMPRE o total do evento, nunca muda de significado —
   // nem pra evento "simples" multi-dia. Pra qualquer papel que não seja
   // "participante" (aluno/avaliador/moderador/orientador/monitor), esse

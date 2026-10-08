@@ -36,7 +36,7 @@ import {
   type InscricaoEvento,
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
-import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
+import { periodosDoEvento, presencaMinimaDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
 import {
   useSessoesDoEvento,
   montarGradeAutomatica,
@@ -300,7 +300,7 @@ function ConfirmacaoPresencaView({
                       : "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
                   }`}
                 >
-                  Dia {dia}
+                  {rotuloPeriodo(evento, dia)}
                 </button>
               ))}
             </div>
@@ -486,7 +486,8 @@ function ConfirmacaoPresencaView({
                           ) : (
                             <Clock className="h-3.5 w-3.5" strokeWidth={2} />
                           )}
-                          D{dia}
+                          {evento.periodosPresenca ? "P" : "D"}
+                          {dia}
                         </button>
                         {confirmado && timestamp && (
                           <div
@@ -496,7 +497,7 @@ function ConfirmacaoPresencaView({
                                 : "pointer-events-none opacity-0 group-hover:opacity-100"
                             }`}
                           >
-                            Dia {dia} confirmado
+                            {rotuloPeriodo(evento, dia)} confirmado
                             <br />
                             {timestamp.toDate().toLocaleString("pt-BR", {
                               day: "2-digit",
@@ -504,6 +505,16 @@ function ConfirmacaoPresencaView({
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
+                            {(() => {
+                              const por = i.presencasConfirmadasPor?.[String(dia)];
+                              if (!por) return null;
+                              return (
+                                <>
+                                  {" · "}
+                                  {por.tipo === "manual" ? `manual (${por.nome})` : por.nome}
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

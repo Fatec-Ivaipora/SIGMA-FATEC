@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { eventoId, dia, janela, codigo } = interpretado;
+  const { eventoId, dia, janela, codigo, operadorUid } = interpretado;
 
   const db = getAdminDb();
   const inscricaoRef = db.doc(`inscricoesEvento/${eventoId}::${uid}`);
@@ -69,11 +69,31 @@ export async function POST(request: Request) {
     );
   }
 
+  // Quem operava o QR desse período (2026-10-08, pedido explícito do
+  // usuário — achado real: monitor deixava um período errado/futuro
+  // projetado e ninguém sabia depois de qual tela veio o scan). Vem do
+  // próprio texto do QR (ver operadorUid em montarTextoQr/qr-atual), não é
+  // o uid de quem tá escaneando — "melhor esforço" aqui também: se não
+  // achar o nome por algum motivo, a confirmação de presença em si (acima)
+  // nunca é bloqueada por isso.
+  let operadorNome: string | undefined;
+  try {
+    operadorNome = (await db.doc(`usuarios/${operadorUid}`).get()).data()?.nome as
+      | string
+      | undefined;
+  } catch {
+    // melhor esforço
+  }
+
   // Dot-notation (2026-09-30) — update() em vez de set({merge:true}) pra
   // gravar só a chave desse dia dentro do mapa, sem arriscar sobrescrever as
   // confirmações de outros dias já gravadas ali.
   await inscricaoRef.update({
     [`presencasConfirmadas.${chaveDia}`]: FieldValue.serverTimestamp(),
+    [`presencasConfirmadasPor.${chaveDia}`]: {
+      nome: operadorNome ?? "desconhecido",
+      tipo: "qr",
+    },
   });
 
   // Feed "Atividade recente" (2026-10-07, achado real: aluno confirmava

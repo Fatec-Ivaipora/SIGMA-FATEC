@@ -81,6 +81,10 @@ export async function GET(request: Request) {
       valor: dados.valor as number,
       status: dados.status as string,
       presencasConfirmadas: presencasConfirmadasIso,
+      // Atribuição (2026-10-08) — plano, sem Timestamp dentro, passa direto.
+      presencasConfirmadasPor: dados.presencasConfirmadasPor as
+        | Record<string, { nome: string; tipo: "qr" | "manual" }>
+        | undefined,
     };
   });
 

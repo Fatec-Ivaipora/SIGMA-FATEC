@@ -78,9 +78,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const chaveDia = `presencasConfirmadas.${dia}`;
+  // Atribuição (2026-10-08, pedido explícito do usuário — mesma auditoria
+  // do scan por QR, ver /api/inscricoes/confirmar-presenca) — aqui sempre
+  // "manual", e sempre quem chamou a rota (só admin/organização, nunca
+  // monitor, ver comentário no topo do arquivo).
   await inscricaoRef.update({
-    [chaveDia]: confirmar ? FieldValue.serverTimestamp() : FieldValue.delete(),
+    [`presencasConfirmadas.${dia}`]: confirmar ? FieldValue.serverTimestamp() : FieldValue.delete(),
+    [`presencasConfirmadasPor.${dia}`]: confirmar
+      ? { nome: (chamador?.nome as string | undefined) ?? "desconhecido", tipo: "manual" }
+      : FieldValue.delete(),
   });
 
   return NextResponse.json({ ok: true });

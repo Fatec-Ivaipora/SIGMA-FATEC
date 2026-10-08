@@ -477,6 +477,56 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-08** *(ainda não commitado — aguardando "pode subir")* —
+  **Auditoria de quem operou cada confirmação de presença** (pedido
+  explícito do usuário — achado real, evento em andamento: "vimos
+  discrepâncias de ter chamadas em período que nem aconteceram... fomos no
+  olho e achamos... mas não deu pra saber quem colocou"). Dois casos: (1)
+  **scan por QR** — o texto do QR agora carrega `operadorUid` (quem está
+  logado em `/ensalamento` gerando aquele QR especificamente), ver
+  `montarTextoQr`/`interpretarTextoQr` em `src/lib/qrPresenca.ts` (formato
+  passou de 4 pra 5 partes — não entra no HMAC de `codigoParaJanela`, é só
+  metadado de auditoria, não afeta a validade do scan em si); (2)
+  **confirmação manual** — sempre quem chamou a rota (só admin/organização).
+  Os dois gravam `presencasConfirmadasPor.{dia}` (`{nome, tipo: "qr" |
+  "manual"}`) junto com `presencasConfirmadas.{dia}`, nunca bloqueando a
+  confirmação em si se a atribuição falhar (melhor esforço). Aparece no
+  mesmo tooltip de auditoria que já existia (hover no selo P1/P2.../D1/D2...
+  de cada aluno em `/ensalamento`) — agora mostra também quem operou aquele
+  check-in. Testado isoladamente (round-trip do novo formato do texto do QR)
+  antes de mexer no caminho ao vivo — zero migração de dados precisa (dia 1
+  e dia 2 já confirmados na Medicina continuam válidos, só não têm atribuição
+  retroativa).
+- **2026-10-08** *(ainda não commitado — aguardando "pode subir")* —
+  **Formulário de Eventos formaliza "Por dia" vs. "Por período"** (pedido
+  explícito do usuário, depois de ver a correção emergencial de hoje cedo
+  na Medicina feita via script — "precisamos ver uma forma de deixar isso
+  melhor... na criação do evento simples ter opções por período ou por
+  dia"). Virou passo PRÓPRIO do wizard de criação ("Ensalamento", quinta
+  fase, só pra evento "simples" — pedido explícito: "Básico, Inscrição,
+  Certificado e Ensalamento"), e continua editável depois em "Dados do
+  certificado". "Por dia" (padrão) = 1 confirmação por dia de calendário,
+  ex. palestra; "por período" = mais de 1 confirmação no mesmo dia, ex.
+  manhã+tarde — pede quantos períodos ao todo, o mínimo exigido pro
+  certificado, e opcionalmente um NOME pra cada período ("a onde eu vou
+  colocar o nome de cada período?") — grava `periodosPresenca`/
+  `presencaMinimaPeriodos`/`periodosPresencaLabels`. Os rótulos aparecem no
+  seletor de QR do Ensalamento e no gráfico de Relatórios no lugar de
+  "Dia N" genérico — ver `rotuloPeriodo` em `src/lib/periodosPresenca.ts`.
+  **Reformulado** depois do usuário testar e achar a "inscrição" confusa
+  ("não gostei de como é feito... pesquise referências") — a 1ª versão
+  pedia uma QUANTIDADE num campo numérico solto, desconectada de uma grade
+  de caixas de texto sem numeração própria. Virou uma lista de verdade
+  (`SeletorPeriodos`), mesmo padrão visual do já existente "+ Adicionar
+  assinante" (`SeletorAssinantes`, logo abaixo na mesma tela): cada período
+  é uma linha numerada com nome + botão de remover, "+ Adicionar período"
+  no fim — a quantidade É o tamanho da lista, sem campo redundante. O
+  mínimo virou um `<select>` travado ao tamanho da lista, lido como frase
+  ("Mínimo pra liberar certificado: 4 de 5 períodos"). Também: o selo
+  compacto de presença por pessoa em `/ensalamento` (antes sempre "D1",
+  "D2"...) mostra **"P1", "P2"...** quando o evento é por período (pedido
+  explícito — "pra monitor e organização não se perderem" entre dia de
+  calendário e período).
 - **2026-10-08** — **Presença por período, não só por dia de calendário**
   (pedido explícito e urgente do usuário, evento em andamento — Semana de
   Medicina tem 5 sessões reais — ontem à noite, hoje manhã+tarde, amanhã

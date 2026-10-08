@@ -116,8 +116,9 @@ export function ConfirmarPresencaModal({
           }
 
           // Confere o eventoId antes de gastar uma chamada — o texto do QR é
-          // "eventoId|janela|codigo" (ver montarTextoQr em src/lib/qrPresenca.ts,
-          // não importado aqui porque usa node:crypto, só roda no servidor).
+          // "eventoId|dia|janela|codigo|operadorUid" (ver montarTextoQr em
+          // src/lib/qrPresenca.ts, não importado aqui porque usa
+          // node:crypto, só roda no servidor).
           if (!textoDecodificado.startsWith(`${eventoId}|`)) {
             setErro("Esse QR é de outro evento — confira se está no lugar certo.");
             setStatus("erro");
