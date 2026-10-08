@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDownUp,
   Award,
   Check,
   CheckCircle2,
@@ -121,6 +122,14 @@ function ConfirmacaoPresencaView({
   modoMonitor?: boolean;
 }) {
   const [busca, setBusca] = useState("");
+  // Filtro por dia/período + ordenação por horário de check-in (2026-10-08,
+  // pedido explícito do usuário — "hoje tá muito difícil ficar procurando
+  // pra ver quem tem presença em qual dia"). null = sem filtro/sem ordenar
+  // (comportamento de sempre). Busca por horário usa o MESMO campo de texto
+  // (ver filtrados abaixo) — não é um campo novo, é a mesma busca também
+  // comparando contra "HH:mm" de cada confirmação.
+  const [filtroDia, setFiltroDia] = useState<number | null>(null);
+  const [ordemCheckin, setOrdemCheckin] = useState<"recentes" | "antigos" | null>(null);
   // Paginação da lista de presenças (2026-10-05, pedido explícito do
   // usuário) — só na EXIBIÇÃO, não na leitura: inscritos de um evento são um
   // conjunto já limitado (não é a base inteira, como em /usuarios), e essa
@@ -245,16 +254,72 @@ function ConfirmacaoPresencaView({
   }, [evento.id, user, diaSelecionado]);
 
   const filtrados = useMemo(() => {
+    // Chaves de dia relevantes pra uma pessoa, dado o filtro de dia ativo
+    // (2026-10-08) — com filtro, só aquele dia; sem filtro, todos os dias
+    // que ela tem confirmados. Usado tanto na busca por horário quanto na
+    // ordenação por check-in, pra não duplicar a mesma regra duas vezes.
+    // Definidas aqui dentro (não no corpo do componente) só pra não precisar
+    // listar como dependência do useMemo — já fecham sobre `filtroDia`, que
+    // está na lista de dependências abaixo.
+    function chavesRelevantes(i: InscricaoEvento): string[] {
+      return filtroDia !== null
+        ? [String(filtroDia)]
+        : Object.keys(i.presencasConfirmadas ?? {});
+    }
+
+    function ultimoCheckin(i: InscricaoEvento): Timestamp | null {
+      const valores = chavesRelevantes(i)
+        .map((c) => i.presencasConfirmadas?.[c])
+        .filter((v): v is Timestamp => !!v);
+      if (valores.length === 0) return null;
+      return valores.reduce((mais, atual) => (atual.toMillis() > mais.toMillis() ? atual : mais));
+    }
+
     const termo = busca.trim().toLowerCase();
-    if (!termo) return inscritos;
-    return inscritos.filter(
-      (i) => i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo),
-    );
-  }, [inscritos, busca]);
+    let lista = inscritos;
+
+    if (filtroDia !== null) {
+      lista = lista.filter((i) => !!i.presencasConfirmadas?.[String(filtroDia)]);
+    }
+
+    if (termo) {
+      lista = lista.filter((i) => {
+        if (i.nome.toLowerCase().includes(termo) || i.email.toLowerCase().includes(termo)) {
+          return true;
+        }
+        // Busca por horário (2026-10-08, pedido explícito do usuário, além
+        // de nome/e-mail) — compara contra "HH:mm" de cada confirmação
+        // relevante, então "17:" ou "17:3" acha quem confirmou nesse
+        // intervalo.
+        return chavesRelevantes(i).some((chave) => {
+          const ts = i.presencasConfirmadas?.[chave];
+          if (!ts) return false;
+          const hhmm = ts.toDate().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+          return hhmm.includes(termo);
+        });
+      });
+    }
+
+    if (ordemCheckin) {
+      lista = [...lista].sort((a, b) => {
+        const ta = ultimoCheckin(a);
+        const tb = ultimoCheckin(b);
+        // Quem não tem check-in (no filtro atual) sempre vai pro fim,
+        // independente da direção escolhida — não tem horário pra comparar.
+        if (!ta && !tb) return 0;
+        if (!ta) return 1;
+        if (!tb) return -1;
+        const recentesPrimeiro = tb.toMillis() - ta.toMillis();
+        return ordemCheckin === "recentes" ? recentesPrimeiro : -recentesPrimeiro;
+      });
+    }
+
+    return lista;
+  }, [inscritos, busca, filtroDia, ordemCheckin]);
 
   useEffect(() => {
     setPaginaLista(0);
-  }, [busca]);
+  }, [busca, filtroDia, ordemCheckin]);
 
   const totalPaginasLista = Math.max(1, Math.ceil(filtrados.length / TAMANHO_PAGINA_LISTA));
   const paginaListaAtual = Math.min(paginaLista, totalPaginasLista - 1);
@@ -409,11 +474,61 @@ function ConfirmacaoPresencaView({
               type="text"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome ou e-mail"
+              placeholder="Buscar por nome, e-mail ou horário (ex.: 17:00)"
               className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
             />
           </div>
         </div>
+
+        {/* Filtro por dia/período + ordenação por check-in (2026-10-08,
+            pedido explícito do usuário — "hoje tá muito difícil ficar
+            procurando pra ver quem tem presença em qual dia"). Clicar de
+            novo no mesmo selo tira o filtro (alterna, não é só "ligar"). */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {diasEvento > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[-0.01em] text-fatec-muted">
+                Filtrar:
+              </span>
+              {Array.from({ length: diasEvento }, (_, idx) => idx + 1).map((dia) => (
+                <button
+                  key={dia}
+                  type="button"
+                  onClick={() => setFiltroDia((atual) => (atual === dia ? null : dia))}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    filtroDia === dia
+                      ? "bg-fatec-orange-500 text-white"
+                      : "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  }`}
+                >
+                  {evento.periodosPresenca ? "P" : "D"}
+                  {dia}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              setOrdemCheckin((atual) =>
+                atual === null ? "recentes" : atual === "recentes" ? "antigos" : null,
+              )
+            }
+            className={`ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              ordemCheckin
+                ? "bg-fatec-sky-100 text-fatec-sky-600"
+                : "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+            }`}
+          >
+            <ArrowDownUp className="h-3.5 w-3.5" strokeWidth={2} />
+            {ordemCheckin === "recentes"
+              ? "Check-in: mais recentes primeiro"
+              : ordemCheckin === "antigos"
+                ? "Check-in: mais antigos primeiro"
+                : "Ordenar por check-in"}
+          </button>
+        </div>
+
         {!modoMonitor && (
           <p className="mt-2 text-xs text-fatec-muted">
             Não deu pra escanear o QR? Clique no selo do dia pra marcar (ou

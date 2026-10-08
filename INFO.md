@@ -478,6 +478,19 @@ fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
 - **2026-10-08** *(ainda não commitado — aguardando "pode subir")* —
+  **Filtro por dia/período + busca por horário + ordenar por check-in em
+  `/ensalamento`** (pedido explícito do usuário — "hoje tá muito difícil
+  ficar procurando pra ver quem tem presença em qual dia"). Embaixo da
+  busca: selos P1-P5/D1-D3 clicáveis (alterna — clicar de novo tira o
+  filtro) mostram só quem confirmou aquele dia/período; a mesma busca por
+  nome/e-mail agora também compara contra "HH:mm" de cada confirmação
+  (digitar "17:3" acha quem confirmou nesse intervalo); botão "Ordenar por
+  check-in" cicla sem filtro → recentes primeiro → antigos primeiro. Testado
+  ao vivo contra os dados reais da Medicina (filtro P3 + busca "15:3" +
+  ordenação) antes de documentar — confirmou inclusive a atribuição de
+  quem operou cada scan (ver entrada abaixo) funcionando de verdade em
+  produção.
+- **2026-10-08** *(ainda não commitado — aguardando "pode subir")* —
   **Auditoria de quem operou cada confirmação de presença** (pedido
   explícito do usuário — achado real, evento em andamento: "vimos
   discrepâncias de ter chamadas em período que nem aconteceram... fomos no
