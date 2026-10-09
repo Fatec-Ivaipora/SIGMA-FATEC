@@ -9,6 +9,7 @@ import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { temPapel } from "@/lib/auth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
+import { renderResumoFormatado } from "@/lib/textoFormatado";
 import {
   useTrabalhos,
   atualizarTrabalho,
@@ -180,7 +181,17 @@ function PainelTrabalhos({
 
           {avaliando === t.id && (
             <div className="mt-5 flex flex-col gap-4 border-t border-fatec-line pt-5">
-              {t.resumo && <p className="text-sm leading-relaxed text-fatec-ink">{t.resumo}</p>}
+              {t.palavrasChave?.trim() && (
+                <p className="text-sm text-fatec-ink">
+                  <span className="font-medium text-fatec-navy-900">Palavras-chave: </span>
+                  {t.palavrasChave}
+                </p>
+              )}
+              {t.resumo && (
+                <div className="text-sm leading-relaxed text-fatec-ink">
+                  {renderResumoFormatado(t.resumo)}
+                </div>
+              )}
 
               {!pedindoRevisao ? (
                 <>

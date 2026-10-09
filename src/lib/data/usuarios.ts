@@ -141,6 +141,53 @@ export function useUsuariosPaginado(papel: Papel | "todos") {
   return { usuarios, setUsuarios, carregando, pagina, setPagina, temProximaPagina, erro };
 }
 
+/** Lista TODOS os alunos de uma vez, sem paginação (2026-10-09, achado real
+ * do usuário: filtrar "Aluno" por curso/vínculo em cima da paginação de 20
+ * em 20 mostrava 0 pra quase todo curso — o filtro só olhava os 20 já
+ * carregados na página atual, nunca o resto da coleção, então um curso que
+ * só aparecia na página 3 parecia simplesmente não ter ninguém). Só dispara
+ * quando `ativo` (a tela liga isso só enquanto curso/vínculo estão
+ * filtrados — fora disso continua valendo a paginação normal de
+ * useUsuariosPaginado, mais barata pro caso comum). Sem tempo real de
+ * propósito, mesmo espírito do hook de paginação acima. */
+export function useAlunosCompletos(ativo: boolean) {
+  const [alunos, setAlunos] = useState<UsuarioRegistro[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ativo) return;
+    let cancelado = false;
+    setCarregando(true);
+
+    getDocs(query(collection(db, "usuarios"), where("papel", "==", "aluno"), orderBy("nome")))
+      .then((snap) => {
+        if (cancelado) return;
+        setAlunos(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as UsuarioRegistro));
+        setErro(null);
+      })
+      .catch((e) => {
+        if (cancelado) return;
+        const mensagem = e instanceof Error ? e.message : String(e);
+        setAlunos([]);
+        setErro(
+          mensagem.includes("requires an index")
+            ? "Falta um índice no Firestore pra esse filtro — veja o link no console do navegador (F12) pra criar."
+            : "Não foi possível carregar os alunos agora.",
+        );
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [ativo]);
+
+  return { alunos, carregando, erro };
+}
+
 /** Busca por nome ou e-mail (2026-10-05) — dispara direto no Firestore em
  * vez de filtrar a coleção inteira em memória, então funciona junto com a
  * paginação acima sem precisar carregar todo mundo. É busca por PREFIXO

@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, Download, Mic, Presentation, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Bold, Check, Download, Italic, Mic, Presentation, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useAlunosParaBusca, type AlunoParaBusca } from "@/lib/data/usuarios";
 import { useInscritosUids } from "@/lib/data/inscricoes";
 import type { AreaTematicaComplexa } from "@/lib/data/eventos";
+import { renderResumoFormatado } from "@/lib/textoFormatado";
 
 const RESUMO_MAX = 2000;
 
@@ -78,10 +79,124 @@ export type DadosSubmissao = {
   // abaixo) — trabalho fica sem modalidade, não entra em Ensalamento.
   modalidadeApresentacao?: "oral" | "roda_conversa";
   resumo: string;
+  // Só preenchido quando `resumoAcademico` (2026-10-09) — Projeto
+  // Integrador reaproveita este mesmo componente/tipo, mas nunca pede
+  // palavras-chave (não é um resumo em formato acadêmico ABNT).
+  palavrasChave?: string;
   nomeOrientador: string;
   participantesUids: string[];
   participantesNomes: string[];
 };
+
+/** Campo de resumo com negrito/itálico + pré-visualização (2026-10-09,
+ * pedido explícito do usuário — "sinto uma falta de formatação... procure
+ * exemplos"). Padrão "Escrever/Pré-visualizar" (GitHub, editores de
+ * markdown) em vez de contentEditable de verdade — mais simples, mais
+ * seguro (nunca guarda/renderiza HTML, só a sintaxe leve `**`/`*`
+ * interpretada por renderResumoFormatado) e não precisa de biblioteca
+ * nenhuma. Os botões envolvem a SELEÇÃO atual do textarea com o marcador
+ * (ou a palavra "texto", sem nada selecionado) e devolvem o foco/seleção
+ * pro trecho recém-marcado, padrão de qualquer editor "wrap selection". */
+function CampoResumoFormatado({
+  valor,
+  onChange,
+  disabled,
+}: {
+  valor: string;
+  onChange: (valor: string) => void;
+  disabled?: boolean;
+}) {
+  const [modo, setModo] = useState<"escrever" | "visualizar">("escrever");
+  const refTextarea = useRef<HTMLTextAreaElement>(null);
+
+  function aplicarEstilo(marcador: string) {
+    const el = refTextarea.current;
+    if (!el) return;
+    const inicio = el.selectionStart;
+    const fim = el.selectionEnd;
+    const selecionado = valor.slice(inicio, fim) || "texto";
+    onChange(valor.slice(0, inicio) + marcador + selecionado + marcador + valor.slice(fim));
+    requestAnimationFrame(() => {
+      el.focus();
+      const novoInicio = inicio + marcador.length;
+      el.setSelectionRange(novoInicio, novoInicio + selecionado.length);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border border-fatec-line bg-white p-0.5">
+          <button
+            type="button"
+            disabled={disabled || modo !== "escrever"}
+            onClick={() => aplicarEstilo("**")}
+            title="Negrito"
+            aria-label="Negrito"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+          >
+            <Bold className="h-3.5 w-3.5" strokeWidth={2.25} />
+          </button>
+          <button
+            type="button"
+            disabled={disabled || modo !== "escrever"}
+            onClick={() => aplicarEstilo("*")}
+            title="Itálico"
+            aria-label="Itálico"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+          >
+            <Italic className="h-3.5 w-3.5" strokeWidth={2.25} />
+          </button>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-lg bg-fatec-navy-50 p-0.5 text-xs font-semibold">
+          {(
+            [
+              { valor: "escrever" as const, label: "Escrever" },
+              { valor: "visualizar" as const, label: "Pré-visualizar" },
+            ]
+          ).map((m) => (
+            <button
+              key={m.valor}
+              type="button"
+              onClick={() => setModo(m.valor)}
+              className={`rounded px-2.5 py-1 transition-colors ${
+                modo === m.valor
+                  ? "bg-white text-fatec-navy-900 shadow-sm"
+                  : "text-fatec-muted hover:text-fatec-navy-900"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {modo === "escrever" ? (
+        <textarea
+          ref={refTextarea}
+          rows={6}
+          maxLength={RESUMO_MAX}
+          disabled={disabled}
+          value={valor}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={
+            "Ex.: Este estudo analisa... O objetivo é... Trata-se de uma " +
+            "pesquisa qualitativa/quantitativa, realizada a partir de... " +
+            "Os resultados indicam que... Conclui-se que..."
+          }
+          className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+        />
+      ) : (
+        <div className="min-h-[9.5rem] rounded-xl border border-fatec-line bg-fatec-navy-50/40 px-4 py-2.5 text-sm leading-relaxed text-fatec-ink">
+          {valor.trim() ? (
+            renderResumoFormatado(valor)
+          ) : (
+            <span className="text-fatec-muted">Nada pra pré-visualizar ainda.</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Dado um valor de área temática já "achatado" (ex.: "Projetos
  * Integradores – Ciências da Saúde"), separa de volta em (grupo, sub-área)
@@ -109,6 +224,7 @@ export function SubmeterTrabalhoModal({
   areasDisponiveis,
   areasComplexas = [],
   modalidadesPermitidas = ["oral", "roda_conversa"],
+  resumoAcademico = false,
   meuUid,
   valoresIniciais,
   modoEdicao = false,
@@ -138,6 +254,16 @@ export function SubmeterTrabalhoModal({
   // trabalho fica sem modalidadeApresentacao). 1 item = auto-selecionado,
   // sem pergunta pro aluno.
   modalidadesPermitidas?: ("oral" | "roda_conversa")[];
+  // Evento completo/MAC (2026-10-09, pedido explícito do usuário) vs.
+  // Projeto Integrador, que reaproveita este mesmo modal/tipo pra "resumo"
+  // só que num sentido mais solto — ausente/false preserva o campo Resumo
+  // de sempre (textarea simples, sem palavras-chave, sem mínimo de
+  // caracteres). true liga: palavras-chave (campo novo), negrito/itálico +
+  // pré-visualização (CampoResumoFormatado), texto de ajuda com a
+  // estrutura esperada (objetivo/metodologia/resultados/conclusão), e
+  // resumo/palavras-chave passam a ser obrigatórios (sem mínimo de
+  // caracteres — pedido explícito do usuário, 2026-10-09).
+  resumoAcademico?: boolean;
   meuUid: string | undefined;
   // Pré-preenche o formulário — usado tanto ao inscrever num evento um
   // trabalho já aprovado pelo orientador numa turma do Projeto Integrador
@@ -146,6 +272,7 @@ export function SubmeterTrabalhoModal({
   valoresIniciais?: {
     titulo?: string;
     resumo?: string;
+    palavrasChave?: string;
     areaTematica?: string;
     modalidadeApresentacao?: "oral" | "roda_conversa";
     nomeOrientador?: string;
@@ -189,6 +316,7 @@ export function SubmeterTrabalhoModal({
     "oral" | "roda_conversa" | ""
   >(modalidadeInicial());
   const [resumo, setResumo] = useState(valoresIniciais?.resumo ?? "");
+  const [palavrasChave, setPalavrasChave] = useState(valoresIniciais?.palavrasChave ?? "");
   const [buscaColega, setBuscaColega] = useState("");
   const [participantes, setParticipantes] = useState<AlunoParaBusca[]>(
     (valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })),
@@ -241,7 +369,9 @@ export function SubmeterTrabalhoModal({
     titulo.trim() &&
     areaTematicaFinal &&
     (modalidadesFiltradas.length === 0 || !!modalidadeApresentacao);
-  const fase2Valida = nomeOrientador.trim();
+  const fase2Valida =
+    nomeOrientador.trim() &&
+    (!resumoAcademico || (palavrasChave.trim() && resumo.trim()));
   const valido = fase1Valida && fase2Valida;
 
   function adicionarColega(aluno: AlunoParaBusca) {
@@ -261,6 +391,7 @@ export function SubmeterTrabalhoModal({
     setSubArea(areaInicial.subArea);
     setModalidadeApresentacao(modalidadeInicial());
     setResumo(valoresIniciais?.resumo ?? "");
+    setPalavrasChave(valoresIniciais?.palavrasChave ?? "");
     setBuscaColega("");
     setParticipantes((valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })));
   }
@@ -272,6 +403,7 @@ export function SubmeterTrabalhoModal({
       areaTematica: areaTematicaFinal,
       ...(modalidadeApresentacao ? { modalidadeApresentacao } : {}),
       resumo: resumo.trim(),
+      ...(resumoAcademico ? { palavrasChave: palavrasChave.trim() } : {}),
       nomeOrientador: nomeOrientador.trim(),
       participantesUids: participantes.map((p) => p.uid),
       participantesNomes: participantes.map((p) => p.nome),
@@ -447,10 +579,29 @@ export function SubmeterTrabalhoModal({
 
         {fase === 2 && (
         <>
+        {resumoAcademico && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Palavras-chave <span className="text-fatec-orange-600">*</span>
+            </span>
+            <input
+              type="text"
+              disabled={somenteLeitura}
+              value={palavrasChave}
+              onChange={(e) => setPalavrasChave(e.target.value)}
+              placeholder="Ex.: Cyberbullying, saúde mental, comportamento virtual"
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+            />
+            <span className="text-xs text-fatec-muted">
+              3 a 5 termos que resumem o trabalho, separados por vírgula.
+            </span>
+          </label>
+        )}
+
         <label className="flex flex-col gap-1.5">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-medium text-fatec-navy-900">
-              Resumo
+              Resumo {resumoAcademico && <span className="text-fatec-orange-600">*</span>}
             </span>
             <span
               className={`text-xs ${
@@ -462,15 +613,30 @@ export function SubmeterTrabalhoModal({
               {resumo.length}/{RESUMO_MAX}
             </span>
           </div>
-          <textarea
-            rows={6}
-            maxLength={RESUMO_MAX}
-            disabled={somenteLeitura}
-            value={resumo}
-            onChange={(e) => setResumo(e.target.value)}
-            placeholder="Descreva brevemente o trabalho (até 2000 caracteres)"
-            className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
-          />
+          {resumoAcademico && (
+            <p className="text-xs text-fatec-muted">
+              Um resumo acadêmico de verdade, não um título estendido —
+              inclua do que trata o trabalho, o objetivo, a metodologia
+              usada, os principais resultados e a conclusão.
+            </p>
+          )}
+          {resumoAcademico ? (
+            <CampoResumoFormatado
+              valor={resumo}
+              onChange={setResumo}
+              disabled={somenteLeitura}
+            />
+          ) : (
+            <textarea
+              rows={6}
+              maxLength={RESUMO_MAX}
+              disabled={somenteLeitura}
+              value={resumo}
+              onChange={(e) => setResumo(e.target.value)}
+              placeholder="Descreva brevemente o trabalho (até 2000 caracteres)"
+              className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+            />
+          )}
         </label>
 
         <label className="flex flex-col gap-1.5">

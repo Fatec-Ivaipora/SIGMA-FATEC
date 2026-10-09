@@ -25,6 +25,7 @@ import { useEventos } from "@/lib/data/eventos";
 import {
   useUsuariosPaginado,
   useBuscaUsuarios,
+  useAlunosCompletos,
   atualizarAtribuicoesUsuario,
   atualizarPapeisAvaliacaoUsuario,
   type UsuarioRegistro,
@@ -119,10 +120,24 @@ export default function UsuariosPage() {
   // atual (20 usuários, filtrados por papel no servidor). Os dois ainda
   // passam pelo filtro de vínculo/curso aqui embaixo — esses continuam só no
   // cliente, sobre o que já veio (ver comentário em useUsuariosPaginado).
+  //
+  // EXCETO quando curso/vínculo estão filtrados (2026-10-09, achado real do
+  // usuário: filtrar "Aluno" por curso em cima da paginação de 20 em 20
+  // mostrava 0 pra quase todo curso — o filtro só enxergava os 20 já
+  // carregados, nunca o resto da coleção). Nesse caso troca pra
+  // useAlunosCompletos (lê TODOS os alunos de uma vez, só enquanto esse
+  // refinamento está ativo — ver comentário lá).
   const temBusca = busca.trim().length > 0;
+  const refinandoAluno =
+    !temBusca && filtro === "aluno" && (filtroVinculo !== "todos" || !!filtroCurso);
   const paginado = useUsuariosPaginado(filtro);
   const busca1 = useBuscaUsuarios(busca);
-  const usuarios = temBusca ? busca1.resultado : paginado.usuarios;
+  const alunosCompletos = useAlunosCompletos(refinandoAluno);
+  const usuarios = temBusca
+    ? busca1.resultado
+    : refinandoAluno
+      ? alunosCompletos.alunos
+      : paginado.usuarios;
 
   // Reflete uma alteração (papéis, hoje) direto na lista já carregada na tela
   // (2026-10-07 — achado real do usuário: a gravação no Firestore funcionava,
@@ -137,8 +152,12 @@ export default function UsuariosPage() {
     paginado.setUsuarios(aplicar);
     busca1.setResultado(aplicar);
   }
-  const carregandoLista = temBusca ? busca1.carregando : paginado.carregando;
-  const erroLista = temBusca ? busca1.erro : paginado.erro;
+  const carregandoLista = temBusca
+    ? busca1.carregando
+    : refinandoAluno
+      ? alunosCompletos.carregando
+      : paginado.carregando;
+  const erroLista = temBusca ? busca1.erro : refinandoAluno ? alunosCompletos.erro : paginado.erro;
 
   const usuariosFiltrados = useMemo(() => {
     return usuarios.filter((u) => {
@@ -577,8 +596,10 @@ export default function UsuariosPage() {
 
           {/* Paginação (2026-10-05) — só faz sentido na listagem normal; a
               busca já devolve um resultado pronto (até 20 por nome + 20 por
-              e-mail), sem próxima/anterior. */}
-          {!temBusca && (
+              e-mail), sem próxima/anterior; curso/vínculo filtrados
+              (2026-10-09) também mostram a lista completa de uma vez, ver
+              refinandoAluno. */}
+          {!temBusca && !refinandoAluno && (
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-fatec-muted">
                 Página {paginado.pagina + 1}

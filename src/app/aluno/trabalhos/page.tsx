@@ -194,11 +194,13 @@ export default function AlunoTrabalhosPage() {
           modalidadesPermitidas={
             eventos.find((e) => e.id === editando.eventoId)?.modalidadesApresentacao
           }
+          resumoAcademico
           meuUid={user?.uid}
           comentarioRevisao={editando.status === "revisao" ? editando.comentarioRevisao : null}
           valoresIniciais={{
             titulo: editando.titulo,
             resumo: editando.resumo,
+            palavrasChave: editando.palavrasChave,
             areaTematica: editando.areaTematica,
             modalidadeApresentacao: editando.modalidadeApresentacao,
             nomeOrientador: editando.nomeOrientador,

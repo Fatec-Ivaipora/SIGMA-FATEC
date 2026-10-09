@@ -423,6 +423,7 @@ export default function AlunoEventosPage() {
           areasDisponiveis={eventoModal.areasTematicas ?? []}
           areasComplexas={eventoModal.areasTematicasComplexas ?? []}
           modalidadesPermitidas={eventoModal.modalidadesApresentacao}
+          resumoAcademico
           meuUid={user?.uid}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTrabalho}

@@ -5,6 +5,7 @@ import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Trabalho } from "@/lib/data/trabalhos";
 import type { Evento } from "@/lib/data/eventos";
+import { renderResumoFormatado } from "@/lib/textoFormatado";
 
 const LABEL_MODALIDADE: Record<string, { texto: string; icone: typeof Mic }> = {
   oral: { texto: "Apresentação Oral", icone: Mic },
@@ -115,11 +116,20 @@ export function DetalheTrabalhoModal({
           )}
         </div>
 
+        {trabalho.palavrasChave?.trim() && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">Palavras-chave</span>
+            <p className="text-sm text-fatec-ink">{trabalho.palavrasChave}</p>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-fatec-navy-900">Resumo</span>
-          <p className="whitespace-pre-wrap rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm leading-relaxed text-fatec-ink">
-            {trabalho.resumo?.trim() || "Sem resumo cadastrado."}
-          </p>
+          <div className="rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm leading-relaxed text-fatec-ink">
+            {trabalho.resumo?.trim()
+              ? renderResumoFormatado(trabalho.resumo)
+              : "Sem resumo cadastrado."}
+          </div>
         </div>
 
         {trabalho.comentarioRevisao && (

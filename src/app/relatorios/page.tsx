@@ -12,6 +12,8 @@ import {
   Wallet,
   DollarSign,
   Trophy,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -253,6 +255,13 @@ function RelatoriosContent() {
     "perfil",
   );
 
+  // Esconder "Receita arrecadada" (2026-10-09, pedido explícito do usuário
+  // — "igual banco... às vezes temos que mostrar alguma coisa aqui e não
+  // queremos expor isso") — começa OCULTO por padrão (confirmado pelo
+  // usuário), sem persistir entre sessões: é uma proteção pra quando a tela
+  // está sendo mostrada pra alguém, não uma preferência de longo prazo.
+  const [receitaOculta, setReceitaOculta] = useState(true);
+
   // Ranking por área temática — só entra quem já tem nota do avaliador,
   // ordenado da maior pra menor; áreas com mais trabalhos aparecem primeiro
   // na lista de chips.
@@ -440,14 +449,31 @@ function RelatoriosContent() {
               </p>
             </div>
             <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
-                <DollarSign className="h-5 w-5" strokeWidth={1.75} />
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
+                  <DollarSign className="h-5 w-5" strokeWidth={1.75} />
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReceitaOculta((v) => !v)}
+                  aria-label={receitaOculta ? "Mostrar receita arrecadada" : "Esconder receita arrecadada"}
+                  title={receitaOculta ? "Mostrar valor" : "Esconder valor"}
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full border border-fatec-orange-200 bg-white text-fatec-orange-600 transition-colors hover:bg-fatec-orange-100"
+                >
+                  {receitaOculta ? (
+                    <EyeOff className="h-4 w-4" strokeWidth={2} />
+                  ) : (
+                    <Eye className="h-4 w-4" strokeWidth={2} />
+                  )}
+                </button>
+              </div>
               <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
-                {receitaArrecadada.toLocaleString("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                })}
+                {receitaOculta
+                  ? "R$ ••••••"
+                  : receitaArrecadada.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}
               </p>
               <p className="text-sm text-fatec-muted">Receita arrecadada</p>
             </div>

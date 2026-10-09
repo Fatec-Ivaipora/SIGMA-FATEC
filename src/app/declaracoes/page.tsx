@@ -52,20 +52,33 @@ import {
 // não-staff de /api/certificados (o próprio admin bypassa elas lá, mas essa
 // tela é uma "rede de proteção" pra verificar quem tá apto de verdade, não
 // um atalho pra forçar sem os requisitos — por isso o botão desabilita
-// igual ao autoatendimento normal, sem usar o bypass de staff). `grupo`
-// separa quem paga/se inscreve ("aluno", cobre tanto o aluno de trabalho
-// quanto o participante de evento simples) de quem só é atribuído por fora
-// ("outros": avaliador, moderador, monitor, orientador — nenhum desses paga
-// nem se inscreve).
+// igual ao autoatendimento normal, sem usar o bypass de staff). `tipo`
+// (2026-10-09, pedido explícito do usuário — "filtros mais pontuais do que
+// somente aluno e outros cargos pra facilitar a busca") identifica cada
+// papel separadamente, em vez do agrupamento genérico "aluno"/"outros" de
+// antes; "aluno" cobre tanto o aluno de trabalho quanto o participante de
+// evento simples (os dois pagam/se inscrevem do mesmo jeito), os demais são
+// 1 por papel. Os filtros na tela só mostram os tipos que de fato existem
+// no evento selecionado, não a lista fixa dos 5 (ver tiposPresentes).
+type TipoCandidato = "aluno" | "avaliador" | "moderador" | "monitor" | "orientador";
+
 type CandidatoDocumento = {
   chaveLista: string;
   nome: string;
   rotuloTipo: string;
   contexto?: string;
   textoBusca: string;
-  grupo: "aluno" | "outros";
+  tipo: TipoCandidato;
   checks: { label: string; ok: boolean }[];
   gerar: () => Promise<{ ok: true } | { ok: false; erro: string }>;
+};
+
+const ROTULO_TIPO_FILTRO: Record<TipoCandidato, string> = {
+  aluno: "Alunos",
+  avaliador: "Avaliadores",
+  moderador: "Moderadores",
+  monitor: "Monitores",
+  orientador: "Orientadores",
 };
 
 function EmitirCertificado({
@@ -82,10 +95,12 @@ function EmitirCertificado({
   const [baixandoChave, setBaixandoChave] = useState<string | null>(null);
   const [erro, setErro] = useState<{ chave: string; msg: string } | null>(null);
   // Alunos (aluno de trabalho + participante de evento simples) precisam de
-  // todos os checks — pagamento, presença/liberação; "outros" (monitor,
-  // avaliador, moderador, orientador) nunca pagam nem se inscrevem, só são
-  // atribuídos por fora (2026-10-01, pedido explícito do usuário).
-  const [filtroGrupo, setFiltroGrupo] = useState<"todos" | "aluno" | "outros">("todos");
+  // todos os checks — pagamento, presença/liberação; os demais tipos
+  // (monitor, avaliador, moderador, orientador) nunca pagam nem se
+  // inscrevem, só são atribuídos por fora (2026-10-01, pedido explícito do
+  // usuário). Filtro por tipo específico, não só "aluno"/"outros"
+  // (2026-10-09, pedido explícito do usuário).
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | TipoCandidato>("todos");
 
   const evento = eventos.find((e) => e.id === eventoId);
   const { monitores } = useMonitoresDoEvento(eventoId || undefined);
@@ -120,7 +135,7 @@ function EmitirCertificado({
           nome: i.nome,
           rotuloTipo: "Certificado de participação",
           textoBusca: i.nome.toLowerCase(),
-          grupo: "aluno",
+          tipo: "aluno",
           checks: [
             ...(temTaxa ? [{ label: "Pagamento", ok: pagou }] : []),
             { label: "Liberado pela organização", ok: !!evento.certificadosLiberados },
@@ -152,7 +167,7 @@ function EmitirCertificado({
         rotuloTipo: "Certificado de apresentação",
         contexto: t.titulo,
         textoBusca: nomes.join(" ").toLowerCase(),
-        grupo: "aluno",
+        tipo: "aluno",
         checks: [
           { label: "Resultado final aceito", ok: true },
           { label: "Liberado pela organização", ok: !!t.certificadoLiberado },
@@ -168,7 +183,7 @@ function EmitirCertificado({
           rotuloTipo: "Declaração de orientador(a)",
           contexto: t.titulo,
           textoBusca: t.nomeOrientador.toLowerCase(),
-          grupo: "outros",
+          tipo: "orientador",
           // Orientador não tem conta/inscrição — nada além do trabalho
           // aceito trava a declaração dele (ver /api/certificados).
           checks: [{ label: "Resultado final aceito", ok: true }],
@@ -195,7 +210,7 @@ function EmitirCertificado({
         nome,
         rotuloTipo: "Declaração de avaliador(a)",
         textoBusca: nome.toLowerCase(),
-        grupo: "outros",
+        tipo: "avaliador",
         checks: [{ label: "Liberado pela organização", ok: liberado }],
         gerar: () =>
           baixarCertificado(user, { papel: "avaliador", eventoId, uidAlvo: uid }),
@@ -210,7 +225,7 @@ function EmitirCertificado({
         nome,
         rotuloTipo: "Declaração de moderador(a)",
         textoBusca: nome.toLowerCase(),
-        grupo: "outros",
+        tipo: "moderador",
         checks: [{ label: "Liberado pela organização", ok: liberado }],
         gerar: () =>
           baixarCertificado(user, { papel: "moderador", eventoId, uidAlvo: uid }),
@@ -229,7 +244,7 @@ function EmitirCertificado({
         nome: m.nome,
         rotuloTipo: "Declaração de monitor(a)",
         textoBusca: m.nome.toLowerCase(),
-        grupo: "outros",
+        tipo: "monitor",
         checks: simples
           ? [
               { label: "Liberado pela organização", ok: !!evento.certificadosLiberados },
@@ -247,10 +262,18 @@ function EmitirCertificado({
     return lista;
   }, [eventoId, evento, inscritos, inscritosPorUid, trabalhos, monitores, user]);
 
+  // Só mostra como opção de filtro os tipos que de fato existem no evento
+  // selecionado (2026-10-09) — evento simples nunca tem avaliador/moderador/
+  // orientador, por exemplo, então não teria sentido oferecer um filtro que
+  // sempre dá lista vazia.
+  const tiposPresentes = (
+    ["aluno", "avaliador", "moderador", "monitor", "orientador"] as const
+  ).filter((tipo) => candidatos.some((c) => c.tipo === tipo));
+
   const termo = busca.trim().toLowerCase();
   const resultados = candidatos.filter(
     (c) =>
-      (filtroGrupo === "todos" || c.grupo === filtroGrupo) &&
+      (filtroTipo === "todos" || c.tipo === filtroTipo) &&
       (!termo || c.textoBusca.includes(termo)),
   );
 
@@ -275,7 +298,10 @@ function EmitirCertificado({
         <div className="relative">
           <select
             value={eventoId}
-            onChange={(e) => setEventoId(e.target.value)}
+            onChange={(e) => {
+              setEventoId(e.target.value);
+              setFiltroTipo("todos");
+            }}
             className="w-full min-w-[240px] appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
           >
             <option value="">Selecione o evento</option>
@@ -311,21 +337,20 @@ function EmitirCertificado({
         </div>
       </div>
 
-      {eventoId && (
+      {eventoId && tiposPresentes.length > 1 && (
         <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
           {(
             [
-              { label: "Todos", valor: "todos" },
-              { label: "Alunos", valor: "aluno" },
-              { label: "Outros cargos", valor: "outros" },
-            ] as const
+              { label: "Todos", valor: "todos" as const },
+              ...tiposPresentes.map((tipo) => ({ label: ROTULO_TIPO_FILTRO[tipo], valor: tipo })),
+            ]
           ).map((f) => (
             <button
               key={f.valor}
               type="button"
-              onClick={() => setFiltroGrupo(f.valor)}
+              onClick={() => setFiltroTipo(f.valor)}
               className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                filtroGrupo === f.valor
+                filtroTipo === f.valor
                   ? "bg-white text-fatec-navy-900 shadow-sm"
                   : "text-fatec-muted hover:text-fatec-navy-900"
               }`}

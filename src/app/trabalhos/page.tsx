@@ -1685,11 +1685,13 @@ export default function TrabalhosAdminPage() {
           areasDisponiveis={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicas ?? []}
           areasComplexas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.areasTematicasComplexas ?? []}
           modalidadesPermitidas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.modalidadesApresentacao}
+          resumoAcademico
           meuUid={user?.uid}
           modoEdicao
           valoresIniciais={{
             titulo: trabalhoEditando.titulo,
             resumo: trabalhoEditando.resumo,
+            palavrasChave: trabalhoEditando.palavrasChave,
             areaTematica: trabalhoEditando.areaTematica,
             modalidadeApresentacao: trabalhoEditando.modalidadeApresentacao,
             nomeOrientador: trabalhoEditando.nomeOrientador,

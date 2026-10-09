@@ -63,6 +63,14 @@ export type Trabalho = {
   modalidadeApresentacao?: "oral" | "roda_conversa";
   nomeOrientador?: string;
   resumo?: string;
+  // Palavras-chave do resumo acadêmico (2026-10-09, pedido explícito do
+  // usuário — "sinto que falta um campo de palavras chave tbm antes do
+  // resumo"). Texto livre, aluno separa por vírgula/ponto e vírgula; só
+  // existe pra trabalho de evento completo (ver `resumoAcademico` em
+  // SubmeterTrabalhoModal.tsx — Projeto Integrador não ganha esse campo,
+  // não é um resumo no formato acadêmico ABNT). Ausente em trabalhos
+  // submetidos antes dessa data.
+  palavrasChave?: string;
   // Colegas adicionados na submissão (RF-08) — só leem o trabalho, não podem
   // editá-lo/reenviá-lo (isso continua exclusivo de alunoUid). Entram em
   // participantesUids/Nomes já na submissão, mas ficam em convitesPendentes

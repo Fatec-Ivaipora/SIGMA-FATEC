@@ -477,6 +477,56 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-09** *(ainda não commitado — aguardando "pode subir")* —
+  **"Receita arrecadada" escondível em `/relatorios`** (pedido explícito do
+  usuário — "igual banco... às vezes temos que mostrar alguma coisa aqui e
+  não queremos expor isso"). Ícone de olho no canto do card, igual
+  app de banco — **começa oculto por padrão** (confirmado pelo usuário),
+  mostra "R$ ••••••" até clicar pra revelar. Só estado local, não persiste
+  entre sessões — é proteção pra quando a tela está sendo mostrada pra
+  alguém, não uma preferência salva.
+
+- **2026-10-09** *(ainda não commitado — aguardando "pode subir")* —
+  **Filtro de curso/vínculo em `/usuarios` mostrava 0 pra quase todo curso**
+  (achado real do usuário: MAC tinha inscritos de Agronomia/Enfermagem/etc,
+  mas filtrar "Aluno" por esses cursos em `/usuarios` dava 0). Causa: esse
+  filtro é só client-side, sobre a página de 20 já carregada (ver
+  `useUsuariosPaginado`) — um curso que só aparecia na página 3 parecia não
+  ter ninguém. Corrigido com `useAlunosCompletos` (novo hook em
+  `src/lib/data/usuarios.ts`) — lê TODOS os alunos de uma vez, mas só
+  enquanto curso ou vínculo estão de fato filtrados (fora disso continua a
+  paginação normal, mais barata). Paginação escondida nesse modo (mostra a
+  lista completa de uma vez, igual já acontecia na busca por nome/e-mail).
+
+- **2026-10-09** *(ainda não commitado — aguardando "pode subir")* —
+  **Resumo do trabalho (evento completo) ganha palavras-chave + negrito/
+  itálico + pré-visualização** (pedido explícito do usuário — placeholder
+  antigo convidava a brevidade ("descreva brevemente"), alunos escreviam
+  resumos de 3 linhas; faltava formatação e campo de palavras-chave). Só
+  pra evento completo/MAC (`resumoAcademico` no `SubmeterTrabalhoModal` —
+  Projeto Integrador reaproveita o mesmo componente mas continua exatamente
+  como antes, nunca pede palavras-chave). Campo novo "Palavras-chave"
+  (obrigatório) antes do resumo; resumo passa a exigir pelo menos 300
+  caracteres; toolbar Negrito/Itálico (envolve a seleção com `**`/`*`,
+  padrão "wrap selection") + alternância Escrever/Pré-visualizar (estilo
+  GitHub) — sintaxe leve, nunca HTML, sem biblioteca nova (`renderResumoFormatado`
+  em `src/lib/textoFormatado.tsx`, usado também pra exibir). **Achado junto**:
+  a tela do avaliador (`/avaliador/trabalhos`) nunca preservava as quebras
+  de parágrafo que o aluno já digitava — corrigido no mesmo lugar, agora
+  usa o mesmo renderizador. `Trabalho.palavrasChave?: string` novo, ausente
+  em trabalhos já submetidos (sem migração, campo opcional).
+
+- **2026-10-09** *(ainda não commitado — aguardando "pode subir")* —
+  **Filtro de `/declaracoes` por papel específico, não só "aluno"/"outros
+  cargos"** (pedido explícito do usuário — "filtros mais pontuais... pra
+  facilitar a busca"). Cada candidato agora carrega `tipo` (aluno,
+  avaliador, moderador, monitor, orientador) em vez do agrupamento genérico
+  de antes; os selos de filtro só mostram os tipos que de fato existem no
+  evento selecionado (evento simples nunca oferece "Orientadores", por
+  exemplo). Typecheck/lint limpos; não deu pra verificar visualmente no
+  dev local porque o servidor caiu de novo por falta de memória (mesma
+  causa de sempre) — pendente de teste visual antes/depois do "pode subir".
+
 - **2026-10-08** *(ainda não commitado — aguardando "pode subir")* —
   **Filtro por dia/período + busca por horário + ordenar por check-in em
   `/ensalamento`** (pedido explícito do usuário — "hoje tá muito difícil
