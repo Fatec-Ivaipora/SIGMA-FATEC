@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import {
   Check,
-  ChevronDown,
   Clock,
   Download,
   ExternalLink,
@@ -19,6 +18,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 import { storage } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
+import { SeletorEventoBusca } from "@/components/SeletorEventoBusca";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
@@ -295,27 +295,28 @@ function EmitirCertificado({
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <select
-            value={eventoId}
-            onChange={(e) => {
-              setEventoId(e.target.value);
-              setFiltroTipo("todos");
-            }}
-            className="w-full min-w-[240px] appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
-          >
-            <option value="">Selecione o evento</option>
-            {eventos.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.nome}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
-            strokeWidth={1.75}
-          />
-        </div>
+        {/* Ativo e encerrado ficam juntos de propósito (2026-10-16, pedido
+            explícito do usuário) — certificado pode ser pedido meses depois
+            do evento ter encerrado, diferente das telas de trabalho em
+            andamento (Trabalhos/Ensalamento), que escondem encerrado.
+            Com busca em vez de dropdown plano porque essa lista só cresce
+            (daqui 1 ano, 20-30 eventos). */}
+        <SeletorEventoBusca
+          eventos={eventos}
+          value={eventoId}
+          onChange={(id) => {
+            setEventoId(id);
+            setFiltroTipo("todos");
+          }}
+          className="min-w-[240px]"
+          renderBadge={(ev) =>
+            ev.encerrado && (
+              <span className="flex-none rounded-full bg-fatec-navy-100 px-2 py-0.5 text-[11px] font-semibold text-fatec-muted">
+                Encerrado
+              </span>
+            )
+          }
+        />
 
         <div className="relative min-w-[240px] flex-1">
           <Search

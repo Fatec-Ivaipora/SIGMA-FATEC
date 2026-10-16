@@ -13,7 +13,11 @@ import { recalcularAreasTematicas } from "@/lib/areasTematicas";
 
 export default function AreasTematicasPage() {
   const { perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
-  const { eventos } = useEventos(perfil);
+  const { eventos: todosEventos } = useEventos(perfil);
+  // Encerrado some daqui (2026-10-16, pedido explícito do usuário) — área
+  // temática só importa pra configurar submissão de trabalho de um evento
+  // em andamento, mesmo espírito de Trabalhos/Ensalamento.
+  const eventos = todosEventos.filter((e) => !e.encerrado);
   const [novaArea, setNovaArea] = useState<Record<string, string>>({});
   const [modalAreaComplexa, setModalAreaComplexa] = useState<{
     eventoId: string;
@@ -199,7 +203,9 @@ export default function AreasTematicasPage() {
 
             {eventos.length === 0 && (
               <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
-                Nenhum evento cadastrado ainda.
+                {todosEventos.length > 0
+                  ? "Nenhum evento ativo agora."
+                  : "Nenhum evento cadastrado ainda."}
               </p>
             )}
           </div>

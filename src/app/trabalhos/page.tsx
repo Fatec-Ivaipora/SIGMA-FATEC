@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -356,16 +356,15 @@ export default function TrabalhosAdminPage() {
     setTrabalhoEditando(null);
   }
 
-  // Pré-seleciona o evento em destaque assim que a lista carrega, só na
-  // primeira vez (2026-08-31) — evita ter que escolher toda vez o evento que
-  // já está em foco no momento; troca manual depois disso nunca é sobrescrita.
-  const preSelecaoFeita = useRef(false);
-  useEffect(() => {
-    if (preSelecaoFeita.current || eventos.length === 0) return;
-    preSelecaoFeita.current = true;
-    const destaque = eventos.find((e) => e.destaque);
-    if (destaque) Promise.resolve().then(() => setEventoId(destaque.id));
-  }, [eventos]);
+  // Abre sempre em "Todos os eventos" (2026-10-16, pedido explícito do
+  // usuário, mesmo achado de Relatórios) — a pré-seleção automática do
+  // evento em destaque (2026-08-31) fazia a tela parecer travada no evento
+  // de sempre; ficou pior ainda depois que encerrado passou a sumir do
+  // dropdown (o destaque podia ser um evento JÁ ENCERRADO, tipo a Semana
+  // de Medicina: o `<select>` mostrava "Todos os eventos" — primeira opção,
+  // já que o valor selecionado de verdade não tinha mais option — mas o
+  // conteúdo embaixo continuava sendo só daquele evento). A pessoa escolhe
+  // o evento ela mesma.
 
   // Monitores do evento selecionado — "Emitir certificados" libera junto
   // com os trabalhos aceitos (2026-09-01). Só faz sentido com um evento
@@ -397,6 +396,12 @@ export default function TrabalhosAdminPage() {
 
   const todosLabel =
     perfil?.papel === "admin" ? "Todos os eventos" : "Todos os meus eventos";
+
+  // Encerrado some do seletor (2026-10-16, pedido explícito do usuário) —
+  // só enche espaço num fluxo que é sobre trabalho em andamento; eventoId só
+  // muda por este dropdown (sem deep-link por URL nessa tela), então não
+  // tem risco de ficar com um encerrado selecionado "invisível" na lista.
+  const eventosSelecionaveis = useMemo(() => eventos.filter((e) => !e.encerrado), [eventos]);
 
   // Evento "simples" (2026-09-22) não tem trabalho/avaliação nenhuma — essa
   // tela vira só uma lista de inscritos + liberar certificado, ver o early
@@ -543,9 +548,19 @@ export default function TrabalhosAdminPage() {
     });
   }, [trabalhosFiltrados, direcaoOrdenacaoNota, etapa]);
 
-  // Orientador pode ser alocado como avaliador de um evento (2026-08-25, RF-46).
+  // Orientador pode ser alocado como avaliador de um evento (2026-08-25,
+  // RF-46). Também entra quem tem "avaliador" em papeisAvaliacao mesmo com
+  // outro papel primário (2026-10-16, achado real cadastrando os
+  // avaliadores da X MAC: organização que também avalia ficava invisível
+  // aqui, só o moderador já tinha essa checagem — mesmo padrão agora).
   const avaliadoresDisponiveis = useMemo(
-    () => usuarios.filter((u) => u.papel === "avaliador" || u.papel === "orientador"),
+    () =>
+      usuarios.filter(
+        (u) =>
+          u.papel === "avaliador" ||
+          u.papel === "orientador" ||
+          u.papeisAvaliacao?.includes("avaliador"),
+      ),
     [usuarios],
   );
 
@@ -962,7 +977,7 @@ export default function TrabalhosAdminPage() {
                 className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
               >
                 <option value="todos">{todosLabel}</option>
-                {eventos.map((ev) => (
+                {eventosSelecionaveis.map((ev) => (
                   <option key={ev.id} value={ev.id}>
                     {ev.nome}
                   </option>
@@ -1012,7 +1027,7 @@ export default function TrabalhosAdminPage() {
               className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
             >
               <option value="todos">{todosLabel}</option>
-              {eventos.map((ev) => (
+              {eventosSelecionaveis.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.nome}
                 </option>

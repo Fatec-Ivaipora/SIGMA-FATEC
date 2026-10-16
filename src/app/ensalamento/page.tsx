@@ -729,6 +729,10 @@ function EnsalamentoAdminView() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  // Encerrado some do seletor (2026-10-16, pedido explícito do usuário) —
+  // montar grade é trabalho de evento em andamento, encerrado só ocupa
+  // espaço aqui; eventoId só muda pelo próprio dropdown, nunca por URL.
+  const eventosSelecionaveis = useMemo(() => eventos.filter((e) => !e.encerrado), [eventos]);
 
   const [aba, setAba] = useState<"ensalamento" | "salas">("ensalamento");
   const [eventoId, setEventoId] = useState("");
@@ -1015,7 +1019,7 @@ function EnsalamentoAdminView() {
               className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
             >
               <option value="">Selecione o evento</option>
-              {eventos.map((ev) => (
+              {eventosSelecionaveis.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.nome}
                 </option>

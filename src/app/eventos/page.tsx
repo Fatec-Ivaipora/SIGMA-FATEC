@@ -26,6 +26,7 @@ import {
   Award,
   Settings,
   MoreVertical,
+  Search,
 } from "lucide-react";
 import {
   addDoc,
@@ -624,8 +625,25 @@ function SeletorPeriodos({
 
 export default function EventosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
-  const { eventos } = useEventos(perfil);
+  const { eventos: todosEventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+
+  // Busca por nome + ativos sempre em cima, encerrados sempre embaixo
+  // (2026-10-16, pedido explícito do usuário) — aqui é a ÚNICA tela que
+  // continua listando encerrado (é a tela de gestão dos eventos, faz
+  // sentido editar/reabrir um encerrado por engano); só a ordem muda,
+  // pra não ficar misturado com o que está em andamento. `.filter` +
+  // `.sort` em vez de 2 arrays concatenados pra manter a ordem relativa
+  // original (mais recente primeiro, como já vinha do Firestore) dentro
+  // de cada grupo — Array.prototype.sort é estável.
+  const [buscaEvento, setBuscaEvento] = useState("");
+  const eventos = useMemo(() => {
+    const termo = buscaEvento.trim().toLowerCase();
+    const filtrados = termo
+      ? todosEventos.filter((e) => e.nome.toLowerCase().includes(termo))
+      : todosEventos;
+    return [...filtrados].sort((a, b) => Number(!!a.encerrado) - Number(!!b.encerrado));
+  }, [todosEventos, buscaEvento]);
 
   const [modalCriar, setModalCriar] = useState(false);
   const [faseCriar, setFaseCriar] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
@@ -1269,16 +1287,31 @@ export default function EventosPage() {
             </p>
           </div>
 
-          {perfil.papel === "admin" && (
-            <button
-              type="button"
-              onClick={() => setModalCriar(true)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              Criar evento
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <div className="relative min-w-[220px] flex-1 md:flex-none">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                strokeWidth={1.75}
+              />
+              <input
+                type="text"
+                value={buscaEvento}
+                onChange={(e) => setBuscaEvento(e.target.value)}
+                placeholder="Buscar evento por nome"
+                className="w-full rounded-xl border border-fatec-line bg-white py-2.5 pl-10 pr-4 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </div>
+            {perfil.papel === "admin" && (
+              <button
+                type="button"
+                onClick={() => setModalCriar(true)}
+                className="flex flex-none items-center justify-center gap-2 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+              >
+                <Plus className="h-4 w-4" strokeWidth={2} />
+                Criar evento
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
@@ -1307,7 +1340,9 @@ export default function EventosPage() {
 
             {eventos.length === 0 && (
               <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
-                Nenhum evento cadastrado ainda.
+                {buscaEvento.trim()
+                  ? "Nenhum evento encontrado com esse nome."
+                  : "Nenhum evento cadastrado ainda."}
               </p>
             )}
           </div>

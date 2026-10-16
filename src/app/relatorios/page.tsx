@@ -95,29 +95,51 @@ function RelatoriosContent() {
     perfil?.papel === "admin" ? "Todos os eventos" : "Todos os meus eventos";
   const [eventoId, setEventoId] = useState(searchParams.get("evento") ?? "todos");
 
-  // Pré-seleciona o evento em destaque assim que a lista carrega, só na
-  // primeira vez e só se não veio um evento explícito pela URL (2026-08-31)
-  // — evita ter que escolher toda vez o evento que já está em foco.
+  // Ativos/Encerrados (2026-10-16, pedido explícito do usuário) — relatório
+  // é justamente o lugar onde encerrado continua precisando aparecer (ex.:
+  // "como foi a Medicina do ano passado"), mas não misturado por padrão com
+  // os eventos em andamento. "Todos os eventos" passa a significar "todos
+  // da aba atual", não a base inteira — trocar de aba some o evento
+  // selecionado da outra aba, então volta pra "todos" pra nunca ficar com
+  // seleção da aba errada "fantasma".
+  const [abaEventos, setAbaEventos] = useState<"ativos" | "encerrados">("ativos");
+  const eventosDaAba = useMemo(
+    () => eventos.filter((e) => (abaEventos === "ativos" ? !e.encerrado : !!e.encerrado)),
+    [eventos, abaEventos],
+  );
+
+  // Abre sempre vazio, em "Todos os eventos" dentro de Ativos (2026-10-16,
+  // pedido explícito do usuário — a pré-seleção automática do evento em
+  // destaque, que existia desde 2026-08-31, mais confundia do que ajudava:
+  // parecia que "Todos os eventos" tava mostrando só a tela de um evento
+  // específico, tipo Medicina). A pessoa escolhe o evento ela mesma.
+  //
+  // Única pré-seleção que continua: link de fora apontando pra um evento
+  // específico (ex.: card do Painel, `/relatorios?evento=...`) — aí sim
+  // faz sentido abrir direto nele, inclusive virando pra aba Encerrados se
+  // for o caso (rede de proteção pra link salvo/antigo; hoje só o Painel
+  // linka pra cá, e ele já esconde encerrado).
   const preSelecaoFeita = useRef(false);
   useEffect(() => {
     if (preSelecaoFeita.current || eventos.length === 0) return;
     preSelecaoFeita.current = true;
-    if (searchParams.get("evento")) return;
-    const destaque = eventos.find((e) => e.destaque);
-    if (destaque) Promise.resolve().then(() => setEventoId(destaque.id));
+    const idDaUrl = searchParams.get("evento");
+    if (!idDaUrl) return;
+    const eventoDaUrl = eventos.find((e) => e.id === idDaUrl);
+    if (eventoDaUrl?.encerrado) setAbaEventos("encerrados");
   }, [eventos, searchParams]);
 
   const trabalhosDoEvento = useMemo(
     () =>
       eventoId === "todos"
-        ? trabalhos
+        ? trabalhos.filter((t) => eventosDaAba.some((e) => e.id === t.eventoId))
         : trabalhos.filter((t) => t.eventoId === eventoId),
-    [trabalhos, eventoId],
+    [trabalhos, eventoId, eventosDaAba],
   );
 
   const eventoIdsParaInscricoes = useMemo(
-    () => (eventoId === "todos" ? eventos.map((e) => e.id) : [eventoId]),
-    [eventoId, eventos],
+    () => (eventoId === "todos" ? eventosDaAba.map((e) => e.id) : [eventoId]),
+    [eventoId, eventosDaAba],
   );
   const { inscricoes: inscricoesDoEvento } = useInscricoesRelatorio(eventoIdsParaInscricoes);
 
@@ -378,6 +400,30 @@ function RelatoriosContent() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1 rounded-xl bg-fatec-navy-50 p-1">
+              {(
+                [
+                  { valor: "ativos", label: "Ativos" },
+                  { valor: "encerrados", label: "Encerrados" },
+                ] as const
+              ).map((aba) => (
+                <button
+                  key={aba.valor}
+                  type="button"
+                  onClick={() => {
+                    setAbaEventos(aba.valor);
+                    setEventoId("todos");
+                  }}
+                  className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    abaEventos === aba.valor
+                      ? "bg-white text-fatec-navy-900 shadow-sm"
+                      : "text-fatec-muted hover:text-fatec-navy-900"
+                  }`}
+                >
+                  {aba.label}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <select
                 value={eventoId}
@@ -385,7 +431,7 @@ function RelatoriosContent() {
                 className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
               >
                 <option value="todos">{todosLabel}</option>
-                {eventos.map((ev) => (
+                {eventosDaAba.map((ev) => (
                   <option key={ev.id} value={ev.id}>
                     {ev.nome}
                   </option>

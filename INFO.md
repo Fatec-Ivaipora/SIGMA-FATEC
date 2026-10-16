@@ -477,6 +477,82 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-16** *(ainda não commitado — aguardando "pode subir")* —
+  **Evento encerrado some do fluxo do dia a dia** (pedido explícito do
+  usuário, qualidade de vida pro administrativo). `evento.encerrado` já
+  existia (interruptor manual desde 09/09) — só nunca tinha sido usado pra
+  filtrar as TELAS, só pra travar ação (enviar trabalho, etc.).
+  - **Painel** (`/dashboard`): card de evento encerrado não aparece mais.
+    Se só sobrarem encerrados, mensagem avisa em vez de "nenhum evento
+    cadastrado" (que seria mentira).
+  - **Trabalhos e Ensalamento**: seletor de evento (" Todos os eventos" /
+    "Selecione o evento") não lista mais encerrado — são telas de trabalho
+    em andamento, encerrado só enchia espaço.
+  - **Relatórios**: ganhou pílulas **Ativos / Encerrados** do lado do
+    seletor (continua precisando ver "como foi a Medicina do ano
+    passado"). "Todos os eventos" passa a significar "todos da aba atual"
+    — trocar de aba volta a seleção pra "todos" (evita ficar com evento da
+    aba errada selecionado "fantasma"). Link de fora que aponte pra um
+    evento que encerrou depois troca a aba sozinho, senão o `<select>`
+    pareceria quebrado (opção sumida) mesmo com o dado certo carregado.
+  - **Declarações**: o oposto de propósito — certificado pode ser pedido
+    meses depois do evento ter encerrado, então ativo E encerrado
+    continuam juntos no mesmo seletor. Mas trocado o `<select>` nativo por
+    um **combobox com busca** novo (`SeletorEventoBusca`,
+    `src/components/SeletorEventoBusca.tsx`): clica e já mostra todos,
+    digita e filtra por nome — pensado pra quando a lista passar de
+    20-30 eventos (daqui 1 ano), um dropdown nativo gigante vira
+    inviável. Mostra selo "Encerrado" ao lado de quem já fechou.
+  - **Áreas temáticas**: mesmo filtro do Painel/Trabalhos — só lista
+    evento ativo (configurar área temática é coisa de evento em
+    andamento).
+  - **Eventos**: continua sendo a ÚNICA tela que lista encerrado também
+    (é a tela de gestão — faz sentido editar/reabrir um por engano), mas
+    agora SEMPRE ativos no topo, encerrados embaixo (`.sort` estável, não
+    mistura mais) + busca por nome no cabeçalho (mesmo pensamento da lista
+    crescer com o tempo).
+  - **Achado real testando com o usuário**: Relatórios tinha uma
+    pré-seleção automática do evento "em destaque" desde 2026-08-31 — ele
+    relatou "quando eu entro em 'todos os eventos' tá me mostrando a tela
+    da Medicina", porque a Medicina (que tava com `destaque: true`) pulava
+    na frente sozinha assim que a página carregava, mesmo o usuário nunca
+    tendo escolhido nada. Pedido explícito: **removida** — Relatórios
+    agora sempre abre vazio, em "Todos os eventos" dentro da aba Ativos, a
+    pessoa escolhe o evento ela mesma. Só sobrou a pré-seleção por link
+    externo (`/relatorios?evento=...`, vindo do Painel). **Mesmo achado em
+    Trabalhos** (mesmo padrão de pré-seleção, desde a mesma data) — ficou
+    pior ainda ali, porque depois do filtro de encerrado no dropdown
+    (achado de cima), o `<select>` mostrava "Todos os eventos" (cai na
+    primeira opção quando o valor selecionado de verdade não tem mais
+    `<option>` — Medicina sumiu da lista), mas o conteúdo embaixo
+    continuava sendo só da Semana de Medicina encerrada. Removida também,
+    mesmo critério.
+
+- **2026-10-16** *(ainda não commitado — aguardando "pode subir")* —
+  **Achado real cadastrando os 25 avaliadores da X MAC**: `/trabalhos`
+  (divisão de trabalhos entre avaliadores) só enxergava gente com
+  `papel === "avaliador"` ou `"orientador"` — diferente do moderador logo
+  abaixo, que já aceitava `papeisAvaliacao?.includes("moderador")`
+  também. Isso quebrava o caso do Abel Felipe Freitag (organização da X
+  MAC desde 05/10) que também avalia trabalho: marcar "avaliador" nos
+  papéis combinados dele não bastava, ele continuava invisível na lista de
+  avaliadores disponíveis. Corrigido pra avaliador aceitar o mesmo padrão
+  (`u.papeisAvaliacao?.includes("avaliador")` também conta).
+  **Fora do código** (não aparece no diff): rodado um script descartável
+  (Admin SDK, apagado depois, seguindo a regra de scripts temporários) que
+  cadastrou os 24 avaliadores novos da lista oficial do professor
+  responsável (PDF em `Mateus/exemplos/AVALIADORES.pdf`) — todos `papel:
+  "avaliador"`, escopados só pra X MAC (`OdZNgwxjhGkSYyrwLyyM`), sem área
+  temática ainda (fica pra divisão manual depois). CPF da lista não entrou
+  em lugar nenhum do sistema (não é usado em nenhum fluxo de avaliador) —
+  fica só registrado no PDF. Em vez do fluxo padrão de "cadastrado por
+  admin" (senha temporária que a coordenação teria que repassar um por
+  um), cada um recebeu direto um e-mail com link de **definir senha**
+  (mesmo mecanismo do `/api/auth/recuperar-senha`, pra nunca cair na
+  página intermediária do Firebase que já deu 403 antes). Abel ganhou
+  `papeisAvaliacao: ["avaliador"]` no doc dele + e-mail "você agora também
+  é avaliador(a)" (mesmo texto que `/api/mail/novo-papel` manda).
+
 - **2026-10-09** *(ainda não commitado — aguardando "pode subir")* —
   **"Receita arrecadada" escondível em `/relatorios`** (pedido explícito do
   usuário — "igual banco... às vezes temos que mostrar alguma coisa aqui e

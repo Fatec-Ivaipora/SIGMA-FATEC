@@ -12,8 +12,12 @@ import { useInscricoesRelatorio } from "@/lib/data/inscricoes";
 
 export default function DashboardPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
-  const { eventos } = useEventos(perfil);
+  const { eventos: todosEventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
+  // Encerrado some do Painel (2026-10-16, pedido explícito do usuário) —
+  // pra esse fluxo do dia a dia ele "não existe mais"; continua acessível
+  // por fora (Relatórios tem aba Encerrados, Declarações lista todos).
+  const eventos = useMemo(() => todosEventos.filter((e) => !e.encerrado), [todosEventos]);
   // Evento "simples" (2026-10-02, achado pelo usuário) — não tem trabalho
   // nenhum, "submissões" sempre dava 0 e não dizia nada sobre o evento; o
   // card mostra inscritos ali, que é a métrica que faz sentido pra esse
@@ -60,8 +64,10 @@ export default function DashboardPage() {
         <div className="flex-1 px-6 py-8 md:px-10">
           {eventos.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-fatec-line bg-white p-10 text-center text-sm text-fatec-muted">
-              Nenhum evento cadastrado ainda.
-              {perfil.papel === "admin" && (
+              {todosEventos.length > 0
+                ? "Nenhum evento ativo agora — os encerrados continuam em Relatórios."
+                : "Nenhum evento cadastrado ainda."}
+              {perfil.papel === "admin" && todosEventos.length === 0 && (
                 <>
                   {" "}
                   <Link
