@@ -10,7 +10,10 @@ import {
   ChevronRight,
   Mail,
   MapPin,
+  MessageCircle,
   Phone,
+  Play,
+  X,
 } from "lucide-react";
 import { InstagramIcon } from "@/components/icons/InstagramIcon";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -25,6 +28,10 @@ const CONTATOS = {
   email: "secretariageral@fatecivaipora.com.br",
   telefoneSecretaria: { label: "(43) 99848-0053", href: "tel:+5543998480053", nota: "Secretaria" },
   telefoneVestibular: { label: "(43) 99660-0220", href: "tel:+5543996600220", nota: "Vestibular" },
+  // Mesmo WhatsApp do botão flutuante "Precisa de ajuda?" dentro do sistema
+  // logado (ver src/components/Sidebar.tsx) — pedido explícito do usuário:
+  // "coloque o número do suporte que está na ajuda do site".
+  suporteWhatsapp: { label: "(43) 99678-0170", href: "https://wa.me/5543996780170" },
 };
 
 // Número do prédio (45) incluído (2026-09-19) — sem ele o Google geocodifica
@@ -42,6 +49,18 @@ const MAPA_EMBED_SRC = `https://www.google.com/maps/embed/v1/place?key=${
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 }&q=${encodeURIComponent(ENDERECO_FATEC)}&zoom=17`;
 
+// Seção "Ajuda" da home (2026-10-19, pedido do usuário) — vídeos
+// tutoriais do SIGMA hospedados no YouTube, incorporados direto na home pra
+// quem ainda nem tem conta conseguir assistir antes de se cadastrar.
+// Domínio `youtube-nocookie.com` liberado no CSP (ver next.config.ts) —
+// modo sem cookies, evita rastreio na página pública. Lista pequena por
+// enquanto; cada item novo só precisa entrar aqui, o grid se ajusta sozinho.
+const VIDEOS_AJUDA = [
+  { id: "Oin-MX1NPa4", titulo: "Como se cadastrar no SIGMA" },
+  { id: "_U979OAeG00", titulo: "Como se inscrever em eventos da Fatec Ivaiporã pelo SIGMA" },
+  { id: "LmU_ROSX-w8", titulo: "Como submeter um trabalho no SIGMA" },
+];
+
 type EventoDestaque = {
   id: string;
   nome: string;
@@ -54,10 +73,105 @@ type EventoDestaque = {
 // Tempo de cada slide do carrossel de destaques (2026-09-24).
 const INTERVALO_CARROSSEL_MS = 6000;
 
+type VideoAjuda = { id: string; titulo: string };
+
+/** Vídeo tutorial com capa própria (2026-10-19, pedido do usuário: "coloque
+ * a capa do vídeo a logo do sigma com a fatec", depois trocado pra "deixe
+ * de capa somente a logo do sigma") — o YouTube não deixa escolher a
+ * miniatura de fora do canal, então a capa real é nossa: só a logo do
+ * SIGMA sobre navy, com um botão de play. Ícone e texto são dois recortes
+ * próprios do PNG oficial (`logo-sigma-icone-branco.png` /
+ * `logo-sigma-texto-branco.png`, script descartável com sharp, já rodado e
+ * apagado — mesmo padrão do comentário em LogoLockup.tsx), cada um
+ * centralizado por conta própria — o PNG original (`logo-sigma-white.png`)
+ * tem o ícone "S" desalinhado ~12px à esquerda do centro do wordmark
+ * embaixo (achado real, pedido do usuário: "centralize a logo do sigma na
+ * capa do vídeo tá descentralizada"); como um bloco só, centralizar a
+ * imagem inteira deixava esse desalinho interno visível. O clique abre o
+ * player num modal grande (`VideoModal` abaixo, pedido em seguida) em vez
+ * de tocar ali mesmo na capa — também evita carregar o player (e os
+ * scripts do YouTube) antes de alguém realmente querer assistir. */
+function VideoTutorial({ video, onAbrir }: { video: VideoAjuda; onAbrir: () => void }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={onAbrir}
+        aria-label={`Assistir: ${video.titulo}`}
+        className="group relative flex aspect-video w-full flex-col items-center justify-center gap-5 overflow-hidden rounded-2xl border border-fatec-line bg-fatec-navy-900"
+      >
+        <div className="flex flex-col items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-sigma-icone-branco.png" alt="" className="h-10 w-auto md:h-14" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-sigma-texto-branco.png" alt="SIGMA" className="h-5 w-auto md:h-7" />
+        </div>
+        <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-white/15 text-white transition-colors group-hover:bg-fatec-orange-500">
+          <Play className="h-6 w-6 translate-x-0.5" strokeWidth={2} fill="currentColor" />
+        </span>
+      </button>
+      <p className="text-sm font-medium text-fatec-navy-900">{video.titulo}</p>
+    </div>
+  );
+}
+
+/** Modal grande do player (2026-10-19, pedido do usuário) — não reaproveita
+ * `src/components/Modal.tsx` de propósito: aquele é pensado pra formulário
+ * (caixa branca, título com borda, corpo com padding), e aqui o pedido foi
+ * um player de vídeo grande numa tela escura, sem moldura nenhuma em volta
+ * do próprio vídeo. Mesmo padrão de Escape-pra-fechar do Modal padrão. */
+function VideoModal({ video, onClose }: { video: VideoAjuda | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!video) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [video, onClose]);
+
+  if (!video) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={video.titulo}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-10"
+    >
+      <div
+        aria-hidden
+        onClick={onClose}
+        className="absolute inset-0 bg-fatec-navy-950/85 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-5xl">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+          className="absolute -top-12 right-0 flex h-10 w-10 items-center justify-center rounded-lg text-white transition-colors hover:bg-white/10"
+        >
+          <X className="h-6 w-6" strokeWidth={2} />
+        </button>
+        <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
+          <iframe
+            title={video.titulo}
+            src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="h-full w-full"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [eventosDestaque, setEventosDestaque] = useState<EventoDestaque[]>([]);
   const [slideAtual, setSlideAtual] = useState(0);
   const [pausado, setPausado] = useState(false);
+  const [videoAberto, setVideoAberto] = useState<VideoAjuda | null>(null);
 
   // Vários eventos em destaque ao mesmo tempo (2026-09-24, antes era um só —
   // RN-10). Evento encerrado fica de fora mesmo marcado como destaque:
@@ -337,6 +451,45 @@ export default function HomePage() {
         </section>
       )}
 
+      {/* Ajuda (2026-10-19, pedido do usuário — reposicionado aqui, logo
+          abaixo do carrossel de eventos ("banners") e antes do "Como
+          funciona", depois de testado mais embaixo na página). Nome
+          passou por "Tutoriais" e voltou pra "Ajuda" (usuário pediu pra
+          escolher um nome melhor, depois decidiu manter o original) — item
+          próprio no `SiteHeader`, por último, depois de "Declarações"
+          (pedido explícito). Grid horizontal de 3 colunas lado a lado,
+          dentro de um container largo (`max-w-6xl`) — vídeo maior por
+          pedido explícito, depois confirmado "quero na horizontal". */}
+      <section id="ajuda" className="scroll-mt-20 bg-white px-6 py-16 md:px-12 md:py-20">
+        <div className="mx-auto max-w-6xl">
+          <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
+            Ajuda
+          </span>
+          <h2 className="mt-2 text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
+            Vídeos pra te ajudar a usar o SIGMA
+          </h2>
+
+          <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
+            {VIDEOS_AJUDA.map((video) => (
+              <VideoTutorial key={video.id} video={video} onAbrir={() => setVideoAberto(video)} />
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-col items-start gap-2 border-t border-fatec-line pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-fatec-muted">Ainda com dúvida?</p>
+            <a
+              href={CONTATOS.suporteWhatsapp.href}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:text-fatec-sky-600"
+            >
+              <MessageCircle className="h-4 w-4 flex-none text-emerald-600" strokeWidth={1.75} />
+              Entre em contato com o suporte · {CONTATOS.suporteWhatsapp.label}
+            </a>
+          </div>
+        </div>
+      </section>
+
       <section
         id="como-funciona"
         className="flex-1 bg-fatec-navy-50 px-6 py-20 md:px-12 md:py-28"
@@ -462,6 +615,8 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      <VideoModal video={videoAberto} onClose={() => setVideoAberto(null)} />
     </main>
   );
 }

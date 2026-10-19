@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { LogoLockup } from "@/components/LogoLockup";
 import { Logo } from "@/components/Logo";
@@ -21,8 +22,25 @@ import { DeclaracoesMenu } from "@/components/DeclaracoesMenu";
  * mesmo cabeçalho igual em todo canto (pedido explícito, 2026-09-04). */
 export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
   const [aberto, setAberto] = useState(false);
+  const pathname = usePathname();
 
   const itemNav = "text-base font-semibold text-white/85 transition-colors hover:text-white md:text-lg";
+
+  // Clique numa âncora da home (2026-10-19, achado real: "quando clico em
+  // tutorial não desce") — o Link do Next não dispara o scroll até o
+  // elemento quando já se está na própria "/" e só o hash muda (não conta
+  // como navegação de rota pro Next.js). Clicando de outra página
+  // (pathname !== "/"), deixa o Link navegar normal — aí é uma troca de
+  // rota de verdade, e o navegador trata o hash sozinho ao carregar "/".
+  function irParaAncora(id: string) {
+    return (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (pathname === "/") {
+        e.preventDefault();
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      setAberto(false);
+    };
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-fatec-navy-900">
@@ -52,6 +70,7 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
           {mostrarEvento && (
             <Link
               href="/#evento-destaque"
+              onClick={irParaAncora("evento-destaque")}
               className={`${itemNav} border-b-2 border-fatec-orange-500 pb-1`}
             >
               Evento
@@ -61,6 +80,9 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
             Editais
           </Link>
           <DeclaracoesMenu variant="desktop" />
+          <Link href="/#ajuda" onClick={irParaAncora("ajuda")} className={itemNav}>
+            Ajuda
+          </Link>
           <Link
             href="/login"
             className="flex items-center gap-2 rounded-lg bg-fatec-sky-600 px-5 py-2.5 text-base font-semibold text-white transition-colors hover:bg-fatec-sky-600/85"
@@ -94,7 +116,7 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
             {mostrarEvento && (
               <Link
                 href="/#evento-destaque"
-                onClick={() => setAberto(false)}
+                onClick={irParaAncora("evento-destaque")}
                 className="flex items-center justify-between rounded-lg border-l-4 border-fatec-orange-500 px-3 py-3 text-base font-semibold text-white"
               >
                 Evento em destaque
@@ -108,6 +130,13 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
               Editais
             </Link>
             <DeclaracoesMenu variant="mobile" onNavegar={() => setAberto(false)} />
+            <Link
+              href="/#ajuda"
+              onClick={irParaAncora("ajuda")}
+              className="rounded-lg px-3 py-3 text-base font-semibold text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Ajuda
+            </Link>
             <Link
               href="/login"
               onClick={() => setAberto(false)}

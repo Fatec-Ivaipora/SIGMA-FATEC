@@ -48,7 +48,9 @@ const nextConfig: NextConfig = {
               // Google Maps Embed API na home (src/app/page.tsx) — sem
               // isso o CSP barra o próprio navegador de carregar o mapa,
               // mostrando "conteúdo bloqueado" mesmo com a chave/API certas.
-              "frame-src 'self' https://*.firebaseapp.com https://www.google.com",
+              // https://www.youtube-nocookie.com liberado (2026-10-19) pra
+              // seção "Ajuda" da home (vídeos tutoriais incorporados).
+              "frame-src 'self' https://*.firebaseapp.com https://www.google.com https://www.youtube-nocookie.com",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",
