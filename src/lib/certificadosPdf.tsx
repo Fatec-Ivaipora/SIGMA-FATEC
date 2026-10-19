@@ -19,6 +19,16 @@ export function formatarDataNumerica(iso: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** Período no texto da Ata (2026-10-19) — fraseado diferente do certificado
+ * de propósito, pra bater igualzinho com o modelo real usado pela
+ * instituição (ver exemplo em Mateus/exemplos): "no dia X" (1 dia) ou "do
+ * dia X e Y" (vários dias) — não "de X a Y" como formatarPeriodoRealizacao
+ * acima, que é pro certificado, não pra ata. */
+function periodoAta(inicio: string, fim?: string): string {
+  if (!fim || fim === inicio) return `no dia ${formatarDataNumerica(inicio)}`;
+  return `do dia ${formatarDataNumerica(inicio)} e ${formatarDataNumerica(fim)}`;
+}
+
 /** Texto do período de realização (2026-09-30) — "realizado em 08/10/2026"
  * pra evento de 1 dia (fim ausente/igual ao início, comportamento de
  * sempre), "realizado de 08/10/2026 a 10/10/2026" pra evento multi-dia. Ver
@@ -84,8 +94,18 @@ const IMAGEM_POR_ASSINANTE: Record<string, { data: Buffer; format: "jpg" | "png"
   },
 };
 
-/** Logo alternativa no cabeçalho da declaração, no lugar do texto
- * "FATEC/IVP" padrão (2026-10-06) — ver `logoCertificadoId` em
+/** Logo padrão do cabeçalho (2026-10-19, pedido explícito do usuário — a
+ * versão anterior era só texto "FATEC"/"IVP" desenhado à mão, ficou muito
+ * diferente da logo real; arquivo real fornecido pelo usuário). Usada em
+ * DeclaracaoPDF e AtaRegistroPDF sempre que não há uma logo alternativa
+ * por evento (ver LOGO_CABECALHO abaixo, ex.: MED FATEC). */
+const LOGO_PADRAO: { data: Buffer; format: "png" } = {
+  data: fs.readFileSync(path.join(process.cwd(), "public", "certificados", "logo-fatec-ivp.png")),
+  format: "png",
+};
+
+/** Logo alternativa no cabeçalho da declaração, no lugar da logo padrão
+ * acima (2026-10-06) — ver `logoCertificadoId` em
  * src/lib/data/eventos.ts. Catálogo code-level, mesmo espírito de
  * IMAGEM_POR_ASSINANTE (cadastro manual, sem UI própria ainda). Fundo
  * removido (era um cinza bem claro, #f7f7f7, da imagem original — contra o
@@ -334,31 +354,40 @@ const estiloDeclaracao = StyleSheet.create({
     paddingHorizontal: 55,
     paddingBottom: 40,
   },
+  // `gap` baixo de propósito (2026-10-19, pedido explícito do usuário —
+  // "empurre o texto pra esquerda", comparando com o modelo real: o texto
+  // de credenciamento cola quase direto na logo, não fica solto no meio
+  // da página).
   cabecalho: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 6,
     borderBottomWidth: 2,
     borderBottomColor: cores.navy800,
     paddingBottom: 12,
     marginBottom: 60,
   },
-  marcaFatec: {
-    fontSize: 22,
-    fontFamily: "Helvetica-Bold",
-    color: cores.navy800,
-  },
-  marcaIvp: {
-    fontSize: 10,
-    fontFamily: "Helvetica-Bold",
-    color: "#2376b9",
-    letterSpacing: 1,
-  },
-  // Altura fixa, largura livre (2026-10-06) — mesmo critério de
-  // imagemAssinatura acima: a logo tem proporção própria (bem larga),
-  // travar a largura também distorceria.
+  // Duas alturas, não uma (2026-10-19, achado real do usuário: o
+  // certificado da Medicina, que usa MED FATEC — ver logoCertificadoId —
+  // saiu "gigante" depois do ajuste pra 80, porque as duas logos têm
+  // proporção bem diferente: LOGO_PADRAO é quase quadrada (554×312), MED
+  // FATEC é bem mais larga/achatada (1488×250, mais de 3x mais larga que
+  // alta) — mesma altura nunca ia dar larguras parecidas.
+  // 28, não 40 (2026-10-19, segundo achado real — 40 ainda quebrava linha
+  // num certificado de verdade; MED FATEC precisa de bem menos altura que
+  // LOGO_PADRAO exatamente por ser tão mais larga/achatada).
+  // `logoCabecalho` é pra logo de EVENTO (override, ex.: MED FATEC).
+  // `logoCabecalhoPadrao` é só pra LOGO_PADRAO (sem override) — ver
+  // DeclaracaoPDF.
   logoCabecalho: {
-    height: 34,
+    height: 28,
+  },
+  // 65, não 80 (2026-10-19, pedido explícito do usuário — achado real
+  // comparando com um certificado de verdade: em 80 o texto de
+  // credenciamento ao lado ficava espremido, quebrando palavra por
+  // palavra em vez das 3 linhas limpas do modelo).
+  logoCabecalhoPadrao: {
+    height: 65,
   },
   textoCredenciamento: {
     flex: 1,
@@ -450,6 +479,17 @@ const estiloDeclaracao = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: cores.navy800,
   },
+  // Só usado quando registroNumero vem preenchido (hoje, só participante).
+  // Alinhado à direita, no fluxo normal da página — não mais rodapé fixo
+  // (2026-10-19, pedido explícito do usuário, testado primeiro à esquerda)
+  // — fica entre a data e o bloco de assinaturas.
+  registro: {
+    textAlign: "right",
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: cores.navy800,
+    marginBottom: 16,
+  },
 });
 
 export function DeclaracaoPDF({
@@ -462,6 +502,7 @@ export function DeclaracaoPDF({
   assinantes,
   dataAssinatura,
   logoCabecalhoId,
+  registroNumero,
 }: {
   nome: string;
   papel: "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
@@ -479,19 +520,23 @@ export function DeclaracaoPDF({
   // evento.logoCertificadoId em src/lib/data/eventos.ts. Sem id, ou id sem
   // entrada em LOGO_CABECALHO, cai no texto padrão (nunca quebra o PDF).
   logoCabecalhoId?: string;
+  // Opcional (2026-10-19, pedido explícito do usuário — achado real:
+  // participante de evento "simples" usa esse documento pra comprovar
+  // hora complementar, e precisa do número de registro, diferente de
+  // avaliador/moderador/orientador/monitor, que continuam sem — "não
+  // aparece nos exemplos reais" pra esses papéis, ver route.ts). Ausente =
+  // sem a linha de registro, exatamente como já era antes.
+  registroNumero?: number;
 }) {
-  const logo = logoCabecalhoId ? LOGO_CABECALHO[logoCabecalhoId] : undefined;
+  const logoDoEvento = logoCabecalhoId ? LOGO_CABECALHO[logoCabecalhoId] : undefined;
   return (
     <Document>
       <Page size="A4" wrap={false} style={estiloDeclaracao.page}>
         <View style={estiloDeclaracao.cabecalho}>
-          {logo ? (
-            <Image src={logo} style={estiloDeclaracao.logoCabecalho} />
+          {logoDoEvento ? (
+            <Image src={logoDoEvento} style={estiloDeclaracao.logoCabecalho} />
           ) : (
-            <View>
-              <Text style={estiloDeclaracao.marcaFatec}>FATEC</Text>
-              <Text style={estiloDeclaracao.marcaIvp}>IVP</Text>
-            </View>
+            <Image src={LOGO_PADRAO} style={estiloDeclaracao.logoCabecalhoPadrao} />
           )}
           <Text style={estiloDeclaracao.textoCredenciamento}>
             Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
@@ -523,6 +568,12 @@ export function DeclaracaoPDF({
           Ivaiporã, {formatarDataExtenso(dataAssinatura)}
         </Text>
 
+        {registroNumero !== undefined && (
+          <Text style={estiloDeclaracao.registro}>
+            REGISTRO SOB O N° {registroNumero}, LIVRO N° 01
+          </Text>
+        )}
+
         <View style={estiloDeclaracao.assinaturas}>
           {assinantes.map((a) => (
             <BlocoAssinatura
@@ -536,6 +587,221 @@ export function DeclaracaoPDF({
         </View>
 
         <Text style={estiloDeclaracao.rodape}>
+          Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+          /Paraná{"\n"}www.fatecivaipora.com.br
+        </Text>
+      </Page>
+    </Document>
+  );
+}
+
+const estiloAta = StyleSheet.create({
+  page: {
+    fontFamily: "Helvetica",
+    paddingTop: 50,
+    paddingHorizontal: 55,
+    paddingBottom: 60,
+  },
+  // Mesmo ajuste de estiloDeclaracao.cabecalho acima (2026-10-19).
+  cabecalho: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: cores.navy800,
+    paddingBottom: 12,
+    marginBottom: 30,
+  },
+  // Mesmo ajuste de estiloDeclaracao.logoCabecalhoPadrao acima
+  // (2026-10-19) — sempre LOGO_PADRAO aqui, nunca tem override por
+  // evento como MED FATEC.
+  logoCabecalho: {
+    height: 65,
+  },
+  textoCredenciamento: {
+    flex: 1,
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    color: cores.navy800,
+    lineHeight: 1.5,
+  },
+  titulo: {
+    fontSize: 12,
+    color: cores.ink,
+    marginBottom: 10,
+  },
+  evento: {
+    fontSize: 12,
+    color: cores.ink,
+    marginBottom: 2,
+  },
+  participantes: {
+    fontSize: 12,
+    fontFamily: "Helvetica-Bold",
+    color: cores.ink,
+    marginBottom: 14,
+  },
+  corpo: {
+    fontSize: 11,
+    color: cores.ink,
+    lineHeight: 1.5,
+    textAlign: "justify",
+    marginBottom: 18,
+  },
+  negrito: {
+    fontFamily: "Helvetica-Bold",
+  },
+  tabela: {
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderColor: cores.ink,
+  },
+  linhaCabecalho: {
+    flexDirection: "row",
+  },
+  linha: {
+    flexDirection: "row",
+  },
+  celulaRegistroCabecalho: {
+    width: 90,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderColor: cores.ink,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    textAlign: "center",
+  },
+  celulaNomeCabecalho: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderColor: cores.ink,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    textAlign: "center",
+  },
+  celulaRegistro: {
+    width: 90,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderColor: cores.ink,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontSize: 10,
+    textAlign: "center",
+  },
+  celulaNome: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderColor: cores.ink,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontSize: 10,
+  },
+  rodape: {
+    position: "absolute",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    color: cores.navy800,
+  },
+});
+
+/** Ata de Registro (2026-10-19, pedido explícito do usuário) — documento
+ * obrigatório da instituição quando libera certificado: lista, do primeiro
+ * ao último número usado NESSE evento, quem recebeu cada um (nome +
+ * número), pra arquivar e saber onde continuar no próximo evento. Modelo
+ * copiado de um exemplo real da instituição (ver Mateus/exemplos/ATA ...
+ * .doc) — mesmo cabeçalho/rodapé dos certificados, mas layout próprio
+ * (sem assinatura, com tabela). Número da própria ata ("Nº 563/2026",
+ * "LIVRO 01") é digitado por quem gera, de propósito (2026-10-19, pedido
+ * explícito do usuário) — já existe um controle desse número fora do
+ * sistema, não dá pra arriscar o SIGMA divergir dele com um contador
+ * próprio. `registros` já vem ordenado do menor pro maior número — ver
+ * GET /api/certificados/ata, que lê `registrosCertificados` por eventoId. */
+// "Livro" (2026-10-19) não aparece no corpo do documento — conferido no
+// exemplo real (Mateus/exemplos/ATA ....doc): só existe no NOME do
+// arquivo ("ATA 563 - 2026 - LIVRO 01 ..."), não no texto impresso. Por
+// isso `AtaRegistroPDF` não recebe `livro` — só a rota
+// (/api/certificados/ata) usa pra montar o nome do PDF baixado.
+export function AtaRegistroPDF({
+  numeroAta,
+  ano,
+  eventoNome,
+  dataRealizacao,
+  dataRealizacaoFim,
+  diretorNome,
+  registros,
+}: {
+  numeroAta: number;
+  ano: number;
+  eventoNome: string;
+  dataRealizacao: string;
+  dataRealizacaoFim?: string;
+  diretorNome: string;
+  registros: { numero: number; nome: string }[];
+}) {
+  return (
+    <Document>
+      <Page size="A4" style={estiloAta.page}>
+        <View style={estiloAta.cabecalho}>
+          <Image src={LOGO_PADRAO} style={estiloAta.logoCabecalho} />
+          <Text style={estiloAta.textoCredenciamento}>
+            Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+            UNESVI{"\n"}
+            Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+            {"\n"}
+            Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+          </Text>
+        </View>
+
+        <Text style={estiloAta.titulo}>
+          Ata de Registro N° {numeroAta}/{ano}
+        </Text>
+        <Text style={estiloAta.evento}>Evento: {eventoNome.toUpperCase()}</Text>
+        <Text style={estiloAta.participantes}>Participantes</Text>
+
+        <Text style={estiloAta.corpo}>
+          O Diretor Acadêmico da Faculdade de Tecnologia do Vale do Ivaí –
+          Fatec, {diretorNome}, dentro das normas estabelecidas no
+          Regimento Interno de Ensino, realiza os Registros do Certificado
+          da{" "}
+          <Text style={estiloAta.negrito}>{eventoNome.toUpperCase()}</Text>.
+          Que aconteceu {periodoAta(dataRealizacao, dataRealizacaoFim)}.
+          Conforme lista de presença abaixo nominada:
+        </Text>
+
+        <View style={estiloAta.tabela}>
+          {/* fixed (2026-10-19, pedido explícito do usuário — "cada folha
+              ser uma planilha, não uma só que passa de folha a folha") —
+              repete "Registro | NOME" no topo de toda página nova que a
+              tabela precisar, não só na primeira. wrap={false} em cada
+              LINHA (abaixo) é o que resolve o problema relatado de
+              verdade: sem isso, o react-pdf podia cortar uma linha no
+              meio quando ela não cabia no fim da página — metade embaixo,
+              metade no topo da próxima. Com wrap={false}, a linha inteira
+              pula pra próxima página se não couber, nunca corta. */}
+          <View style={estiloAta.linhaCabecalho} fixed>
+            <Text style={estiloAta.celulaRegistroCabecalho}>Registro</Text>
+            <Text style={estiloAta.celulaNomeCabecalho}>NOME</Text>
+          </View>
+          {registros.map((r) => (
+            <View key={r.numero} style={estiloAta.linha} wrap={false}>
+              <Text style={estiloAta.celulaRegistro}>{r.numero}</Text>
+              <Text style={estiloAta.celulaNome}>{r.nome.toUpperCase()}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text fixed style={estiloAta.rodape}>
           Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
           /Paraná{"\n"}www.fatecivaipora.com.br
         </Text>

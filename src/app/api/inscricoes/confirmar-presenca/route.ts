@@ -36,6 +36,21 @@ export async function POST(request: Request) {
   const { eventoId, dia, janela, codigo, operadorUid } = interpretado;
 
   const db = getAdminDb();
+  const evento = (await db.doc(`eventos/${eventoId}`).get()).data();
+  // Evento encerrado trava presença nova (2026-10-19, pedido explícito do
+  // usuário) — fecha o buraco da regra "libera certificado só depois de
+  // encerrar": sem isso, alguém ainda podia escanear o QR depois de
+  // encerrado+liberado, ficando de fora da numeração em lote
+  // (/api/certificados/liberar) — só pegaria número pelo caminho antigo,
+  // na hora de baixar, e a ata gerada logo após liberar não bateria mais
+  // com a realidade.
+  if (evento?.encerrado) {
+    return NextResponse.json(
+      { erro: "Esse evento já foi encerrado — não é mais possível confirmar presença." },
+      { status: 400 },
+    );
+  }
+
   const inscricaoRef = db.doc(`inscricoesEvento/${eventoId}::${uid}`);
   const inscricao = (await inscricaoRef.get()).data();
   if (!inscricao) {
@@ -101,7 +116,6 @@ export async function POST(request: Request) {
   // ligado). Melhor esforço, igual todo outro trigger de atividade — nunca
   // derruba a confirmação em si, que já aconteceu acima.
   try {
-    const evento = (await db.doc(`eventos/${eventoId}`).get()).data();
     const nomeEvento = (evento?.nome as string | undefined) ?? "um evento";
     const multiPeriodo = evento && periodosDoEvento(evento) > 1;
     // "período" em vez de "dia" quando o evento tem mais janelas de presença

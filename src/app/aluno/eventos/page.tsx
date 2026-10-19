@@ -437,6 +437,7 @@ export default function AlunoEventosPage() {
           eventoNome={eventoInscricao.nome}
           valor={eventoInscricao.valorInscricao ?? 0}
           temCpf={!!perfil.cpf}
+          encerrado={eventoInscricao.encerrado}
           user={user}
           onClose={() => setInscricaoEventoId(null)}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import {
   type LucideIcon,
@@ -57,6 +57,7 @@ import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { recalcularAreasTematicas } from "@/lib/areasTematicas";
 import { ASSINANTES_CERTIFICADO } from "@/lib/assinantesCertificado";
 import { diasDoEvento } from "@/lib/certificadoDias";
+import { baixarAta } from "@/lib/baixarCertificado";
 
 function formatarData(iso: string): string {
   if (!iso) return "";
@@ -301,6 +302,7 @@ function CardEventoAdmin({
   onAbrirMonitores,
   onAbrirBanner,
   onEncerrarEvento,
+  onAbrirAta,
 }: {
   evento: Evento;
   totalTrabalhos: number;
@@ -314,6 +316,7 @@ function CardEventoAdmin({
   onAbrirMonitores: () => void;
   onAbrirBanner: () => void;
   onEncerrarEvento: () => void;
+  onAbrirAta: () => void;
 }) {
   const temTaxa = !!evento.valorInscricao;
   const simples = evento.tipo === "simples";
@@ -375,21 +378,35 @@ function CardEventoAdmin({
           {periodoInscricao && <p className="text-sm text-fatec-muted">{periodoInscricao}</p>}
           {periodoEnvio && <p className="text-sm text-fatec-muted">{periodoEnvio}</p>}
         </div>
-        {/* Botão vermelho bem visível (2026-09-10, pedido do usuário) — fora
-            do grid de ações normais de propósito, é uma ação importante
-            (desliga banner de destaque, inscrição nova e envio de trabalho
-            de uma vez). Reversível — clicar de novo reabre. */}
-        <button
-          type="button"
-          onClick={onEncerrarEvento}
-          className={`flex-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-            evento.encerrado
-              ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
-              : "bg-rose-600 text-white hover:bg-rose-700"
-          }`}
-        >
-          {evento.encerrado ? "Reabrir evento" : "Encerrar evento"}
-        </button>
+        <div className="flex flex-none flex-col items-end gap-1.5">
+          {/* Botão vermelho bem visível (2026-09-10, pedido do usuário) — fora
+              do grid de ações normais de propósito, é uma ação importante
+              (desliga banner de destaque, inscrição nova e envio de trabalho
+              de uma vez). Reversível — clicar de novo reabre. */}
+          <button
+            type="button"
+            onClick={onEncerrarEvento}
+            className={`flex-none rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              evento.encerrado
+                ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                : "bg-rose-600 text-white hover:bg-rose-700"
+            }`}
+          >
+            {evento.encerrado ? "Reabrir evento" : "Encerrar evento"}
+          </button>
+          {/* Gerar ata (2026-10-19, pedido explícito do usuário) — só depois
+              de encerrado; o modal checa se já tem certificado emitido antes
+              de deixar preencher o formulário (ver statusAta). */}
+          {evento.encerrado && (
+            <button
+              type="button"
+              onClick={onAbrirAta}
+              className="flex-none rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+            >
+              Gerar ata
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-fatec-line pt-4 text-xs text-fatec-muted">
@@ -714,7 +731,78 @@ export default function EventosPage() {
   const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const [modalCertificadoId, setModalCertificadoId] = useState<string | null>(null);
-  const certSimples = eventos.find((e) => e.id === modalCertificadoId)?.tipo === "simples";
+  const eventoDoModalCertificado = eventos.find((e) => e.id === modalCertificadoId);
+  const certSimples = eventoDoModalCertificado?.tipo === "simples";
+  // Liberar/cancelar certificados de evento "simples" (2026-10-19, pedido
+  // explícito do usuário — achado urgente: evento encerrado sumia do
+  // seletor de Ensalamento, que era o único lugar com esse botão, e
+  // travava quem precisava desligar por causa de um erro no certificado).
+  // Mora aqui porque Eventos SEMPRE lista encerrado — é o lugar certo pra
+  // mexer nisso depois que o evento já fechou. Toggle imediato, separado
+  // do "Salvar" de baixo (que só grava os campos de configuração).
+  const [alternandoCert, setAlternandoCert] = useState(false);
+  const [erroAlternarCert, setErroAlternarCert] = useState<string | null>(null);
+  async function alternarCertificadosLiberados() {
+    if (!eventoDoModalCertificado || !user) return;
+    setAlternandoCert(true);
+    setErroAlternarCert(null);
+    try {
+      const ligando = !eventoDoModalCertificado.certificadosLiberados;
+      if (ligando) {
+        // Liga E já numera todo mundo elegível agora (2026-10-19, pedido
+        // explícito do usuário) — ver /api/certificados/liberar. Pausar
+        // (desligar) continua sendo só o campo, sem numeração nenhuma.
+        const idToken = await user.getIdToken();
+        const resposta = await fetch("/api/certificados/liberar", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ eventoId: eventoDoModalCertificado.id }),
+        });
+        const corpo = await resposta.json();
+        if (!resposta.ok) throw new Error(corpo.erro ?? "Não foi possível liberar.");
+      } else {
+        await updateDoc(doc(db, "eventos", eventoDoModalCertificado.id), {
+          certificadosLiberados: false,
+        });
+      }
+    } catch (e) {
+      setErroAlternarCert(e instanceof Error ? e.message : "Não foi possível salvar. Tenta de novo.");
+    } finally {
+      setAlternandoCert(false);
+    }
+  }
+  // "Em que número ficou" (2026-10-19, pedido explícito do usuário —
+  // precisa saber onde um evento parou pra decidir o número inicial do
+  // PRÓXIMO, já que a sequência de registro não reinicia sozinha por
+  // evento). Só leitura, busca de novo toda vez que o modal abre pra um
+  // evento diferente (não é tempo real — abrir/fechar de novo já
+  // resolve).
+  const [proximoRegistro, setProximoRegistro] = useState<number | null | "carregando">(null);
+  useEffect(() => {
+    // Não reseta pra null aqui (2026-10-19, corrige lint
+    // react-hooks/set-state-in-effect) — o modal só renderiza com
+    // `modalCertificadoId` truthy, então o valor antigo nunca aparece
+    // escondido; ao reabrir, o `setProximoRegistro("carregando")` logo
+    // abaixo já troca a tela antes da busca terminar.
+    if (!modalCertificadoId || !user) return;
+    let cancelado = false;
+    (async () => {
+      setProximoRegistro("carregando");
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch(`/api/certificados/contador?eventoId=${modalCertificadoId}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const corpo = await res.json();
+        if (!cancelado) setProximoRegistro(res.ok ? (corpo.proximo as number | null) : null);
+      } catch {
+        if (!cancelado) setProximoRegistro(null);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [modalCertificadoId, user]);
   const [dataRealizacaoCert, setDataRealizacaoCert] = useState("");
   const [dataRealizacaoFimCert, setDataRealizacaoFimCert] = useState("");
   const [cargaHorariaCert, setCargaHorariaCert] = useState("");
@@ -892,6 +980,7 @@ export default function EventosPage() {
 
   function abrirModalCertificado(evento: Evento) {
     setModalCertificadoId(evento.id);
+    setErroAlternarCert(null);
     setDataRealizacaoCert(evento.dataRealizacao ?? "");
     setDataRealizacaoFimCert(evento.dataRealizacaoFim ?? "");
     setCargaHorariaCert(evento.cargaHoraria?.toString() ?? "");
@@ -937,6 +1026,76 @@ export default function EventosPage() {
     } finally {
       setSalvandoCert(false);
     }
+  }
+
+  // Ata de Registro (2026-10-19, pedido explícito do usuário) — só depois
+  // de encerrado E com pelo menos 1 certificado já emitido (ver
+  // statusAta abaixo, reaproveita o mesmo /api/certificados/contador do
+  // modal de Certificado). Número/ano/livro são digitados por quem gera —
+  // de propósito, ver comentário em AtaRegistroPDF.
+  const [modalAtaId, setModalAtaId] = useState<string | null>(null);
+  const eventoDoModalAta = eventos.find((e) => e.id === modalAtaId);
+  const [numeroAtaForm, setNumeroAtaForm] = useState("");
+  const [anoAtaForm, setAnoAtaForm] = useState("");
+  const [livroAtaForm, setLivroAtaForm] = useState("01");
+  const [gerandoAta, setGerandoAta] = useState(false);
+  const [erroAta, setErroAta] = useState<string | null>(null);
+  const [statusAta, setStatusAta] = useState<number | null | "carregando">(null);
+  // Ainda numerando (2026-10-19, pedido explícito do usuário, achado real:
+  // ele gerou a ata enquanto "Liberar" ainda rodava em segundo plano —
+  // 174 inscrições, uns 30s no total — e saiu uma ata OFICIAL faltando
+  // mais da metade de quem devia estar nela). Avisa antes de deixar
+  // preencher o formulário; o servidor confere de novo na hora de gerar
+  // (ver GET /api/certificados/ata), nunca confia só nessa checagem.
+  const [liberandoAta, setLiberandoAta] = useState(false);
+
+  function abrirModalAta(eventoId: string) {
+    setModalAtaId(eventoId);
+    setNumeroAtaForm("");
+    setAnoAtaForm(String(new Date().getFullYear()));
+    setLivroAtaForm("01");
+    setErroAta(null);
+  }
+
+  useEffect(() => {
+    // Mesma correção de lint do efeito acima — modal só renderiza com
+    // `modalAtaId` truthy, reset defensivo não é necessário.
+    if (!modalAtaId || !user) return;
+    let cancelado = false;
+    (async () => {
+      setStatusAta("carregando");
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch(`/api/certificados/contador?eventoId=${modalAtaId}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const corpo = await res.json();
+        if (!cancelado) {
+          setStatusAta(res.ok ? (corpo.proximo as number | null) : null);
+          setLiberandoAta(res.ok && corpo.liberando === true);
+        }
+      } catch {
+        if (!cancelado) setStatusAta(null);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [modalAtaId, user]);
+
+  async function gerarAta() {
+    if (!modalAtaId || !user) return;
+    setErroAta(null);
+    setGerandoAta(true);
+    const resultado = await baixarAta(user, {
+      eventoId: modalAtaId,
+      numeroAta: numeroAtaForm.trim(),
+      ano: anoAtaForm.trim(),
+      livro: livroAtaForm.trim(),
+    });
+    if (!resultado.ok) setErroAta(resultado.erro);
+    else setModalAtaId(null);
+    setGerandoAta(false);
   }
 
   async function buscarStatusEdubox(eventoId: string) {
@@ -1335,6 +1494,7 @@ export default function EventosPage() {
                 onAbrirMonitores={() => setModalMonitoresId(evento.id)}
                 onAbrirBanner={() => setBannerEditEventoId(evento.id)}
                 onEncerrarEvento={() => alternarEncerrado(evento)}
+                onAbrirAta={() => abrirModalAta(evento.id)}
               />
             ))}
 
@@ -2213,6 +2373,70 @@ export default function EventosPage() {
             assinantes quiser — o certificado sai assinado só por quem
             estiver na lista.
           </p>
+
+          {certSimples && eventoDoModalCertificado && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-fatec-line bg-white p-4 sm:flex-row sm:items-center">
+              <span
+                className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
+                  eventoDoModalCertificado.certificadosLiberados
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-fatec-navy-50 text-fatec-navy-800"
+                }`}
+              >
+                <Award className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-fatec-navy-900">
+                  {eventoDoModalCertificado.certificadosLiberados
+                    ? "Certificados de participação liberados"
+                    : "Certificados de participação ainda não liberados"}
+                </p>
+                <p className="mt-0.5 text-xs text-fatec-muted">
+                  Controla se quem confirmou presença (e pagou, se tiver taxa)
+                  já pode baixar o certificado sozinho — ao liberar, já numera
+                  de uma vez todo mundo elegível agora (do primeiro ao último,
+                  pra Ata). Só depois que o evento for encerrado — assim
+                  ninguém confirma presença nova depois da numeração.
+                </p>
+                {!eventoDoModalCertificado.certificadosLiberados &&
+                  !eventoDoModalCertificado.encerrado && (
+                    <p className="mt-1.5 text-xs font-medium text-fatec-orange-600">
+                      Encerre o evento primeiro pra poder liberar.
+                    </p>
+                  )}
+                {erroAlternarCert && (
+                  <p className="mt-1.5 text-xs font-medium text-rose-600">{erroAlternarCert}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={alternarCertificadosLiberados}
+                disabled={
+                  alternandoCert ||
+                  (!eventoDoModalCertificado.certificadosLiberados &&
+                    !eventoDoModalCertificado.encerrado)
+                }
+                className={`flex w-full flex-none items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
+                  eventoDoModalCertificado.certificadosLiberados
+                    ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                    : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
+                }`}
+              >
+                {eventoDoModalCertificado.certificadosLiberados ? (
+                  <>
+                    <X className="h-4 w-4" strokeWidth={2} />
+                    Cancelar liberação
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" strokeWidth={2} />
+                    Liberar certificados
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">
@@ -2361,6 +2585,22 @@ export default function EventosPage() {
               usados. Em branco, começa em 1.
             </span>
           </label>
+
+          {proximoRegistro === "carregando" ? (
+            <p className="text-xs text-fatec-muted">Consultando números já emitidos...</p>
+          ) : proximoRegistro === null ? (
+            <p className="rounded-lg bg-fatec-navy-50 px-3 py-2 text-xs text-fatec-muted">
+              Nenhum certificado emitido ainda nesse evento.
+            </p>
+          ) : (
+            <p className="rounded-lg bg-fatec-navy-50 px-3 py-2 text-xs text-fatec-navy-800">
+              Já emitido até o N°{" "}
+              <span className="font-semibold">{proximoRegistro - 1}</span> — o próximo sai no N°{" "}
+              <span className="font-semibold">{proximoRegistro}</span>. Use isso pra decidir o
+              número inicial do próximo evento.
+            </p>
+          )}
+
           <button
             type="button"
             onClick={salvarCertificado}
@@ -2369,6 +2609,90 @@ export default function EventosPage() {
           >
             {salvandoCert ? "Salvando..." : "Salvar"}
           </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!modalAtaId}
+        onClose={() => setModalAtaId(null)}
+        title={`Gerar Ata de Registro${eventoDoModalAta ? ` — ${eventoDoModalAta.nome}` : ""}`}
+      >
+        <div className="flex flex-col gap-5">
+          {statusAta === "carregando" ? (
+            <p className="text-sm text-fatec-muted">Consultando números já emitidos...</p>
+          ) : liberandoAta ? (
+            <p className="rounded-xl bg-fatec-orange-50 px-4 py-3 text-sm text-fatec-orange-700">
+              Ainda numerando os certificados — pode levar um tempo com
+              muitos inscritos. Espera terminar antes de gerar a ata,
+              senão sai incompleta.
+            </p>
+          ) : statusAta === null ? (
+            <p className="rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm text-fatec-ink">
+              Nenhum certificado foi emitido ainda nesse evento — não tem o
+              que colocar na ata. Gere pelo menos um (autoatendimento ou
+              em Declarações) antes.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-fatec-muted">
+                Lista, do primeiro ao último número, todo mundo que já
+                recebeu certificado desse evento (até o N° {statusAta - 1}).
+                Preencha o número da própria ata, igual está anotado no
+                livro físico.
+              </p>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-fatec-navy-900">
+                    Número da ata
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={numeroAtaForm}
+                    onChange={(e) => setNumeroAtaForm(e.target.value)}
+                    placeholder="Ex.: 563"
+                    className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-fatec-navy-900">Ano</span>
+                  <input
+                    type="number"
+                    min="2000"
+                    value={anoAtaForm}
+                    onChange={(e) => setAnoAtaForm(e.target.value)}
+                    className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-fatec-navy-900">Livro</span>
+                  <input
+                    type="text"
+                    value={livroAtaForm}
+                    onChange={(e) => setLivroAtaForm(e.target.value)}
+                    placeholder="Ex.: 01"
+                    className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+                  />
+                </label>
+              </div>
+
+              {erroAta && (
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erroAta}</p>
+              )}
+
+              <button
+                type="button"
+                onClick={gerarAta}
+                disabled={
+                  gerandoAta || !numeroAtaForm.trim() || !anoAtaForm.trim() || !livroAtaForm.trim()
+                }
+                className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+              >
+                {gerandoAta ? "Gerando..." : "Baixar ata"}
+              </button>
+            </>
+          )}
         </div>
       </Modal>
 

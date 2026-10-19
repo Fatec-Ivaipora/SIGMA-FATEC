@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownUp,
-  Award,
-  Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -16,7 +14,6 @@ import {
   Search,
   Trash2,
   Wand2,
-  X,
 } from "lucide-react";
 import { arrayRemove, arrayUnion, doc, Timestamp, updateDoc } from "firebase/firestore";
 import QRCode from "qrcode";
@@ -37,7 +34,7 @@ import {
   type InscricaoEvento,
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
-import { periodosDoEvento, presencaMinimaDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
+import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
 import {
   useSessoesDoEvento,
   montarGradeAutomatica,
@@ -157,17 +154,6 @@ function ConfirmacaoPresencaView({
   // vermelha de alguém girando os dias sozinho pra um amigo em vez de
   // presença real em dias diferentes.
   const [detalheAberto, setDetalheAberto] = useState<{ uid: string; dia: number } | null>(null);
-  // "Liberar certificados" mora aqui (2026-09-30, antes ficava em
-  // /trabalhos) — é aqui que dá pra ver a presença de verdade antes de
-  // decidir, que é o critério que mais importa (pagamento pode vir depois
-  // e libera sozinho quando cair; presença não tem como voltar atrás).
-  const [alternando, setAlternando] = useState(false);
-  // Erro visível (2026-10-05, achado do usuário: clicou em "Liberar
-  // certificados", pareceu funcionar, mas o campo nunca mudou no banco) —
-  // sem isso, uma falha de permissão/rede aqui fica muda: o cache local do
-  // Firestore aplica a mudança na hora (parece ter funcionado na tela) e só
-  // desfaz em silêncio se o servidor rejeitar, sem avisar ninguém.
-  const [erroCertificados, setErroCertificados] = useState<string | null>(null);
   // Presença manual (2026-09-30, pedido explícito do usuário) — pra quando
   // a pessoa não consegue escanear (câmera com problema, sem internet no
   // local, etc). Só admin/organização (nunca monitor — ver
@@ -178,22 +164,6 @@ function ConfirmacaoPresencaView({
   // do mesmo jeito se clicar de novo.
   const [alternandoPresenca, setAlternandoPresenca] = useState<Set<string>>(new Set());
   const [erroPresencaManual, setErroPresencaManual] = useState<string | null>(null);
-
-  async function alternarCertificados() {
-    setAlternando(true);
-    setErroCertificados(null);
-    try {
-      await updateDoc(doc(db, "eventos", evento.id), {
-        certificadosLiberados: !evento.certificadosLiberados,
-      });
-    } catch (e) {
-      setErroCertificados(
-        e instanceof Error ? e.message : "Não foi possível salvar. Tenta de novo.",
-      );
-    } finally {
-      setAlternando(false);
-    }
-  }
 
   async function alternarPresencaManual(uidAlvo: string, dia: number, confirmar: boolean) {
     if (!user) return;
@@ -333,7 +303,6 @@ function ConfirmacaoPresencaView({
   // liberação do certificado (ver /api/certificados). Evento de 1 dia dá no
   // mesmo de antes (só existe a chave "1").
   const confirmados = inscritos.filter((i) => diasConfirmadosCount(i) > 0).length;
-  const pagos = inscritos.filter((i) => i.status === "pago").length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -381,81 +350,12 @@ function ConfirmacaoPresencaView({
         )}
       </section>
 
-      {/* Liberar certificados (2026-09-30, movido de /trabalhos pra cá) —
-          o certificado de participação exige liberação + pagamento em dia
-          + presença confirmada, os três juntos (ver /api/certificados).
-          Presença é o critério que só dá pra ver aqui; pagamento é só um
-          resumo de apoio, quem trava de verdade é o botão de baixar do
-          aluno (não muda nada em quem já pagou/confirmou antes de você
-          decidir liberar). Escondido no modo monitor — decisão é só de
-          admin/organização (texto simplificado em 2026-10-05, ficava denso
-          demais numa linha só com travessão). */}
-      {!modoMonitor && (
-      <section className="flex flex-col gap-3 rounded-2xl border border-fatec-line bg-white p-5 sm:flex-row sm:items-start">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span
-            className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${
-              evento.certificadosLiberados
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-fatec-navy-50 text-fatec-navy-800"
-            }`}
-          >
-            <Award className="h-5 w-5" strokeWidth={1.75} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-fatec-navy-900">
-              {evento.certificadosLiberados
-                ? "Certificados de participação liberados"
-                : "Certificados de participação ainda não liberados"}
-            </p>
-            <p className="mt-0.5 text-sm text-fatec-muted">
-              Libera pra quem confirmar presença
-              {diasEvento > 1
-                ? ` em pelo menos ${presencaMinimaDoEvento(evento)} dos ${diasEvento} dias`
-                : ""}
-              {!!evento.valorInscricao && " e pagar em dia"}.
-            </p>
-            <p className="mt-1 text-xs text-fatec-muted">
-              <span className="font-semibold text-emerald-700">
-                {confirmados}/{inscritos.length}
-              </span>{" "}
-              com presença
-              {!!evento.valorInscricao && (
-                <>
-                  , <span className="font-semibold text-emerald-700">{pagos}</span> pagos
-                </>
-              )}
-              {diasEvento > 1 && " · horas saem proporcionais aos dias confirmados"}
-            </p>
-            {erroCertificados && (
-              <p className="mt-1.5 text-xs font-medium text-rose-600">{erroCertificados}</p>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={alternarCertificados}
-          disabled={alternando}
-          className={`flex w-full flex-none items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
-            evento.certificadosLiberados
-              ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
-              : "bg-fatec-orange-500 text-white hover:bg-fatec-orange-600"
-          }`}
-        >
-          {evento.certificadosLiberados ? (
-            <>
-              <X className="h-4 w-4" strokeWidth={2} />
-              Cancelar liberação
-            </>
-          ) : (
-            <>
-              <Check className="h-4 w-4" strokeWidth={2} />
-              Liberar certificados
-            </>
-          )}
-        </button>
-      </section>
-      )}
+      {/* "Liberar certificados" foi removido daqui (2026-10-19, pedido
+          explícito do usuário — nova regra: só libera depois de encerrado,
+          ver /api/certificados/liberar) — ficou inalcançável nessa tela,
+          porque encerrado já some do seletor de evento (topo do arquivo).
+          Mora só em Eventos → Certificado agora, que lista encerrado
+          também. */}
 
       <section className="rounded-2xl border border-fatec-line bg-white p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -730,8 +630,12 @@ function EnsalamentoAdminView() {
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   // Encerrado some do seletor (2026-10-16, pedido explícito do usuário) —
-  // montar grade é trabalho de evento em andamento, encerrado só ocupa
-  // espaço aqui; eventoId só muda pelo próprio dropdown, nunca por URL.
+  // montar grade/confirmar presença é trabalho de evento em andamento,
+  // encerrado só ocupa espaço aqui; eventoId só muda pelo próprio
+  // dropdown, nunca por URL. "Liberar certificados" de um evento "simples"
+  // já encerrado mora em `/eventos` → Certificado (2026-10-19, pedido
+  // explícito do usuário — lá SEMPRE lista encerrado, é o lugar certo pra
+  // mexer nisso depois que o evento fechou, não aqui).
   const eventosSelecionaveis = useMemo(() => eventos.filter((e) => !e.encerrado), [eventos]);
 
   const [aba, setAba] = useState<"ensalamento" | "salas">("ensalamento");

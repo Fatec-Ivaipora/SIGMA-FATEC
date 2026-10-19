@@ -19,6 +19,21 @@ type ChaveCertificado =
   // pessoa.
   | { papel: "participante"; eventoId: string; uidAlvo?: string };
 
+/** Dispara o download no navegador a partir de uma resposta de PDF já
+ * confirmada (2026-10-19, extraído de baixarCertificado pra reaproveitar em
+ * baixarAta também) — nome do arquivo vem do Content-Disposition que o
+ * servidor já manda, nunca inventado no client. */
+function dispararDownload(blob: Blob, nomeArquivo: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Busca o PDF autenticado e dispara o download no navegador — usado tanto
  * pelo certificado do aluno (por trabalho) quanto pelas declarações de
  * avaliador/moderador/monitor/orientador (ver /api/certificados). */
@@ -48,15 +63,35 @@ export async function baixarCertificado(
   const nomeArquivo =
     res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
     "certificado.pdf";
+  dispararDownload(blob, nomeArquivo);
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nomeArquivo;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  return { ok: true };
+}
+
+/** Ata de Registro (2026-10-19, pedido explícito do usuário) — rota própria
+ * (/api/certificados/ata), fora do leque de `papel` acima: não é documento
+ * de uma pessoa, é a lista de todo mundo registrado num evento. Mesmo
+ * padrão de download de `baixarCertificado`. */
+export async function baixarAta(
+  user: User,
+  dados: { eventoId: string; numeroAta: string; ano: string; livro: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams(dados).toString();
+
+  const res = await fetch(`/api/certificados/ata?${query}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar a ata." };
+  }
+
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "ata.pdf";
+  dispararDownload(blob, nomeArquivo);
 
   return { ok: true };
 }

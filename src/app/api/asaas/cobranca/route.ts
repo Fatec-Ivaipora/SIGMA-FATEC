@@ -34,6 +34,19 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  // Evento encerrado (2026-10-19, pedido explícito do usuário) — nunca gera
+  // cobrança nova nem devolve o link de uma pendente antiga, mesmo que a
+  // pessoa já tivesse clicado "Participar" antes de encerrar. Risco real
+  // descrito pelo usuário: pagamento meses depois libera certificado com
+  // número de registro que já pertence à sequência de outro evento criado
+  // nesse meio tempo, quebrando a ata. "Interesse" novo já travava
+  // (/api/asaas/interesse); aqui é o próximo passo do mesmo fluxo.
+  if (evento.encerrado) {
+    return NextResponse.json(
+      { erro: "Esse evento está encerrado — não é mais possível gerar cobrança." },
+      { status: 400 },
+    );
+  }
 
   const inscricaoId = `${eventoId}::${uid}`;
   const inscricaoRef = db.doc(`inscricoesEvento/${inscricaoId}`);

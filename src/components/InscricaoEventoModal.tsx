@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { CheckCircle2, Clock, ExternalLink, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { useMinhaInscricao } from "@/lib/data/inscricoes";
 
@@ -27,6 +27,7 @@ export function InscricaoEventoModal({
   eventoNome,
   valor,
   temCpf,
+  encerrado,
   user,
   onClose,
 }: {
@@ -35,6 +36,11 @@ export function InscricaoEventoModal({
   eventoNome: string;
   valor: number;
   temCpf: boolean;
+  // Esconde o botão "Pagar agora" (2026-10-19, pedido explícito do
+  // usuário) — evento encerrado já recusa a cobrança no servidor
+  // (/api/asaas/cobranca), isso aqui só evita a pessoa clicar e cair num
+  // erro: mostra "Evento encerrado" em vez do formulário.
+  encerrado?: boolean;
   user: User | null | undefined;
   onClose: () => void;
 }) {
@@ -132,7 +138,18 @@ export function InscricaoEventoModal({
   return (
     <Modal open={open} onClose={fechar} title={`Inscrição — ${eventoNome}`}>
       <div className="flex flex-col gap-6">
-        {!pago ? (
+        {encerrado && !pago ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-fatec-navy-50 px-6 py-10 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-fatec-navy-100 text-fatec-navy-800">
+              <AlertTriangle className="h-6 w-6" strokeWidth={2} />
+            </span>
+            <p className="font-semibold text-fatec-navy-900">Evento encerrado</p>
+            <p className="text-sm text-fatec-muted">
+              Esse evento já foi encerrado — não é mais possível gerar cobrança
+              nova.
+            </p>
+          </div>
+        ) : !pago ? (
           <div className="flex flex-col gap-5">
             <div className="rounded-2xl bg-fatec-navy-50 px-5 py-4">
               <p className="text-sm text-fatec-muted">Valor da inscrição</p>

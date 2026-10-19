@@ -533,6 +533,7 @@ export default function AlunoPainelPage() {
           eventoNome={eventoInscricao.nome}
           valor={eventoInscricao.valorInscricao ?? 0}
           temCpf={!!perfil.cpf}
+          encerrado={eventoInscricao.encerrado}
           user={user}
           onClose={() => setInscricaoEventoId(null)}
         />

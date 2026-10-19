@@ -477,6 +477,354 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-19** — **Lint corrigido antes de subir**: `eslint-config-next`
+  trouxe a regra `react-hooks/set-state-in-effect` (nova/mais estrita) e
+  ela pegou os 2 efeitos do modal de certificado/ata em `/eventos`
+  (`setProximoRegistro`/`setStatusAta` chamados direto no corpo do
+  efeito). Corrigido sem mudar comportamento: o "reset pra null" ao
+  fechar o modal foi removido (desnecessário — o modal só renderiza com
+  o id truthy, nunca mostra o valor velho escondido) e o `setState`
+  de "carregando" foi movido pra dentro da IIFE assíncrona (ainda roda
+  antes do primeiro `await`, mesma UX). A mesma regra já aponta um erro
+  pré-existente, não tocado, em `ensalamento/page.tsx:291`
+  (`setPaginaLista` — código antigo, fora do escopo desse push).
+
+- **2026-10-19** —
+  **Seção "Ajuda" na home** (`src/app/page.tsx` + `src/components/SiteHeader.tsx`,
+  pedido explícito do usuário) — vídeos tutoriais do SIGMA, hospedados no
+  YouTube, incorporados direto na página pública (antes de logar), pra
+  quem tem dúvida assistir. Posicionada logo abaixo do carrossel de
+  eventos em destaque (antes do "Como funciona") — usuário pediu
+  reposicionamento depois de ver a primeira versão mais embaixo, perto do
+  mapa. Nome passou por "Tutoriais" (pedido pra escolher um nome melhor) e
+  voltou pra "Ajuda" (usuário decidiu manter o original) — item próprio no
+  menu do `SiteHeader` (`/#ajuda`), por último, depois de "Declarações"
+  (pedido explícito), tanto desktop quanto mobile.
+  **Bug real corrigido**: clicar no item do menu não descia a página
+  quando já se estava na home ("quando clico em tutorial não desce") — o
+  Link do Next não dispara scroll quando só o hash muda e já se está na
+  mesma rota "/" (não conta como navegação pro Next.js). Corrigido com
+  `irParaAncora()` em `SiteHeader.tsx`: só nesse caso (`pathname === "/"`)
+  previne o Link e faz `scrollIntoView` manual; clicando de outra página
+  deixa o Link navegar normal. Mesmo bug/correção aplicado de brinde ao
+  link "Evento" (idêntico problema, não reportado ainda mas já
+  identificado). `scroll-mt-20` adicionado à seção (faltava, por isso o
+  topo ficava embaixo do cabeçalho fixo).
+  Capa própria (`VideoTutorial`) — como o YouTube não deixa escolher a
+  miniatura de fora do canal, a capa é nossa: primeiro testada com a dupla
+  Fatec + SIGMA do cabeçalho, depois simplificada pra só a logo do SIGMA.
+  **Outro bug real corrigido**: o PNG oficial `logo-sigma-white.png` tem o
+  ícone "S" desalinhado ~12px à esquerda do centro do wordmark "SIGMA"
+  embaixo dele (confirmado pixel a pixel com `sharp` — não era bug de
+  CSS) — centralizar a imagem inteira como um bloco só deixava esse
+  desalinho interno visível ("centralize a logo do sigma na capa do vídeo
+  tá descentralizada"). Corrigido recortando o ícone e o texto em dois
+  PNGs separados (`public/logo-sigma-icone-branco.png` e
+  `logo-sigma-texto-branco.png`, script descartável com `sharp`, já
+  apagado) e centralizando cada um por conta própria — garante alinhamento
+  visual correto independente do desalinho interno do asset original (que
+  não foi tocado — ainda usado como está no `SiteHeader`/footer).
+  Clique na capa abre o vídeo num modal grande dedicado (`VideoModal`) —
+  não reaproveita `src/components/Modal.tsx` de propósito (aquele é pra
+  formulário, caixa branca com padding; aqui é tela escura full-bleed só
+  pro vídeo, com X pra fechar e Escape, mesmo padrão do Modal padrão).
+  Array `VIDEOS_AJUDA` com `{ id, titulo }` — grade de 3 colunas lado a
+  lado (testada antes empilhada em coluna única por uma leitura errada de
+  "não deixe os 3 lado a lado"; usuário corrigiu: "isso não é lado a
+  lado... quero na horizontal" — container alargado de `max-w-4xl` pra
+  `max-w-6xl` pra caber os 3 com bom tamanho). Três vídeos (todos enviados
+  pelo usuário em mensagens separadas): "Como se cadastrar no SIGMA",
+  "Como se inscrever em eventos da Fatec Ivaiporã pelo SIGMA", "Como
+  submeter um trabalho no SIGMA". Abaixo da grade, bloco "Ainda com
+  dúvida? Entre em contato com o suporte" — mesmo WhatsApp do botão
+  flutuante "Precisa de ajuda?" de dentro do sistema logado
+  (`src/components/Sidebar.tsx`, `wa.me/5543996780170`), pedido explícito
+  do usuário: "coloque o número do suporte que está na ajuda do site".
+  `youtube-nocookie.com` liberado no CSP (`next.config.ts`, `frame-src`) —
+  sem isso o iframe não carrega, mesmo achado de sempre do Maps Embed (ver
+  entrada 2026-09-19). Testado no navegador a cada rodada de ajuste:
+  posição certa, nome e ordem certos no menu, clique do menu desce até a
+  seção, capa com ícone e texto alinhados, grade horizontal, link do
+  suporte, clique abre o modal grande autoplay, X fecha.
+
+- **2026-10-19** —
+  **Modelo de apresentação oral da MAC** (pedido explícito do usuário):
+  até aqui só quem escolhia apresentar em "Roda de Conversa" via
+  `SubmeterTrabalhoModal` ganhava um banner laranja oferecendo o modelo do
+  banner pra baixar — quem escolhia "Apresentação Oral" não tinha nada
+  equivalente pros slides. Adicionado `public/materiais/modelo-apresentacao-mac.pdf`
+  (modelo de slides real, fornecido pelo usuário) e o mesmo banner de
+  oferta (ícone `Mic`, "Não esqueça o modelo da apresentação!") pra quem
+  escolhe "oral". Também adicionado o link permanente equivalente em
+  `/aluno/trabalhos` (a lista "Meus trabalhos" já tinha "Modelo do banner"
+  pra `roda_conversa` — essa página já era o lugar persistente que o
+  usuário queria pra quem não baixa na hora da submissão; só faltava a
+  mesma oferta pra `oral`, agora com "Modelo da apresentação").
+
+- **2026-10-19** —
+  **Achado urgente real, de verdade em produção**: usuário gerou a Ata da
+  Medicina (oficial, "ATA 564", já registrada) e ela saiu até o N° 21551
+  (66 pessoas) — mas o evento tinha 140 elegíveis. Preocupação do usuário:
+  "você não está contabilizando gente que não tá habilitada, ou a geração
+  deu errada?". Investigado com os TIMESTAMPS reais de cada registro
+  (`criadoEm`) — não tem erro de contabilização nenhum: é uma sequência
+  contínua, sem pausa, do primeiro ao 140º (`/api/certificados/liberar`
+  processa 174 inscrições uma a uma, ~30s no total). O usuário clicou
+  "Gerar ata" ENQUANTO esse loop ainda rodava em segundo plano — pegou
+  uma foto no meio do caminho (66 de 140), não intencional, e o número da
+  ata (564) já tinha sido consumido pra uma lista incompleta.
+  **Corrigido pra nunca mais acontecer**: evento ganha campo
+  `liberandoCertificados` (true durante todo o loop de numeração, sempre
+  `false` no final — `finally`, mesmo se der erro no meio).
+  `GET /api/certificados/ata` recusa gerar enquanto essa flag for `true`.
+  Modal "Gerar Ata" em `/eventos` mostra aviso claro antes de deixar
+  preencher o formulário (reaproveita `GET /api/certificados/contador`,
+  que ganhou o campo `liberando` também). Estado real da Medicina
+  conferido depois da correção: `liberandoCertificados` ausente (lote já
+  tinha terminado há tempo), `certificadosLiberados: true` — usuário pode
+  gerar a ata de novo agora com segurança, vai sair completa (140,
+  21486–21625).
+  **Paginação da tabela corrigida, mesmo pedido em seguida** — "cada
+  folha ser uma planilha, não uma só que passa de folha a folha" (o
+  problema de verdade: linha cortada no meio quando passava de página).
+  Duas mudanças em `AtaRegistroPDF`: cada linha de dado ganhou
+  `wrap={false}` (react-pdf nunca mais corta uma linha ao meio — se não
+  couber, ela inteira pula pra próxima página); o cabeçalho "Registro |
+  NOME" ganhou `fixed` (repete sozinho no topo de toda página nova,
+  não só na primeira). Testado com os 140 registros reais (5 páginas,
+  só leitura) — saiu limpo, nenhuma linha cortada, cabeçalho repetindo em
+  todas as páginas. Confirmado: reusar o número 564 pra essa versão
+  completa é intencional (usuário nunca enviou a versão incompleta pra
+  secretaria — sem registro oficial nenhum consumindo esse número).
+
+- **2026-10-19** —
+  **Numeração em lote na hora de liberar** (pedido explícito do usuário,
+  plano discutido antes de implementar): até aqui o número de registro só
+  nascia quando CADA pessoa baixava o próprio certificado — problema real
+  descrito pelo usuário, "não posso ficar esperando a boa vontade de
+  todos baixarem", porque quem deixa pra baixar meses depois pega um
+  número que já foi pro próximo evento criado nesse meio tempo, quebrando
+  a sequência de todo mundo pra frente.
+  Nova rota `POST /api/certificados/liberar` (só evento "simples" por
+  enquanto — evento completo libera por trabalho, fluxo diferente, em
+  `/trabalhos`) — ao clicar "Liberar certificados", além de ligar
+  `certificadosLiberados`, já numera DE UMA VEZ todo mundo que JÁ está
+  habilitado agora (mesmo critério do autoatendimento: presença +
+  pagamento se tiver taxa), em ordem de inscrição (`criadoEm` asc — "em
+  ordem do próprio banco", como o usuário pediu). Idempotente —
+  religar depois de pausado (como a Medicina, por causa do erro no
+  certificado) só numera quem ficou elegível DESDE a última vez, nunca
+  reatribui quem já tinha número. Quem vira elegível DEPOIS desse clique
+  (ex.: confirma presença semana que vem) ainda cai no caminho antigo,
+  numerado na hora que baixar — essa rota só adianta o caso comum.
+  `obterNumeroRegistro` extraído de `/api/certificados/route.ts` pra
+  `src/lib/registroCertificados.ts` (reaproveitado pelas duas rotas).
+  Toggle em Ensalamento e em Eventos → Certificado agora chamam essa
+  rota ao LIGAR (desligar continua sendo só o campo, sem numeração).
+  **Índice composto novo no Firestore** (`eventoId` + `criadoEm` em
+  `inscricoesEvento`) — ainda não criado, vai dar `FAILED_PRECONDITION`
+  na primeira vez que alguém clicar "Liberar" de verdade. Link já
+  confirmado (lendo direto, sem escrever nada):
+  `https://console.firebase.google.com/v1/r/project/fateclab-4cc74/firestore/indexes?create_composite=Cldwcm9qZWN0cy9mYXRlY2xhYi00Y2M3NC9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvaW5zY3JpY29lc0V2ZW50by9pbmRleGVzL18QARoMCghldmVudG9JZBABGgwKCGNyaWFkb0VtEAEaDAoIX19uYW1lX18QAQ`.
+  **Ainda não testado de ponta a ponta** — rodar isso de verdade pra
+  Medicina LIBERA o autoatendimento pros 174 inscritos (ação real,
+  visível, não é só leitura) — esperando confirmação do usuário antes de
+  disparar.
+  **Regra nova, mesmo pedido, achado real logo em seguida**: "liberar"
+  só pode acontecer depois de ENCERRADO — fecha o buraco de alguém
+  confirmar presença nova depois da numeração em lote (`/api/certificados/
+  liberar` agora recusa se `!evento.encerrado`). Pra isso valer de
+  verdade, confirmar presença (`/api/inscricoes/confirmar-presenca`,
+  self-service por QR) também passou a recusar se o evento já encerrou —
+  única rota de presença que ainda faltava essa trava (pagamento,
+  inscrição e certificado já tinham, ver entradas de 2026-10-19 acima).
+  Confirmação MANUAL (`confirmar-presenca-manual`, só staff) **não** foi
+  travada — correção administrativa pontual depois de encerrado continua
+  possível, mesmo critério de "staff é ação controlada" já usado pro
+  certificado.
+  **Consequência**: o painel "Liberar certificados" em Ensalamento virou
+  código morto — Ensalamento já esconde evento encerrado do seletor desde
+  16/10, então a tela nunca mais alcança um evento que pode liberar.
+  Removido de lá (estado/handler também, inclusive ícones que só eram
+  usados ali). Mora só em Eventos → Certificado agora, que já lista
+  encerrado. Botão lá ganhou estado desabilitado + aviso quando o evento
+  ainda não foi encerrado.
+  **TESTADO DE VERDADE pelo usuário** (índice do Firestore criado por ele,
+  clicou "Liberar" e "Gerar ata" na Medicina) — funcionou: contador foi de
+  21486 pra 21625 (139 registros, exatamente `proximo - numeroInicial`),
+  ata saiu certa. **Achado real no caminho**: a logo MED FATEC (override
+  por evento) saiu GIGANTE no certificado de verdade — motivo: ela e
+  LOGO_PADRAO têm proporção bem diferente (1488×250 vs 554×312) e
+  dividiam o mesmo `logoCabecalho.height` (80, calibrado só pra
+  LOGO_PADRAO). Corrigido com dois estilos: `logoCabecalho` (40, logo de
+  EVENTO como MED FATEC — valor de sempre, nunca devia ter mudado) e
+  `logoCabecalhoPadrao` (80, só quando NÃO tem override). Reconferido
+  gerando o certificado real da Thaís de novo (mesmo número, 21535 —
+  get-or-create não duplica).
+  **Mais um ajuste fino**: a divisão de estilos resolveu o MED FATEC, mas
+  a LOGO_PADRAO em 80 ainda apertava o texto de credenciamento (achado
+  real do usuário na ata gerada de verdade — "a etiqueta do lado ficou
+  toda quebrada", palavra por palavra em vez de 3 linhas limpas). Reduzido
+  pra 65 (`logoCabecalhoPadrao` e `estiloAta.logoCabecalho`). Reconferido
+  com um teste isolado de 139 registros reais (sem tocar no contador) —
+  cabeçalho voltou a quebrar certinho, 3 linhas, igual o modelo.
+  **E mais uma rodada, achado real baixando outro certificado de
+  verdade**: essa última ainda não tinha mexido no MED FATEC
+  (`logoCabecalho`, 40 desde a rodada anterior) — continuava quebrando
+  linha, porque 40 ainda é alto demais pra uma logo tão mais larga/achatada
+  (1488×250) que LOGO_PADRAO (554×312, quase quadrada — mesma altura nunca
+  ia dar larguras parecidas). Reduzido pra **28**. Reconferido com o
+  certificado real de outra pessoa (Gabriela Coleta, Nº 21625) — 3 linhas
+  limpas, "Mantida pela União... UNESVI" numa linha só, igual o modelo.
+  **Achado à parte, não mexido ainda**: o corpo do certificado está
+  hifenizando palavra ("partici-pante") — hifenização automática do
+  react-pdf (`@react-pdf/hyphenate`), não tem relação com a logo; avisar o
+  usuário, não corrigir sem ele confirmar que quer isso.
+- **2026-10-19** —
+  **Ata de Registro** (pedido explícito do usuário — documento obrigatório
+  da instituição ao liberar certificado, modelo copiado de um exemplo real
+  fornecido, `Mateus/exemplos/ATA ... .doc`). Botão **"Gerar ata"** em
+  `/eventos`, embaixo de "Reabrir evento" — só aparece quando o evento está
+  encerrado; o modal confere se já tem certificado emitido (reaproveita
+  `/api/certificados/contador`) antes de deixar preencher o formulário.
+  Número da ata/ano/livro são **digitados por quem gera** (pedido explícito
+  do usuário, confirmado com pergunta direta — já existe controle desse
+  número fora do sistema, não dá pra arriscar o SIGMA divergir dele com
+  contador próprio). PDF (`AtaRegistroPDF` em `certificadosPdf.tsx`) usa o
+  mesmo cabeçalho/rodapé dos certificados, layout próprio (tabela
+  Registro/Nome, do primeiro ao último número usado NESSE evento).
+  **Mudança de dado**: `obterNumeroRegistro` (`/api/certificados/route.ts`)
+  agora grava `eventoId` + `nome` em `registrosCertificados/{chave}` (só
+  pra construir a ata depois — antes só tinha `numero`/`livro`). Nova rota
+  `GET /api/certificados/ata` lê essa coleção por `eventoId`, ordenado por
+  `numero`. **Índice composto novo no Firestore** (`eventoId` + `numero` em
+  `registrosCertificados`) — primeira tentativa deu
+  `FAILED_PRECONDITION`, com o link pra criar já no erro (mesmo padrão de
+  sempre, Mateus clica no console). Diretor Acadêmico vem do catálogo
+  existente (`ASSINANTES_CERTIFICADO`, id "roni"), nada novo ali.
+  **Trava a mais, depois REMOVIDA** (as duas por pedido explícito do
+  usuário, no mesmo dia): tentei exigir também `certificadosLiberados`
+  (evento "simples") ou algum `trabalho.certificadoLiberado` (evento
+  completo), com medo de a ata listar um "preview" gerado por staff sem
+  liberação de verdade. O usuário corrigiu: "liberado" é só o interruptor
+  do AUTOATENDIMENTO — staff já gera/vê certificado de qualquer pessoa
+  elegível em Declarações independente desse interruptor (ex.: reenviar
+  pra quem perdeu o original), isso é legítimo, não "preview"; e o
+  interruptor pode ter sido religado/desligado de novo por outro motivo
+  (como aconteceu com a Medicina, pausado por causa do erro no
+  certificado) sem desfazer certificados já emitidos de verdade. Único
+  sinal que importa: existir registro (`registrosCertificados`) — se
+  existe, o número já foi atribuído a alguém de verdade, não tem como
+  "desacontecer". Trava removida dos dois lados (servidor e cliente),
+  ata volta a depender só de ter pelo menos 1 registro.
+  **Testado de ponta a ponta** depois que o índice do Firestore ficou
+  pronto — achado no caminho: o registro Nº 1 de teste da Medicina (criado
+  ANTES de `eventoId`/`nome` virarem campos gravados, achado anterior
+  desse mesmo dia) não tinha esses campos, a consulta por `eventoId` não
+  achava ele. Corrigido com backfill pontual (script descartável, já
+  apagado) nesse 1 doc específico — não é um problema que vai se repetir,
+  só esse registro ficou pra trás da mudança. PDF final gerado e conferido
+  contra o modelo original: bate certinho. `certificadosLiberados` da
+  Medicina foi ligado só pra esse teste e devolvido pra `false` depois
+  (continua bloqueado por causa do erro no certificado, sem relação com
+  isso aqui).
+  **Logo do cabeçalho trocada** (pedido explícito do usuário, depois de
+  ver o exemplo: "ficou muito diferente") — `DeclaracaoPDF` e
+  `AtaRegistroPDF` desenhavam "FATEC"/"IVP" como texto, à mão; trocado
+  pela logo real (arquivo fornecido pelo usuário,
+  `public/certificados/logo-fatec-ivp.png`, novo `LOGO_PADRAO` em
+  `certificadosPdf.tsx`) — mesmo mecanismo que já existia pra MED FATEC
+  (`LOGO_CABECALHO`/`logoCertificadoId`), só que agora é o PADRÃO sempre
+  usado, não mais um texto de respaldo. `CertificadoApresentacaoPDF`
+  nem entra nisso — usa um fundo ilustrado próprio (`fundo-apresentacao.png`),
+  já tem a marca embutida na arte, não no cabeçalho texto. Conferido nos
+  dois exemplos: ata mostra a logo nova; certificado da Medicina continua
+  mostrando MED FATEC (override por evento intacto).
+  **Tamanho/posição ajustados em 2 rodadas** (pedido explícito do usuário
+  comparando com o modelo real) — `logoCabecalho.height` 40 → 60 → **80**;
+  `cabecalho.gap` (espaço entre logo e texto de credenciamento) 12 → **6**
+  ("empurre o texto pra esquerda"). Valor compartilhado com MED FATEC
+  também (mesmo `estilo*.logoCabecalho`/`cabecalho`). Cada rodada testada
+  com um registro FALSO temporário (grava direto em
+  `registrosCertificados`, nunca toca no contador real — só pra conferir a
+  logo sem mexer no 21486 da Medicina, apagado logo em seguida).
+
+- **2026-10-19** —
+  **Evento encerrado trava pagamento e emissão de certificado também**
+  (pedido explícito do usuário, risco real que ele descreveu: a ata de um
+  evento lista nome+número de cada aluno; se alguém pagar/emitir meses
+  depois de encerrado, pode consumir um número que já pertence à sequência
+  de outro evento criado nesse meio tempo — "efeito cascata" quebrando a
+  ata de todo mundo pra frente). Até agora `encerrado` só travava
+  inscrição nova (`/api/asaas/interesse`) e envio de trabalho — **não**
+  travava pagar uma inscrição já iniciada antes, nem emitir certificado.
+  Dois pontos novos, os dois com bypass só pra staff (geração controlada,
+  ex.: conferir um exemplo em Declarações, não autoatendimento):
+  - `/api/asaas/cobranca` (gera ou reaproveita cobrança Asaas) recusa se
+    `evento.encerrado`.
+  - `/api/certificados` (papel "aluno" E "participante" — os dois que
+    consomem `obterNumeroRegistro`) recusa se `evento.encerrado && !ehStaff`.
+  **UI também** (pedido explícito do usuário, logo em seguida) —
+  `InscricaoEventoModal` ganhou prop `encerrado`: some o botão "Pagar
+  agora" e mostra "Evento encerrado" em vez do formulário, pra não deixar
+  a pessoa clicar e cair num erro. Quem já pagou antes de encerrar
+  continua vendo o estado normal de "Pagamento confirmado" (a trava é só
+  pra quem ainda não tinha pago). Passado nos dois lugares que abrem esse
+  modal: `aluno/page.tsx` ("Meus eventos", onde encerrado realmente fica
+  visível) e `aluno/eventos/page.tsx` (lá a lista já esconde encerrado,
+  então na prática nunca dispara — passado só por consistência).
+  Não mexe nos outros papéis (avaliador/moderador/orientador/monitor) —
+  esses nunca tiveram número de registro, não correm esse risco.
+
+- **2026-10-19** —
+  **Achado real: certificado de participante (evento "simples") nunca
+  teve número de registro** — `DeclaracaoPDF` (o template usado por
+  participante/monitor/avaliador/moderador/orientador) nunca teve um prop
+  `registroNumero` pra começo de conversa; só `CertificadoApresentacaoPDF`
+  (evento completo, papel "aluno") tinha. Por isso quem baixava o
+  certificado de participação da Medicina nunca via o "REGISTRO SOB O
+  N°". Corrigido **só pro papel "participante"** (pedido explícito do
+  usuário — avaliador/moderador/orientador/monitor continuam sem,
+  decisão antiga confirmada no código: "não aparece nos exemplos reais"
+  pra esses papéis). Usa o mesmo contador por evento que já existia
+  (`obterNumeroRegistro`, transação em `contadores/certificados_{eventoId}`),
+  só que nunca tinha sido chamado nesse branch.
+  **Nova feature, mesmo pedido**: "em que número ficou" — `/eventos` →
+  Certificado agora mostra, perto do campo "Número inicial de registro",
+  até onde esse evento já emitiu (lê o mesmo contador, nunca escreve).
+  Serve pra decidir o número inicial do PRÓXIMO evento sem ter que ir
+  atrás na mão. Nova rota de leitura `GET /api/certificados/contador`
+  (admin, ou organização escopada ao próprio evento).
+  **Posição no PDF** (pedido explícito do usuário, depois de ver o
+  exemplo gerado) — não é mais rodapé fixo tipo `CertificadoApresentacaoPDF`;
+  fica alinhado à esquerda, no fluxo normal da página, entre a data e o
+  bloco de assinaturas. Exemplo gerado de verdade pela própria rota (não
+  reimplementado à mão) em `Mateus/exemplos/exemplo-certificado-
+  participante-com-registro.pdf`.
+
+- **2026-10-19** —
+  **Achado urgente real**: o filtro "esconde encerrado" que entrou em
+  Ensalamento há 3 dias (2026-10-16) escondeu também o único jeito de
+  chegar no botão "Liberar certificados" da Semana de Medicina — o
+  usuário precisava DESLIGAR esse botão (erro achado no certificado) e não
+  conseguia mais nem selecionar o evento. Primeira correção (manter
+  "simples" visível mesmo encerrado em Ensalamento) foi **substituída**
+  por pedido explícito do usuário: o botão "Liberar/cancelar
+  certificados" de evento "simples" agora mora em **`/eventos` →
+  Certificado** (novo bloco no topo do modal "Dados do certificado",
+  só quando `tipo === "simples"`) — Eventos é a tela que SEMPRE lista
+  encerrado, então é o lugar certo pra mexer nisso depois que o evento já
+  fechou. Ensalamento voltou a esconder encerrado sem exceção (volta a
+  ser só "trabalho de evento em andamento"); continua sendo o lugar certo
+  pra ver presença/pagamento em tempo real enquanto o evento ainda tá
+  ativo — o botão novo em Eventos não mostra esses números ao vivo, só
+  liga/desliga.
+  **Fora do código**: `certificadosLiberados` da Semana de Medicina
+  (`7IKg3N7COAqunnRx8U06`) já foi desligado direto no Firestore (script
+  descartável, apagado depois) — autoatendimento de certificado pra esse
+  evento está bloqueado agora, staff (Declarações) continua podendo gerar
+  manualmente pra testar depois de corrigir o erro.
+
 - **2026-10-16** *(ainda não commitado — aguardando "pode subir")* —
   **Evento encerrado some do fluxo do dia a dia** (pedido explícito do
   usuário, qualidade de vida pro administrativo). `evento.encerrado` já

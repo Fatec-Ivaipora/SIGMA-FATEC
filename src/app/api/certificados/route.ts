@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import {
@@ -8,6 +7,7 @@ import {
 } from "@/lib/certificadosPdf";
 import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
+import { obterNumeroRegistro } from "@/lib/registroCertificados";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -18,41 +18,6 @@ function slug(texto: string): string {
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
-}
-
-/** Get-or-create: reaproveita o número já atribuído a essa chave se já
- * existir; senão incrementa o contador desse evento numa transação e grava.
- * Contador escopado por evento (2026-09-04, não é mais um contador global
- * único) — cada evento tem seu próprio "livro" de registro, e a organização
- * define em que número ele começa (evento.numeroRegistroInicial, decidido
- * junto com a comissão fora do sistema); os certificados seguintes DESSE
- * evento saem em sequência a partir daí. Ausente = começa em 1. */
-async function obterNumeroRegistro(
-  chave: string,
-  eventoId: string,
-  numeroInicial: number,
-): Promise<number> {
-  const db = getAdminDb();
-  const registroRef = db.doc(`registrosCertificados/${chave}`);
-  const contadorRef = db.doc(`contadores/certificados_${eventoId}`);
-
-  return db.runTransaction(async (tx) => {
-    const registroSnap = await tx.get(registroRef);
-    const existente = registroSnap.data()?.numero as number | undefined;
-    if (existente) return existente;
-
-    const contadorSnap = await tx.get(contadorRef);
-    const numero = (contadorSnap.data()?.proximo as number | undefined) ?? numeroInicial;
-
-    tx.set(contadorRef, { proximo: numero + 1 }, { merge: true });
-    tx.set(registroRef, {
-      numero,
-      livro: "01",
-      criadoEm: FieldValue.serverTimestamp(),
-    });
-
-    return numero;
-  });
 }
 
 // papel não entra mais nessa checagem (2026-09-29) — mesma regra pra
@@ -229,6 +194,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
     }
 
+    // Evento encerrado trava de vez, mesmo pra quem já estava liberado
+    // (2026-10-19, pedido explícito do usuário) — mesma proteção de ata do
+    // branch "participante" abaixo: esse certificado consome um número
+    // novo do contador (obterNumeroRegistro, mais abaixo), e um número
+    // emitido depois de encerrado pode colidir com a sequência de outro
+    // evento criado nesse meio tempo. Staff continua podendo gerar.
+    if (evento.encerrado && !ehStaff) {
+      return NextResponse.json(
+        { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
+        { status: 400 },
+      );
+    }
+
     // Pagamento não bloqueia mais submissão/convites (2026-08-31), mas
     // continua bloqueando o certificado: quem ficou com a inscrição desse
     // evento como "não pago" não recebe, mesmo com o trabalho aceito e os
@@ -263,6 +241,7 @@ export async function GET(request: Request) {
       `${trabalhoId}_aluno`,
       trabalho.eventoId as string,
       (evento.numeroRegistroInicial as number | undefined) ?? 1,
+      trabalho.alunoNome as string,
     );
 
     const nomes = [
@@ -362,6 +341,20 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
+    // Evento encerrado trava de vez, mesmo pra quem já estava liberado
+    // (2026-10-19, pedido explícito do usuário) — proteção pra integridade
+    // da ata: esse certificado consome um número novo do contador
+    // (obterNumeroRegistro, abaixo); se o evento encerrou, o número
+    // seguinte já pode pertencer à ata de outro evento criado depois —
+    // emitir aqui quebraria a sequência de todo mundo pra frente. Staff
+    // (Declarações/preview) continua podendo gerar — é ação controlada,
+    // não autoatendimento de um atrasado qualquer.
+    if (evento.encerrado && !ehStaff) {
+      return NextResponse.json(
+        { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
+        { status: 400 },
+      );
+    }
     const diasConfirmados = Object.keys(inscricao.presencasConfirmadas ?? {}).length;
     // Mínimo configurável (2026-10-08, pedido explícito do usuário — Semana
     // de Medicina exige 4 dos 5 períodos, não só 1) — ver
@@ -410,6 +403,17 @@ export async function GET(request: Request) {
       cargaHorariaTotal,
     );
 
+    // Registro (2026-10-19, pedido explícito do usuário — achado real:
+    // participante usa esse certificado pra comprovar hora complementar, e
+    // o número não aparecia. Avaliador/moderador/orientador/monitor
+    // continuam sem, ver comentário no branch deles mais abaixo).
+    const numeroParticipante = await obterNumeroRegistro(
+      `${eventoId}_participante_${uidAlvo}`,
+      eventoId,
+      (evento.numeroRegistroInicial as number | undefined) ?? 1,
+      inscricao.nome as string,
+    );
+
     const hoje = new Date().toISOString().slice(0, 10);
     const buffer = await renderToBuffer(
       DeclaracaoPDF({
@@ -422,6 +426,7 @@ export async function GET(request: Request) {
         assinantes: resolverAssinantes(evento),
         dataAssinatura: hoje,
         logoCabecalhoId: evento.logoCertificadoId as string | undefined,
+        registroNumero: numeroParticipante,
       }),
     );
 
