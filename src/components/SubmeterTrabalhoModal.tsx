@@ -572,6 +572,32 @@ export function SubmeterTrabalhoModal({
               </a>
             </div>
           )}
+          {modalidadeApresentacao === "oral" && (
+            <div className="flex flex-col items-start gap-3 rounded-xl bg-fatec-orange-500 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-white/20 text-white">
+                  <Mic className="h-5 w-5" strokeWidth={1.75} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Não esqueça o modelo da apresentação!
+                  </p>
+                  <p className="text-xs text-white/85">
+                    Baixe agora e use como base pros seus slides.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="/materiais/modelo-apresentacao-mac.pdf"
+                target="_blank"
+                rel="noreferrer"
+                className="flex flex-none items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-fatec-orange-600 transition-colors hover:bg-fatec-orange-50"
+              >
+                <Download className="h-4 w-4" strokeWidth={2} />
+                Baixar modelo
+              </a>
+            </div>
+          )}
         </div>
         )}
         </>

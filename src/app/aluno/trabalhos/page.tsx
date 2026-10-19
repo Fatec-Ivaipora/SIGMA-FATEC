@@ -146,6 +146,17 @@ export default function AlunoTrabalhosPage() {
                           Modelo do banner
                         </a>
                       )}
+                      {t.modalidadeApresentacao === "oral" && (
+                        <a
+                          href="/materiais/modelo-apresentacao-mac.pdf"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                        >
+                          <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Modelo da apresentação
+                        </a>
+                      )}
                       <StatusBadge status={t.status} />
                       {podeEditar ? (
                         <button
