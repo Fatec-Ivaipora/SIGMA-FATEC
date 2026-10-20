@@ -14,7 +14,7 @@ import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
  * (2026-09-19) de `aluno/eventos/page.tsx` pra também poder aparecer em
  * `/aluno` — antes só existia lá, o aluno só via isso depois de um clique
  * extra. Mantém a mesma lógica de estado (inscrição, "Inscreva-se" vs
- * "Inscrever trabalho" vs "Pagamento pendente"), só que auto-contida aqui em
+ * "Submeter trabalho" vs "Pagamento pendente"), só que auto-contida aqui em
  * vez de duplicada em cada página que precisa mostrar o destaque. */
 export function DestaqueEventoBanner({
   destaque,
@@ -32,7 +32,7 @@ export function DestaqueEventoBanner({
   const temTaxa = !!destaque.valorInscricao;
   // Busca sempre (não só quando tem taxa) — é a existência desse registro
   // (mesmo só "interesse") que decide se mostra "Inscreva-se" ou já pula pra
-  // "Inscrever trabalho". inscricao undefined também bate `!== "pago"`, por
+  // "Submeter trabalho". inscricao undefined também bate `!== "pago"`, por
   // isso o cálculo de pendente já filtra por `!!inscricao` também.
   const { inscricao } = useMinhaInscricao(destaque.id, user?.uid);
   // Evento multi-dia (2026-09-30) — pelo menos 1 dia confirmado já conta
@@ -238,7 +238,7 @@ export function DestaqueEventoBanner({
                 onClick={() => onAbrirTrabalho(destaque.id)}
                 className="group/btn inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
               >
-                Inscrever trabalho
+                Submeter trabalho
                 <ArrowRight
                   className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
                   strokeWidth={2}

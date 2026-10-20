@@ -36,7 +36,7 @@ function CardEvento({
   const temTaxa = !!evento.valorInscricao;
   // Chamado pra TODO evento, não só os com taxa — é a existência desse
   // registro (mesmo que só "interesse") que decide se o card já mostra o
-  // fluxo (inscrever trabalho) ou ainda só o botão Inscreva-se. Pagamento
+  // fluxo (submeter trabalho) ou ainda só o botão Inscreva-se. Pagamento
   // não bloqueia mais nada aqui (2026-08-31, pedido da diretoria) — vira só
   // um lembrete separado quando pendente, ver abaixo.
   const { inscricao, carregando } = useMinhaInscricao(evento.id, user?.uid);
@@ -235,7 +235,7 @@ function CardEvento({
                 onClick={() => onAbrirTrabalho(evento.id)}
                 className="w-fit rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
               >
-                Inscrever trabalho
+                Submeter trabalho
               </button>
             ) : (
               // Prazo de submissão encerrado (2026-09-09, pedido do
