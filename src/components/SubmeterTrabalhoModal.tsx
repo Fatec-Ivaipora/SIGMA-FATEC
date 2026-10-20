@@ -420,7 +420,7 @@ export function SubmeterTrabalhoModal({
     <Modal
       open={open}
       onClose={fechar}
-      title={`${somenteLeitura ? "Ver trabalho" : modoEdicao ? "Editar trabalho" : "Inscrever trabalho"} — ${eventoNome}`}
+      title={`${somenteLeitura ? "Ver trabalho" : modoEdicao ? "Editar trabalho" : "Submeter trabalho"} — ${eventoNome}`}
       size="lg"
     >
       <div className="flex flex-col gap-5">

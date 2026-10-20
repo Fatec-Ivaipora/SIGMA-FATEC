@@ -169,17 +169,22 @@ function LinhaCertificadoMonitor({
 function LinhaCertificadoParticipacao({
   inscricao,
   evento,
+  ehMonitor,
   baixando,
   erro,
   onBaixar,
 }: {
   inscricao: InscricaoEvento;
   evento: Evento;
+  ehMonitor: boolean;
   baixando: boolean;
   erro: string | undefined;
   onBaixar: () => void;
 }) {
-  const pagamentoPendente = !!evento.valorInscricao && inscricao.status !== "pago";
+  // Monitor do evento é isento da taxa (2026-10-20) — mesma regra de
+  // /api/certificados (papel "participante").
+  const pagamentoPendente =
+    !!evento.valorInscricao && inscricao.status !== "pago" && !ehMonitor;
   // Evento multi-dia (2026-09-30) — qualquer 1 dia já basta aqui (horas
   // saem proporcionais na hora de gerar o PDF, ver /api/certificados). Ver
   // diasDoEvento em src/lib/certificadoDias.ts.
@@ -370,6 +375,7 @@ export default function AlunoCertificacoesPage() {
                   key={inscricao.id}
                   inscricao={inscricao}
                   evento={evento}
+                  ehMonitor={monitorias.some((m) => m.eventoId === evento.id)}
                   baixando={baixandoId === `participante_${evento.id}`}
                   erro={
                     erroId?.id === `participante_${evento.id}` ? erroId.msg : undefined

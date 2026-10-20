@@ -107,9 +107,19 @@ export async function POST(request: Request) {
         .orderBy("criadoEm", "asc")
         .get();
 
+      // Monitor é isento da taxa (2026-10-20) — numera junto com todo mundo
+      // pra entrar na ata, mesma regra de /api/certificados (participante).
+      const monitoresSnap = evento.valorInscricao
+        ? await db.collection("monitoresEvento").where("eventoId", "==", eventoId).get()
+        : null;
+      const uidsMonitores = new Set(monitoresSnap?.docs.map((d) => d.data().uid as string));
+
       for (const doc of inscricoesSnap.docs) {
         const inscricao = doc.data();
-        const pagamentoOk = !evento.valorInscricao || inscricao.status === "pago";
+        const pagamentoOk =
+          !evento.valorInscricao ||
+          inscricao.status === "pago" ||
+          uidsMonitores.has(inscricao.uid as string);
         const diasConfirmados = Object.keys(inscricao.presencasConfirmadas ?? {}).length;
         const presencaOk = diasConfirmados >= minimoExigido;
         if (!pagamentoOk || !presencaOk) {

@@ -92,7 +92,7 @@ export default function AlunoTrabalhosPage() {
                 <FileStack className="h-6 w-6" strokeWidth={1.75} />
               </span>
               <p className="font-medium text-fatec-navy-900">
-                Nenhum trabalho inscrito ainda
+                Nenhum trabalho submetido ainda
               </p>
             </div>
           ) : (
