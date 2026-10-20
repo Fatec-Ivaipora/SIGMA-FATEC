@@ -477,6 +477,37 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-20** — **Achado real, print do usuário** (aluna Ana Clara, II
+  Semana Acadêmica de Medicina, paga + 5/5 presenças): em "Meus eventos"
+  (`/aluno`), evento encerrado mostrava o erro vermelho "Esse evento está
+  encerrado — não é mais possível emitir certificado" **e** o botão
+  laranja "Baixar certificado" continuando ativo do lado. Primeira
+  tentativa de correção (só esconder o botão quando `evento.encerrado`)
+  **estava errada** — o usuário corrigiu na hora: "com o evento encerrado
+  ainda tem que dar pra baixar os certificados que foram liberados". Causa
+  raiz de verdade: o bloqueio "evento encerrado" (criado em 2026-10-19 pra
+  proteger a Ata de número novo colidindo com a sequência de outro evento)
+  travava TODO mundo depois de encerrado, mesmo quem já tinha número
+  atribuído desde a numeração em lote do "Liberar certificados" — mas
+  reimprimir um certificado JÁ numerado não consome número nenhum, não tem
+  esse risco. Conferido com os dados reais da Ana Clara:
+  `registrosCertificados` já tinha o número 21487 dela, atribuído na hora
+  do lote.
+  **Corrigido de verdade**: nova função `numeroRegistroExistente(chave)`
+  em `src/lib/registroCertificados.ts` (só consulta, não cria/não toca no
+  contador); o bloqueio de `evento.encerrado` em `/api/certificados`
+  (branches "aluno" e "participante") agora só dispara quando essa consulta
+  devolve `null` — ou seja, só barra quem geraria um número NOVO depois de
+  encerrado, nunca quem já tinha. Botão "Baixar certificado" em
+  `/aluno/page.tsx` voltou a aparecer sempre (não checa mais
+  `evento.encerrado`) — a API decide corretamente em cada caso, o botão só
+  reflete o resultado. Conferido que `/aluno/eventos` nunca teve esse
+  problema — aquela lista já filtra evento encerrado fora da lista por
+  completo.
+  **Fora desse push**: puxado o PR já mesclado no `main` por outra pessoa
+  (monitor isento da taxa recebe certificado de participação + rótulo
+  "Submeter trabalho") — sem conflito com nada daqui.
+
 - **2026-10-19** — **Lint corrigido antes de subir**: `eslint-config-next`
   trouxe a regra `react-hooks/set-state-in-effect` (nova/mais estrita) e
   ela pegou os 2 efeitos do modal de certificado/ata em `/eventos`

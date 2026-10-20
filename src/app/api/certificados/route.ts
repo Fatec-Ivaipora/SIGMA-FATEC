@@ -7,7 +7,7 @@ import {
 } from "@/lib/certificadosPdf";
 import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
-import { obterNumeroRegistro } from "@/lib/registroCertificados";
+import { obterNumeroRegistro, numeroRegistroExistente } from "@/lib/registroCertificados";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -194,17 +194,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ erro: "Evento não encontrado." }, { status: 404 });
     }
 
-    // Evento encerrado trava de vez, mesmo pra quem já estava liberado
-    // (2026-10-19, pedido explícito do usuário) — mesma proteção de ata do
-    // branch "participante" abaixo: esse certificado consome um número
-    // novo do contador (obterNumeroRegistro, mais abaixo), e um número
-    // emitido depois de encerrado pode colidir com a sequência de outro
-    // evento criado nesse meio tempo. Staff continua podendo gerar.
+    // Evento encerrado só trava quem AINDA NÃO tinha número (2026-10-20,
+    // corrigido — achado real: Ana Clara já tinha pago e confirmado os 5
+    // dias antes de encerrar, mas o botão de baixar sumia/dava erro mesmo
+    // assim). A proteção de ata (não deixar emitir número NOVO depois de
+    // encerrado, que poderia colidir com a sequência de outro evento
+    // criado nesse meio tempo) só precisa valer pra quem geraria um número
+    // novo — reimprimir um certificado já numerado (numeração em lote na
+    // hora de "Liberar", ver /api/certificados/liberar) não tem esse
+    // risco. Staff continua podendo gerar de qualquer forma.
     if (evento.encerrado && !ehStaff) {
-      return NextResponse.json(
-        { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
-        { status: 400 },
-      );
+      const jaTinhaNumero = await numeroRegistroExistente(`${trabalhoId}_aluno`);
+      if (jaTinhaNumero === null) {
+        return NextResponse.json(
+          { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
+          { status: 400 },
+        );
+      }
     }
 
     // Pagamento não bloqueia mais submissão/convites (2026-08-31), mas
@@ -353,19 +359,22 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
-    // Evento encerrado trava de vez, mesmo pra quem já estava liberado
-    // (2026-10-19, pedido explícito do usuário) — proteção pra integridade
-    // da ata: esse certificado consome um número novo do contador
-    // (obterNumeroRegistro, abaixo); se o evento encerrou, o número
-    // seguinte já pode pertencer à ata de outro evento criado depois —
-    // emitir aqui quebraria a sequência de todo mundo pra frente. Staff
-    // (Declarações/preview) continua podendo gerar — é ação controlada,
-    // não autoatendimento de um atrasado qualquer.
+    // Evento encerrado só trava quem AINDA NÃO tinha número (2026-10-20,
+    // corrigido — mesmo achado real do branch "aluno" acima: numeração em
+    // lote na hora de "Liberar" já cobre todo mundo elegível naquele
+    // momento, reimprimir depois de encerrado não consome número novo,
+    // não tem risco de colidir com a sequência de outro evento. Staff
+    // (Declarações/preview) continua podendo gerar de qualquer forma.
     if (evento.encerrado && !ehStaff) {
-      return NextResponse.json(
-        { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
-        { status: 400 },
+      const jaTinhaNumero = await numeroRegistroExistente(
+        `${eventoId}_participante_${uidAlvo}`,
       );
+      if (jaTinhaNumero === null) {
+        return NextResponse.json(
+          { erro: "Esse evento está encerrado — não é mais possível emitir certificado." },
+          { status: 400 },
+        );
+      }
     }
     const diasConfirmados = Object.keys(inscricao.presencasConfirmadas ?? {}).length;
     // Mínimo configurável (2026-10-08, pedido explícito do usuário — Semana

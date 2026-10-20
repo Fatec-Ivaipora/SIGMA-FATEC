@@ -47,3 +47,17 @@ export async function obterNumeroRegistro(
     return numero;
   });
 }
+
+/** Só consulta se já existe, sem criar nem tocar no contador (2026-10-20,
+ * achado real pós-deploy: "evento encerrado" não pode bloquear quem JÁ
+ * tinha número atribuído antes de encerrar — numeração em lote na hora de
+ * "Liberar certificados" já cobre todo mundo elegível naquele momento, e
+ * reimprimir o PDF depois não consome número novo nenhum, não tem risco
+ * de colidir com a sequência de outro evento. O bloqueio de
+ * "evento.encerrado" em ../api/certificados/route.ts só deve valer pra
+ * quem geraria um número NOVO — ou seja, quando essa função devolve
+ * `null`. */
+export async function numeroRegistroExistente(chave: string): Promise<number | null> {
+  const snap = await getAdminDb().doc(`registrosCertificados/${chave}`).get();
+  return (snap.data()?.numero as number | undefined) ?? null;
+}

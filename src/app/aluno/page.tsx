@@ -422,7 +422,14 @@ export default function AlunoPainelPage() {
                         )}
                         {/* Mesma regra de /api/certificados (2026-09-30):
                             liberado + pagamento em dia + PELO MENOS 1 dia de
-                            presença confirmado, os três juntos. */}
+                            presença confirmado, os três juntos. Botão
+                            aparece mesmo com evento encerrado (2026-10-20,
+                            corrigido — achado real: quem já tinha número
+                            atribuído antes de encerrar continua podendo
+                            baixar; só quem geraria um número NOVO é que a
+                            API barra, ver comentário em
+                            /api/certificados/route.ts) — a API decide,
+                            o botão só reflete o resultado. */}
                         {evento.tipo === "simples" &&
                           !pagamentoPendente &&
                           evento.certificadosLiberados &&
