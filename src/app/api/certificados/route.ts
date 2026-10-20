@@ -314,8 +314,20 @@ export async function GET(request: Request) {
       );
     }
     // Só exige pagamento se o evento tiver valor de inscrição — mesma regra
-    // já usada pro certificado de aluno (linha ~220 acima).
-    if (evento.valorInscricao && inscricao.status !== "pago" && !ehStaff) {
+    // já usada pro certificado de aluno (linha ~220 acima). Monitor do
+    // evento é isento (2026-10-20, pedido explícito do usuário — Semana
+    // Acadêmica de Medicina: monitor também é aluno e participou, recebe a
+    // declaração de monitor E o certificado de participação, sem pagar).
+    // Presença e liberação continuam exigidas igual pra todo mundo.
+    const ehMonitorDoEvento =
+      !!evento.valorInscricao &&
+      (await db.doc(`monitoresEvento/${eventoId}::${uidAlvo}`).get()).exists;
+    if (
+      evento.valorInscricao &&
+      inscricao.status !== "pago" &&
+      !ehMonitorDoEvento &&
+      !ehStaff
+    ) {
       return NextResponse.json(
         {
           erro:

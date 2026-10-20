@@ -127,8 +127,11 @@ function EmitirCertificado({
     // pagou; sem taxa, todo mundo que demonstrou interesse); o check de
     // presença é quem decide se o botão fica ativo ou não.
     if (evento.tipo === "simples") {
+      // Monitor é isento da taxa (2026-10-20) — também recebe o certificado
+      // de participação, mesma regra de /api/certificados.
+      const uidsMonitores = new Set(monitores.map((m) => m.uid));
       for (const i of inscritos) {
-        const pagou = temTaxa ? i.status === "pago" : true;
+        const pagou = temTaxa ? i.status === "pago" || uidsMonitores.has(i.uid) : true;
         if (!pagou) continue;
         lista.push({
           chaveLista: `participante_${i.uid}`,
