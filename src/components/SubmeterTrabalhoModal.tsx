@@ -294,7 +294,11 @@ export function SubmeterTrabalhoModal({
   // CorrigirTrabalhoModal (substituído por este componente em 2026-09-04).
   comentarioRevisao?: string | null;
   onClose: () => void;
-  onSubmit: (dados: DadosSubmissao) => void;
+  // Pode devolver uma mensagem de erro (2026-10-21, checagem de trabalho
+  // duplicado) — aí o modal mostra a mensagem e NÃO limpa/fecha, pro aluno
+  // não perder o que digitou. void/undefined = deu certo, comportamento de
+  // sempre.
+  onSubmit: (dados: DadosSubmissao) => void | Promise<string | void>;
 }) {
   const areaInicial = separarAreaInicial(valoresIniciais?.areaTematica, areasComplexas);
 
@@ -318,6 +322,8 @@ export function SubmeterTrabalhoModal({
   const [resumo, setResumo] = useState(valoresIniciais?.resumo ?? "");
   const [palavrasChave, setPalavrasChave] = useState(valoresIniciais?.palavrasChave ?? "");
   const [buscaColega, setBuscaColega] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [participantes, setParticipantes] = useState<AlunoParaBusca[]>(
     (valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })),
   );
@@ -393,12 +399,15 @@ export function SubmeterTrabalhoModal({
     setResumo(valoresIniciais?.resumo ?? "");
     setPalavrasChave(valoresIniciais?.palavrasChave ?? "");
     setBuscaColega("");
+    setErroEnvio(null);
     setParticipantes((valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })));
   }
 
-  function enviar() {
-    if (!valido) return;
-    onSubmit({
+  async function enviar() {
+    if (!valido || enviando) return;
+    setErroEnvio(null);
+    setEnviando(true);
+    const erro = await onSubmit({
       titulo: titulo.trim(),
       areaTematica: areaTematicaFinal,
       ...(modalidadeApresentacao ? { modalidadeApresentacao } : {}),
@@ -408,6 +417,11 @@ export function SubmeterTrabalhoModal({
       participantesUids: participantes.map((p) => p.uid),
       participantesNomes: participantes.map((p) => p.nome),
     });
+    setEnviando(false);
+    if (erro) {
+      setErroEnvio(erro);
+      return;
+    }
     limpar();
   }
 
@@ -756,6 +770,10 @@ export function SubmeterTrabalhoModal({
         </>
         )}
 
+        {erroEnvio && (
+          <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{erroEnvio}</p>
+        )}
+
         <div className="mt-1 flex items-center justify-between border-t border-fatec-line pt-5">
           {fase > 1 ? (
             <button
@@ -788,7 +806,7 @@ export function SubmeterTrabalhoModal({
             <button
               type="button"
               onClick={enviar}
-              disabled={!valido}
+              disabled={!valido || enviando}
               className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
             >
               {modoEdicao ? "Salvar alterações" : "Enviar trabalho"}

@@ -20,6 +20,7 @@ import {
   type MonitorEvento,
 } from "@/lib/data/monitores";
 import { baixarCertificado } from "@/lib/baixarCertificado";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 /** Estado do botão de download isolado num componente próprio (2026-08-31)
  * só pra poder chamar useMinhaInscricao por linha — precisa saber, por
@@ -51,7 +52,7 @@ function LinhaCertificado({
           <Award className="h-5 w-5" strokeWidth={1.75} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-fatec-navy-900">{trabalho.titulo}</p>
+          <p className="truncate font-medium text-fatec-navy-900">{tituloExibicao(trabalho.titulo)}</p>
           <p className="text-sm text-fatec-muted">{evento?.nome ?? trabalho.eventoId}</p>
         </div>
         {trabalho.certificadoLiberado && !pagamentoPendente ? (

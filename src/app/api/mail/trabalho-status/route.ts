@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 type Tipo = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito";
 
@@ -16,24 +17,24 @@ const TEXTO_ATIVIDADE: Record<
   (trabalho: FirebaseFirestore.DocumentData, eventoNome: string) => { texto: string; negritos: string[] }
 > = {
   submetido: (t, eventoNome) => ({
-    texto: `Você enviou o trabalho "${t.titulo}" para o evento ${eventoNome}.`,
-    negritos: [`"${t.titulo}"`, eventoNome],
+    texto: `Você enviou o trabalho "${tituloExibicao(t.titulo)}" para o evento ${eventoNome}.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`, eventoNome],
   }),
   revisao: (t) => ({
-    texto: `O avaliador pediu ajustes no seu trabalho "${t.titulo}".`,
-    negritos: [`"${t.titulo}"`],
+    texto: `O avaliador pediu ajustes no seu trabalho "${tituloExibicao(t.titulo)}".`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
   avaliado: (t) => ({
-    texto: `Seu trabalho "${t.titulo}" foi avaliado.`,
-    negritos: [`"${t.titulo}"`],
+    texto: `Seu trabalho "${tituloExibicao(t.titulo)}" foi avaliado.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
   aceito: (t) => ({
-    texto: `Seu trabalho "${t.titulo}" foi aceito no resultado final.`,
-    negritos: [`"${t.titulo}"`],
+    texto: `Seu trabalho "${tituloExibicao(t.titulo)}" foi aceito no resultado final.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
   nao_aceito: (t) => ({
-    texto: `O resultado final do seu trabalho "${t.titulo}" já está disponível.`,
-    negritos: [`"${t.titulo}"`],
+    texto: `O resultado final do seu trabalho "${tituloExibicao(t.titulo)}" já está disponível.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
 };
 
@@ -41,11 +42,11 @@ const TEXTO_ATIVIDADE: Record<
 // CONTEUDO abaixo pra não precisar montar um e-mail inteiro só pra pegar o
 // assunto (ver loop de destinatários no POST).
 const ASSUNTO: Record<Tipo, (trabalho: FirebaseFirestore.DocumentData) => string> = {
-  submetido: (t) => `Trabalho enviado — ${t.titulo}`,
-  revisao: (t) => `Revisão solicitada — ${t.titulo}`,
-  avaliado: (t) => `Trabalho avaliado — ${t.titulo}`,
-  aceito: (t) => `Resultado final — ${t.titulo}`,
-  nao_aceito: (t) => `Resultado final — ${t.titulo}`,
+  submetido: (t) => `Trabalho enviado — ${tituloExibicao(t.titulo)}`,
+  revisao: (t) => `Revisão solicitada — ${tituloExibicao(t.titulo)}`,
+  avaliado: (t) => `Trabalho avaliado — ${tituloExibicao(t.titulo)}`,
+  aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
+  nao_aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
 };
 
 const CONTEUDO: Record<
@@ -54,14 +55,14 @@ const CONTEUDO: Record<
 > = {
   submetido: (t, nome) =>
     modeloEmail(
-      `<p>Recebemos o seu trabalho <strong>"${t.titulo}"</strong>. Ele já está na fila de avaliação.</p>
+      `<p>Recebemos o seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong>. Ele já está na fila de avaliação.</p>
        <p>Você pode acompanhar o andamento a qualquer momento no SIGMA.</p>`,
       { texto: "Acompanhar trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),
   revisao: (t, nome) =>
     modeloEmail(
-      `<p>O avaliador pediu ajustes no seu trabalho <strong>"${t.titulo}"</strong>.</p>
+      `<p>O avaliador pediu ajustes no seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong>.</p>
        ${t.comentarioRevisao ? `<p style="background:#FFF7ED;border-radius:8px;padding:12px 16px;margin:12px 0;"><strong>Comentário:</strong> ${t.comentarioRevisao}</p>` : ""}
        <p>Entre no SIGMA pra corrigir e reenviar.</p>`,
       { texto: "Corrigir trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
@@ -69,20 +70,20 @@ const CONTEUDO: Record<
     ),
   avaliado: (t, nome) =>
     modeloEmail(
-      `<p>Seu trabalho <strong>"${t.titulo}"</strong> já foi avaliado.</p>
+      `<p>Seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> já foi avaliado.</p>
        <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
       { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),
   aceito: (t, nome) =>
     modeloEmail(
-      `<p>Boas notícias! Seu trabalho <strong>"${t.titulo}"</strong> foi <strong>aceito</strong>.</p>`,
+      `<p>Boas notícias! Seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> foi <strong>aceito</strong>.</p>`,
       { texto: "Ver detalhes", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),
   nao_aceito: (t, nome) =>
     modeloEmail(
-      `<p>O resultado final do seu trabalho <strong>"${t.titulo}"</strong> já está disponível no SIGMA.</p>`,
+      `<p>O resultado final do seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> já está disponível no SIGMA.</p>`,
       { texto: "Ver detalhes", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),

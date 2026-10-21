@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 /** Avisa TODOS os autores (dono + colegas, inclusive quem acabou de ser
  * removido na própria edição) quando um admin corrige um trabalho por fora
@@ -61,13 +62,13 @@ export async function POST(request: Request) {
       const pessoa = snap.data();
       if (!pessoa) return;
 
-      const texto = `${nomeAdmin}, da coordenação, fez uma alteração no seu trabalho "${trabalho.titulo}".`;
+      const texto = `${nomeAdmin}, da coordenação, fez uma alteração no seu trabalho "${tituloExibicao(trabalho.titulo)}".`;
       try {
         await registrarAtividade({
           uid,
           tipo: "trabalho_alterado_admin",
           texto,
-          negritos: [nomeAdmin, `"${trabalho.titulo}"`],
+          negritos: [nomeAdmin, `"${tituloExibicao(trabalho.titulo)}"`],
           trabalhoId,
           eventoId: trabalho.eventoId,
         });
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
           to: pessoa.email,
           subject: `Alteração administrativa no seu trabalho`,
           html: modeloEmail(
-            `<p><strong>${nomeAdmin}</strong>, da coordenação, fez uma alteração no seu trabalho <strong>"${trabalho.titulo}"</strong>.</p>
+            `<p><strong>${nomeAdmin}</strong>, da coordenação, fez uma alteração no seu trabalho <strong>"${tituloExibicao(trabalho.titulo)}"</strong>.</p>
              <p>Se você não esperava essa mudança, entre em contato com a coordenação pra entender o motivo.</p>`,
             { texto: "Ver trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
             pessoa.nome,

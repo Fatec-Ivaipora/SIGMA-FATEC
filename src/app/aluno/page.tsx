@@ -40,6 +40,8 @@ import {
   notificarConviteColega,
   notificarStatusTrabalho,
 } from "@/lib/notificarEmail";
+import { checarTrabalhoDuplicado } from "@/lib/checarDuplicado";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Ícone/cor/fundo por tipo de atividade do feed (2026-09-09) — mesma
 // paleta de cores já usada no StatusBadge (laranja=revisão, verde=avaliado/
@@ -195,6 +197,14 @@ export default function AlunoPainelPage() {
   // daqui. Mesma lógica de src/app/aluno/eventos/page.tsx.
   async function enviarTrabalho(dados: DadosSubmissao) {
     if (!modalEventoId || !user || !perfil) return;
+    const duplicado = await checarTrabalhoDuplicado(user, {
+      eventoId: modalEventoId,
+      titulo: dados.titulo,
+      resumo: dados.resumo,
+      nomeOrientador: dados.nomeOrientador,
+      participantesUids: dados.participantesUids,
+    });
+    if (duplicado) return duplicado;
     const ref = await addDoc(collection(db, "trabalhos"), {
       ...dados,
       eventoId: modalEventoId,
@@ -253,7 +263,7 @@ export default function AlunoPainelPage() {
                     <div className="min-w-0">
                       <p className="font-medium text-fatec-navy-900">
                         {t.alunoNome} te adicionou como autor em{" "}
-                        <span className="font-semibold">{t.titulo}</span>
+                        <span className="font-semibold">{tituloExibicao(t.titulo)}</span>
                       </p>
                       <p className="mt-0.5 text-sm text-fatec-muted">
                         {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
@@ -354,7 +364,7 @@ export default function AlunoPainelPage() {
                         <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
                         {evento.tipo !== "simples" && (
                           <p className="mt-0.5 text-sm text-fatec-muted">
-                            {trabalho ? trabalho.titulo : "Nenhum trabalho enviado ainda"}
+                            {trabalho ? tituloExibicao(trabalho.titulo) : "Nenhum trabalho enviado ainda"}
                           </p>
                         )}
                         {erroCertificado?.eventoId === evento.id && (

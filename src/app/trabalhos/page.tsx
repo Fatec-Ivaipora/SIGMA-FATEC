@@ -37,6 +37,7 @@ import {
   notificarConviteColega,
   notificarAlteracaoAdmin,
 } from "@/lib/notificarEmail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 type Etapa =
   | "submissao"
@@ -1383,7 +1384,7 @@ export default function TrabalhosAdminPage() {
                           className="text-left"
                         >
                           <p className="line-clamp-2 font-medium leading-snug text-fatec-navy-900 hover:text-fatec-sky-600 hover:underline">
-                            {t.titulo}
+                            {tituloExibicao(t.titulo)}
                           </p>
                         </button>
                         <p className="mt-0.5 truncate text-xs text-fatec-muted">

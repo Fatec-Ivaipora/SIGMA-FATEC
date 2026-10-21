@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import type { Trabalho } from "@/lib/data/trabalhos";
 import type { Evento } from "@/lib/data/eventos";
 import { renderResumoFormatado } from "@/lib/textoFormatado";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 const LABEL_MODALIDADE: Record<string, { texto: string; icone: typeof Mic }> = {
   oral: { texto: "Apresentação Oral", icone: Mic },
@@ -48,7 +49,7 @@ export function DetalheTrabalhoModal({
       <div className="flex flex-col gap-6">
         <div>
           <h2 className="text-lg font-bold leading-snug text-fatec-navy-900">
-            {trabalho.titulo}
+            {tituloExibicao(trabalho.titulo)}
           </h2>
           <p className="mt-1 text-sm text-fatec-muted">
             {evento?.nome ?? trabalho.eventoId}

@@ -8,6 +8,7 @@ import {
 import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 import { obterNumeroRegistro, numeroRegistroExistente } from "@/lib/registroCertificados";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -262,7 +263,7 @@ export async function GET(request: Request) {
         nomes,
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
-        tituloTrabalho: trabalho.titulo as string,
+        tituloTrabalho: tituloExibicao(trabalho.titulo as string),
         registroNumero: numero,
         assinantes: resolverAssinantes(evento),
         premiado,

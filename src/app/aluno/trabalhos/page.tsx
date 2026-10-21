@@ -12,6 +12,7 @@ import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data
 import { useTrabalhos, atualizarTrabalho, type Trabalho } from "@/lib/data/trabalhos";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { notificarConviteColega } from "@/lib/notificarEmail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Prazo de edição (2026-09-04): 23:55 do dia de fim das inscrições, gravado
 // em eventos/{id}.prazoEdicaoTrabalho na criação do evento (ver
@@ -109,7 +110,7 @@ export default function AlunoTrabalhosPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-medium leading-snug text-fatec-navy-900">
-                          {t.titulo}
+                          {tituloExibicao(t.titulo)}
                         </p>
                         {!souDono &&
                           (t.convitesPendentes?.includes(user?.uid ?? "") ? (

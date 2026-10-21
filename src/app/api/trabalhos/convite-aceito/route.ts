@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 /** Avisa o DONO do trabalho (feed da tela inicial + e-mail, 2026-09-10 — só
  * o feed existia antes) quando um colega aceita o convite de autor. Chamado
@@ -46,8 +47,8 @@ export async function POST(request: Request) {
     await registrarAtividade({
       uid: trabalho.alunoUid,
       tipo: "convite_aceito",
-      texto: `${chamadorNome} aceitou ser autor no seu trabalho "${trabalho.titulo}".`,
-      negritos: [chamadorNome, `"${trabalho.titulo}"`],
+      texto: `${chamadorNome} aceitou ser autor no seu trabalho "${tituloExibicao(trabalho.titulo)}".`,
+      negritos: [chamadorNome, `"${tituloExibicao(trabalho.titulo)}"`],
       trabalhoId,
       eventoId: trabalho.eventoId,
     });
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
         to: dono.email,
         subject: `${chamadorNome} aceitou ser autor no seu trabalho`,
         html: modeloEmail(
-          `<p><strong>${chamadorNome}</strong> aceitou o convite e agora é autor(a) do trabalho <strong>"${trabalho.titulo}"</strong> junto com você.</p>`,
+          `<p><strong>${chamadorNome}</strong> aceitou o convite e agora é autor(a) do trabalho <strong>"${tituloExibicao(trabalho.titulo)}"</strong> junto com você.</p>`,
           { texto: "Ver trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
           dono.nome,
         ),
