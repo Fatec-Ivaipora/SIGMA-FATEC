@@ -809,3 +809,78 @@ export function AtaRegistroPDF({
     </Document>
   );
 }
+
+/** Lista de presença por período (2026-10-21, pedido explícito do usuário —
+ * "colocar a lista de presença por período, disponível pra baixar"). Mesmo
+ * cabeçalho/rodapé/tabela da Ata acima, pra parecer documento da mesma
+ * família. Uma lista por período: quem confirmou presença NAQUELE período
+ * (QR ou manual), com o horário da confirmação. `presentes` já vem
+ * ordenado por nome — ver GET /api/inscricoes/lista-presenca/pdf. */
+export function ListaPresencaPDF({
+  eventoNome,
+  periodoRotulo,
+  dataRealizacao,
+  dataRealizacaoFim,
+  presentes,
+  totalInscritos,
+}: {
+  eventoNome: string;
+  periodoRotulo: string;
+  dataRealizacao?: string;
+  dataRealizacaoFim?: string;
+  presentes: { nome: string; curso: string; horario: string }[];
+  totalInscritos: number;
+}) {
+  return (
+    <Document>
+      <Page size="A4" style={estiloAta.page}>
+        <View style={estiloAta.cabecalho}>
+          <Image src={LOGO_PADRAO} style={estiloAta.logoCabecalho} />
+          <Text style={estiloAta.textoCredenciamento}>
+            Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+            UNESVI{"\n"}
+            Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+            {"\n"}
+            Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+          </Text>
+        </View>
+
+        <Text style={estiloAta.titulo}>Lista de Presença — {periodoRotulo}</Text>
+        <Text style={estiloAta.evento}>Evento: {eventoNome.toUpperCase()}</Text>
+        {dataRealizacao && (
+          <Text style={estiloAta.evento}>
+            {formatarPeriodoRealizacao(dataRealizacao, dataRealizacaoFim).replace(/^r/, "R")}
+          </Text>
+        )}
+        <Text style={estiloAta.participantes}>
+          {presentes.length} presente{presentes.length === 1 ? "" : "s"} de {totalInscritos} inscrito
+          {totalInscritos === 1 ? "" : "s"}
+        </Text>
+
+        <View style={estiloAta.tabela}>
+          {/* Mesmo esquema da Ata: cabeçalho repete em toda página (fixed) e
+              linha nunca é cortada no meio (wrap={false}). */}
+          <View style={estiloAta.linhaCabecalho} fixed>
+            <Text style={[estiloAta.celulaRegistroCabecalho, { width: 36 }]}>Nº</Text>
+            <Text style={estiloAta.celulaNomeCabecalho}>NOME</Text>
+            <Text style={[estiloAta.celulaRegistroCabecalho, { width: 120 }]}>CURSO</Text>
+            <Text style={[estiloAta.celulaRegistroCabecalho, { width: 80 }]}>CHECK-IN</Text>
+          </View>
+          {presentes.map((p, i) => (
+            <View key={`${i}-${p.nome}`} style={estiloAta.linha} wrap={false}>
+              <Text style={[estiloAta.celulaRegistro, { width: 36 }]}>{i + 1}</Text>
+              <Text style={estiloAta.celulaNome}>{p.nome.toUpperCase()}</Text>
+              <Text style={[estiloAta.celulaRegistro, { width: 120, fontSize: 9 }]}>{p.curso}</Text>
+              <Text style={[estiloAta.celulaRegistro, { width: 80, fontSize: 9 }]}>{p.horario}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text fixed style={estiloAta.rodape}>
+          Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+          /Paraná{"\n"}www.fatecivaipora.com.br
+        </Text>
+      </Page>
+    </Document>
+  );
+}

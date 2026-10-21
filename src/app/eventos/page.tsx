@@ -57,7 +57,8 @@ import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { recalcularAreasTematicas } from "@/lib/areasTematicas";
 import { ASSINANTES_CERTIFICADO } from "@/lib/assinantesCertificado";
 import { diasDoEvento } from "@/lib/certificadoDias";
-import { baixarAta } from "@/lib/baixarCertificado";
+import { baixarAta, baixarListaPresenca } from "@/lib/baixarCertificado";
+import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
 
 function formatarData(iso: string): string {
   if (!iso) return "";
@@ -303,6 +304,7 @@ function CardEventoAdmin({
   onAbrirBanner,
   onEncerrarEvento,
   onAbrirAta,
+  onAbrirListaPresenca,
 }: {
   evento: Evento;
   totalTrabalhos: number;
@@ -317,6 +319,7 @@ function CardEventoAdmin({
   onAbrirBanner: () => void;
   onEncerrarEvento: () => void;
   onAbrirAta: () => void;
+  onAbrirListaPresenca: () => void;
 }) {
   const temTaxa = !!evento.valorInscricao;
   const simples = evento.tipo === "simples";
@@ -404,6 +407,18 @@ function CardEventoAdmin({
               className="flex-none rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
             >
               Gerar ata
+            </button>
+          )}
+          {/* Lista de presença por período (2026-10-21, pedido explícito do
+              usuário) — evento "simples" é o que tem presença por QR;
+              aparece também encerrado (é quando mais se usa, junto da ata). */}
+          {simples && (
+            <button
+              type="button"
+              onClick={onAbrirListaPresenca}
+              className="flex-none rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+            >
+              Lista de presença
             </button>
           )}
         </div>
@@ -1034,6 +1049,21 @@ export default function EventosPage() {
   // modal de Certificado). Número/ano/livro são digitados por quem gera —
   // de propósito, ver comentário em AtaRegistroPDF.
   const [modalAtaId, setModalAtaId] = useState<string | null>(null);
+  // Lista de presença por período (2026-10-21) — um botão de PDF por
+  // período, ver GET /api/inscricoes/lista-presenca/pdf.
+  const [modalListaPresencaId, setModalListaPresencaId] = useState<string | null>(null);
+  const eventoDoModalListaPresenca = eventos.find((e) => e.id === modalListaPresencaId);
+  const [baixandoPeriodo, setBaixandoPeriodo] = useState<number | null>(null);
+  const [erroListaPresenca, setErroListaPresenca] = useState<string | null>(null);
+
+  async function baixarPeriodo(periodo: number) {
+    if (!user || !modalListaPresencaId) return;
+    setErroListaPresenca(null);
+    setBaixandoPeriodo(periodo);
+    const resultado = await baixarListaPresenca(user, { eventoId: modalListaPresencaId, periodo });
+    if (!resultado.ok) setErroListaPresenca(resultado.erro);
+    setBaixandoPeriodo(null);
+  }
   const eventoDoModalAta = eventos.find((e) => e.id === modalAtaId);
   const [numeroAtaForm, setNumeroAtaForm] = useState("");
   const [anoAtaForm, setAnoAtaForm] = useState("");
@@ -1495,6 +1525,10 @@ export default function EventosPage() {
                 onAbrirBanner={() => setBannerEditEventoId(evento.id)}
                 onEncerrarEvento={() => alternarEncerrado(evento)}
                 onAbrirAta={() => abrirModalAta(evento.id)}
+                onAbrirListaPresenca={() => {
+                  setErroListaPresenca(null);
+                  setModalListaPresencaId(evento.id);
+                }}
               />
             ))}
 
@@ -2692,6 +2726,46 @@ export default function EventosPage() {
                 {gerandoAta ? "Gerando..." : "Baixar ata"}
               </button>
             </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!modalListaPresencaId}
+        onClose={() => setModalListaPresencaId(null)}
+        title={`Lista de presença${eventoDoModalListaPresenca ? ` — ${eventoDoModalListaPresenca.nome}` : ""}`}
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-fatec-muted">
+            Uma lista por período, com quem confirmou presença (QR ou manual)
+            naquele período e o horário da confirmação.
+          </p>
+          {eventoDoModalListaPresenca &&
+            Array.from(
+              { length: periodosDoEvento(eventoDoModalListaPresenca) },
+              (_, k) => k + 1,
+            ).map((periodo) => (
+              <div
+                key={periodo}
+                className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-3"
+              >
+                <span className="text-sm font-medium text-fatec-navy-900">
+                  {rotuloPeriodo(eventoDoModalListaPresenca, periodo)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => baixarPeriodo(periodo)}
+                  disabled={baixandoPeriodo !== null}
+                  className="flex items-center gap-1.5 rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                >
+                  {baixandoPeriodo === periodo ? "Gerando..." : "Baixar PDF"}
+                </button>
+              </div>
+            ))}
+          {erroListaPresenca && (
+            <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+              {erroListaPresenca}
+            </p>
           )}
         </div>
       </Modal>

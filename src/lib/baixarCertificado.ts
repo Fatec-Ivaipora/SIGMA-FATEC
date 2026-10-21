@@ -95,3 +95,34 @@ export async function baixarAta(
 
   return { ok: true };
 }
+
+/** Lista de presença de um período em PDF (2026-10-21, pedido explícito do
+ * usuário) — ver GET /api/inscricoes/lista-presenca/pdf. Mesmo padrão de
+ * download de `baixarAta`. */
+export async function baixarListaPresenca(
+  user: User,
+  dados: { eventoId: string; periodo: number },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams({
+    eventoId: dados.eventoId,
+    periodo: String(dados.periodo),
+  }).toString();
+
+  const res = await fetch(`/api/inscricoes/lista-presenca/pdf?${query}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar a lista de presença." };
+  }
+
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+    "lista-presenca.pdf";
+  dispararDownload(blob, nomeArquivo);
+
+  return { ok: true };
+}
