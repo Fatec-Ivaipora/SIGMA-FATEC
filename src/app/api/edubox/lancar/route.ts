@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
-import { periodosDoEvento } from "@/lib/periodosPresenca";
+import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 
 type ParticipanteEnvio = {
   uid: string;
@@ -158,13 +158,19 @@ export async function POST(request: Request) {
   // sem ninguém ter comparecido ainda. Reenviar agora corrige pra 0h (ou o
   // proporcional de quem já confirmou), e cada reenvio novo atualiza
   // conforme a presença dos dias for sendo confirmada.
+  // Mínimo de presença (2026-10-21, regra confirmada pelo usuário — Semana
+  // de Medicina: "cada presença vale 4 horas", "abaixo disso é 0"): quem não
+  // atingiu o mínimo do evento (presencaMinimaDoEvento, 4 de 5 lá) vai com
+  // 0h, não com o proporcional das presenças que teve — mesma régua do
+  // certificado em /api/certificados. Acima do mínimo continua proporcional.
   const chpinsFixo = typeof evento.cargaHoraria === "number" ? evento.cargaHoraria : null;
   const diasEvento = periodosDoEvento(evento);
+  const minimoPresencas = presencaMinimaDoEvento(evento);
   function chpinsParaUid(uid: string): number | null {
     if (evento?.tipo !== "simples") return chpinsFixo;
     if (typeof evento.cargaHoraria !== "number") return null;
     const diasConfirmados = diasConfirmadosPorUid.get(uid) ?? 0;
-    if (diasConfirmados === 0) return 0;
+    if (diasConfirmados === 0 || diasConfirmados < minimoPresencas) return 0;
     return Math.min(Math.round((diasConfirmados / diasEvento) * evento.cargaHoraria), evento.cargaHoraria);
   }
 

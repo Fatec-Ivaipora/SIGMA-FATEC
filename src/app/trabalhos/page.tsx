@@ -402,7 +402,27 @@ export default function TrabalhosAdminPage() {
   // só enche espaço num fluxo que é sobre trabalho em andamento; eventoId só
   // muda por este dropdown (sem deep-link por URL nessa tela), então não
   // tem risco de ficar com um encerrado selecionado "invisível" na lista.
-  const eventosSelecionaveis = useMemo(() => eventos.filter((e) => !e.encerrado), [eventos]);
+  // "Ver encerrados" (2026-10-21, pedido explícito do usuário) — só admin:
+  // botão ao lado do seletor que devolve os encerrados pra lista (marcados
+  // "(encerrado)"), pra consultar trabalho/certificado de evento que já
+  // fechou. Desligado = comportamento acima, de sempre.
+  const [mostrarEncerrados, setMostrarEncerrados] = useState(false);
+  const podeVerEncerrados = perfil?.papel === "admin";
+  const eventosSelecionaveis = useMemo(
+    () => eventos.filter((e) => !e.encerrado || (podeVerEncerrados && mostrarEncerrados)),
+    [eventos, podeVerEncerrados, mostrarEncerrados],
+  );
+
+  function alternarEncerrados() {
+    // Esconder de novo com um encerrado selecionado volta pra "todos" —
+    // senão ele ficaria selecionado sem aparecer no dropdown (mesmo
+    // problema descrito no comentário de "Abre sempre em Todos" acima).
+    if (mostrarEncerrados && eventos.find((e) => e.id === eventoId)?.encerrado) {
+      setEventoId("todos");
+      setAreaFiltro("Todas as áreas");
+    }
+    setMostrarEncerrados((v) => !v);
+  }
 
   // Evento "simples" (2026-09-22) não tem trabalho/avaliação nenhuma — essa
   // tela vira só uma lista de inscritos + liberar certificado, ver o early
@@ -968,26 +988,42 @@ export default function TrabalhosAdminPage() {
               </p>
             </div>
 
-            <div className="relative">
-              <select
-                value={eventoId}
-                onChange={(e) => {
-                  setEventoId(e.target.value);
-                  setAreaFiltro("Todas as áreas");
-                }}
-                className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
-              >
-                <option value="todos">{todosLabel}</option>
-                {eventosSelecionaveis.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.nome}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
-                strokeWidth={1.75}
-              />
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              {podeVerEncerrados && (
+                <button
+                  type="button"
+                  onClick={alternarEncerrados}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    mostrarEncerrados
+                      ? "bg-fatec-navy-900 text-white hover:bg-fatec-navy-800"
+                      : "border border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  }`}
+                >
+                  {mostrarEncerrados ? "Ocultar encerrados" : "Ver encerrados"}
+                </button>
+              )}
+              <div className="relative">
+                <select
+                  value={eventoId}
+                  onChange={(e) => {
+                    setEventoId(e.target.value);
+                    setAreaFiltro("Todas as áreas");
+                  }}
+                  className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
+                >
+                  <option value="todos">{todosLabel}</option>
+                  {eventosSelecionaveis.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.nome}
+                      {ev.encerrado ? " (encerrado)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                  strokeWidth={1.75}
+                />
+              </div>
             </div>
           </header>
 
@@ -1018,26 +1054,42 @@ export default function TrabalhosAdminPage() {
             </p>
           </div>
 
-          <div className="relative">
-            <select
-              value={eventoId}
-              onChange={(e) => {
-                setEventoId(e.target.value);
-                setAreaFiltro("Todas as áreas");
-              }}
-              className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
-            >
-              <option value="todos">{todosLabel}</option>
-              {eventosSelecionaveis.map((ev) => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.nome}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
-              strokeWidth={1.75}
-            />
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            {podeVerEncerrados && (
+              <button
+                type="button"
+                onClick={alternarEncerrados}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                  mostrarEncerrados
+                    ? "bg-fatec-navy-900 text-white hover:bg-fatec-navy-800"
+                    : "border border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-50"
+                }`}
+              >
+                {mostrarEncerrados ? "Ocultar encerrados" : "Ver encerrados"}
+              </button>
+            )}
+            <div className="relative">
+              <select
+                value={eventoId}
+                onChange={(e) => {
+                  setEventoId(e.target.value);
+                  setAreaFiltro("Todas as áreas");
+                }}
+                className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
+              >
+                <option value="todos">{todosLabel}</option>
+                {eventosSelecionaveis.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.nome}
+                    {ev.encerrado ? " (encerrado)" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                strokeWidth={1.75}
+              />
+            </div>
           </div>
         </header>
 
