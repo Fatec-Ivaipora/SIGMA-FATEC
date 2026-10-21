@@ -3,27 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createUserWithEmailAndPassword, type AuthError } from "firebase/auth";
-import { doc, writeBatch } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { AuthSplitLayout } from "@/components/AuthSplitLayout";
 import { CURSOS_FATEC } from "@/lib/cursos";
 import { formatarCPF, validarCPF } from "@/lib/cpf";
 
 const IDADE_MINIMA_ANOS = 12;
-
-function mensagemErro(erro: AuthError): string {
-  switch (erro.code) {
-    case "auth/email-already-in-use":
-      return "Já existe uma conta com esse e-mail.";
-    case "auth/invalid-email":
-      return "Digite um e-mail válido.";
-    case "auth/weak-password":
-      return "A senha precisa ter pelo menos 6 caracteres.";
-    default:
-      return "Não foi possível criar a conta. Tente novamente.";
-  }
-}
 
 function erroDaDataNascimento(data: string): string | null {
   if (!data) return "Informe sua data de nascimento.";
@@ -92,64 +78,50 @@ export default function CadastroAlunoPage() {
 
     setEnviando(true);
     try {
-      // CPF é obrigatório e único por pessoa (2026-10-02, pedido explícito
-      // do usuário) — checa ANTES de criar a conta no Auth, pra nunca
-      // acabar com uma conta órfã se o CPF já estiver em uso (mesmo
-      // cuidado do e-mail normalizado acima).
-      const respostaCpf = await fetch("/api/cadastro/checar-cpf", {
+      // Conta inteira (Auth + Firestore) criada numa chamada só de servidor
+      // (2026-10-21, achado real: duas pessoas ficaram com conta "órfã" no
+      // Auth sem o cadastro completo, porque antes isso era feito em duas
+      // etapas separadas do navegador — se a conexão caísse ou a aba
+      // fechasse entre as duas, a conta do Auth ficava pra sempre sem
+      // perfil, e a própria tentativa de desfazer isso também rodava no
+      // navegador e podia falhar do mesmo jeito. Ver
+      // /api/cadastro/aluno/route.ts pro porquê completo).
+      const resposta = await fetch("/api/cadastro/aluno", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cpf: cpfLimpo }),
+        body: JSON.stringify({
+          nome: nome.trim(),
+          cpf: cpfLimpo,
+          dataNascimento,
+          curso: vinculoFatec ? curso : undefined,
+          vinculoFatec,
+          email: emailNormalizado,
+          senha,
+        }),
       });
-      const dadosCpf = await respostaCpf.json().catch(() => null);
-      if (dadosCpf?.emUso) {
-        setErro("Já existe uma conta cadastrada com esse CPF.");
+      const corpo = await resposta.json().catch(() => null);
+      if (!resposta.ok) {
+        setErro(corpo?.erro ?? "Não foi possível criar a conta. Tente novamente.");
         setEnviando(false);
         return;
       }
 
-      const credencial = await createUserWithEmailAndPassword(auth, emailNormalizado, senha);
+      // Conta já existe de verdade no Auth nesse ponto — só autentica no
+      // navegador com a mesma senha, igual a um login normal, pra ganhar a
+      // sessão local.
       try {
-        const batch = writeBatch(db);
-        batch.set(doc(db, "usuarios", credencial.user.uid), {
-          nome: nome.trim(),
-          // nomeBusca (2026-10-05) — nome em minúsculo só pra busca por
-          // prefixo em /usuarios (ver useBuscaUsuarios), já que o Firestore
-          // não ignora maiúscula/minúscula sozinho.
-          nomeBusca: nome.trim().toLowerCase(),
-          email: emailNormalizado,
-          papel: "aluno",
-          vinculoFatec,
-          cpf: cpfLimpo,
-          dataNascimento,
-          ...(vinculoFatec ? { curso } : {}),
-        });
-        // Espelho público (2026-09-08, ver firestore.rules) — só nome/email/
-        // vinculoFatec, pra busca de autor/convite de turma nunca precisar
-        // ler o doc usuarios/{uid} inteiro (que tem cpf/dataNascimento).
-        batch.set(doc(db, "usuariosPublicos", credencial.user.uid), {
-          nome: nome.trim(),
-          email: emailNormalizado,
-          vinculoFatec,
-        });
-        await batch.commit();
+        await signInWithEmailAndPassword(auth, emailNormalizado, senha);
         router.push("/aluno");
       } catch (e) {
-        // Logado (2026-09-30, achado: aluna relatou esse erro sem nenhuma
-        // pista de causa — a conta do Auth já tinha sido criada, só a
-        // gravação no Firestore falhou, e a mensagem genérica não deixava
-        // rastro nenhum pra investigar depois). Sem isso, o console do
-        // navegador da pessoa é a única evidência que existiria, e ninguém
-        // sabe olhar lá.
-        console.error("Cadastro: falha ao gravar usuarios/usuariosPublicos", e);
-        await credencial.user.delete().catch(() => {});
+        console.error("Cadastro: conta criada, mas falhou o login automático", e);
         setErro(
-          "Não foi possível salvar seus dados. Confira sua conexão com a internet e tente de novo.",
+          "Sua conta foi criada! Não conseguimos entrar automaticamente — faça login na tela seguinte.",
         );
         setEnviando(false);
       }
     } catch (e) {
-      setErro(mensagemErro(e as AuthError));
+      console.error("Cadastro: falha de rede ao chamar /api/cadastro/aluno", e);
+      setErro("Não foi possível criar a conta. Confira sua conexão com a internet e tente de novo.");
       setEnviando(false);
     }
   }

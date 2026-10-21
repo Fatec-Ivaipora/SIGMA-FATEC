@@ -477,6 +477,38 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-21** — **Cadastro de aluno virou uma chamada de servidor só**
+  (`POST /api/cadastro/aluno`, novo), em vez de duas etapas separadas no
+  navegador (`createUserWithEmailAndPassword` + `writeBatch` do
+  Firestore). Motivo: achado real, duas contas "órfãs" encontradas via
+  print do usuário — `mayllamacetko13@gmail.com` e
+  `osni.ben.hur@gmail.com` tinham conta de verdade no Firebase Auth (login
+  funcionava) mas nenhum documento em `usuarios`, então a pessoa nem
+  conseguia entrar ("conta ainda não tem cadastro completo") nem recriar a
+  conta ("já existe uma conta com esse e-mail") — limbo sem saída.
+  Confirmado (só leitura) que as duas contas não tinham vínculo nenhum em
+  outra coleção, e então apagadas do Auth (pedido explícito do usuário)
+  pra elas conseguirem se cadastrar de novo do zero.
+  **Causa raiz**: o cadastro já tinha uma proteção pra isso desde
+  2026-10-02 (`credencial.user.delete()` no catch, se a gravação no
+  Firestore falhasse) — mas essa proteção também rodava no navegador. Se a
+  conexão caísse ou a aba fechasse bem entre criar a conta no Auth e
+  gravar no Firestore (comum em celular com sinal fraco — as duas contas
+  reais eram de celular), o próprio rollback nunca chegava a rodar, ou
+  falhava em silêncio (estava num `.catch(() => {})`).
+  **Corrigido de vez**: as duas etapas agora rodam no servidor, na mesma
+  requisição — não depende mais da aba continuar aberta nem da conexão da
+  pessoa. Se o Firestore falhar por outro motivo, o rollback (apagar o
+  usuário do Auth) roda no mesmo processo do servidor. A página
+  (`src/app/cadastro/aluno/page.tsx`) só chama essa rota e, se der certo,
+  faz login normal (`signInWithEmailAndPassword`) com a mesma senha pra
+  ganhar a sessão. `/api/cadastro/checar-cpf` continua existindo do jeito
+  que estava — ainda usado em Configurações (CPF de conta antiga). Testado
+  de verdade (script descartável chamando o handler da rota direto, sem
+  precisar do servidor dev): cadastro válido cria tudo certo, e-mail
+  duplicado e CPF duplicado são recusados com mensagem clara, sem deixar
+  nada pela metade — dados de teste limpos depois.
+
 - **2026-10-20** — **Achado real, print do usuário** (aluna Ana Clara, II
   Semana Acadêmica de Medicina, paga + 5/5 presenças): em "Meus eventos"
   (`/aluno`), evento encerrado mostrava o erro vermelho "Esse evento está
