@@ -200,6 +200,8 @@ export default function AlunoPainelPage() {
     const duplicado = await checarTrabalhoDuplicado(user, {
       eventoId: modalEventoId,
       titulo: dados.titulo,
+      resumo: dados.resumo,
+      nomeOrientador: dados.nomeOrientador,
       participantesUids: dados.participantesUids,
     });
     if (duplicado) return duplicado;

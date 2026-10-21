@@ -10,7 +10,7 @@ import type { User } from "firebase/auth";
  * de tentar de novo, em vez de deixar passar um possível duplicado. */
 export async function checarTrabalhoDuplicado(
   user: User,
-  dados: { eventoId: string; titulo: string; participantesUids: string[] },
+  dados: { eventoId: string; titulo: string; resumo: string; nomeOrientador: string; participantesUids: string[] },
 ): Promise<string | null> {
   try {
     const idToken = await user.getIdToken();

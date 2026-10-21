@@ -139,6 +139,8 @@ export default function TurmaAlunoPage() {
     const duplicado = await checarTrabalhoDuplicado(user, {
       eventoId: eventoEscolhido.id,
       titulo: dados.titulo,
+      resumo: dados.resumo,
+      nomeOrientador: dados.nomeOrientador,
       participantesUids: dados.participantesUids,
     });
     if (duplicado) return duplicado;
