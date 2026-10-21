@@ -24,6 +24,7 @@ import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import { useInscricoesRelatorio, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { separarGrupoSubArea } from "@/lib/areasTematicas";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 const LIMITE_RANKING = 10;
 
@@ -768,7 +769,7 @@ function RelatoriosContent() {
                   {melhorTrabalhoDestaque && (
                     <div className="mt-1 border-t border-dashed border-fatec-line pt-3 text-sm text-fatec-muted">
                       <p className="mb-0.5 font-semibold text-fatec-ink">
-                        {melhorTrabalhoDestaque.titulo}
+                        {tituloExibicao(melhorTrabalhoDestaque.titulo)}
                       </p>
                       {nomeAutores(melhorTrabalhoDestaque)} · nota{" "}
                       <span className="font-semibold tabular-nums">
@@ -871,7 +872,7 @@ function RelatoriosContent() {
                     <p
                       className={`truncate text-sm text-fatec-ink ${i === 0 ? "font-bold" : "font-semibold"}`}
                     >
-                      {t.titulo}
+                      {tituloExibicao(t.titulo)}
                     </p>
                     <p className="truncate text-xs text-fatec-muted">{nomeAutores(t)}</p>
                   </div>

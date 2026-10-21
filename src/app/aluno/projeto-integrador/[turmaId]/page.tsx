@@ -22,7 +22,9 @@ import {
   type TurmaTrabalho,
 } from "@/lib/data/turmas";
 import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
+import { checarTrabalhoDuplicado } from "@/lib/checarDuplicado";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 function formatarData(valor: number): string {
   return new Date(valor).toLocaleDateString("pt-BR", {
@@ -134,6 +136,12 @@ export default function TurmaAlunoPage() {
 
   async function enviarInscricao(dados: DadosSubmissao) {
     if (!eventoEscolhido || !user || !perfil) return;
+    const duplicado = await checarTrabalhoDuplicado(user, {
+      eventoId: eventoEscolhido.id,
+      titulo: dados.titulo,
+      participantesUids: dados.participantesUids,
+    });
+    if (duplicado) return duplicado;
     const ref = await addDoc(collection(db, "trabalhos"), {
       ...dados,
       eventoId: eventoEscolhido.id,
@@ -220,7 +228,7 @@ export default function TurmaAlunoPage() {
                     <p className="rounded-xl bg-fatec-navy-50 px-4 py-2.5 text-sm text-fatec-ink">
                       Enviado — aguardando avaliação do orientador.
                     </p>
-                    <p className="font-medium text-fatec-navy-900">{trabalho.titulo}</p>
+                    <p className="font-medium text-fatec-navy-900">{tituloExibicao(trabalho.titulo)}</p>
                     {trabalho.resumo && (
                       <p className="text-sm text-fatec-muted">{trabalho.resumo}</p>
                     )}
@@ -235,7 +243,7 @@ export default function TurmaAlunoPage() {
                   <div className="mt-3 flex flex-col gap-4">
                     <p className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">
                       <CheckCircle2 className="h-4 w-4 flex-none" strokeWidth={2} />
-                      Aprovado pelo orientador — {trabalho.titulo}
+                      Aprovado pelo orientador — {tituloExibicao(trabalho.titulo)}
                     </p>
 
                     <label className="flex flex-col gap-1.5">

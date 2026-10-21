@@ -19,6 +19,7 @@ import {
   type TrabalhoStatus,
 } from "@/lib/data/trabalhos";
 import { notificarStatusTrabalho } from "@/lib/notificarEmail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 const NOTAS = [1, 2, 3, 4, 5];
@@ -160,7 +161,7 @@ function PainelTrabalhos({
         <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="font-medium text-fatec-navy-900">{t.titulo}</p>
+              <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
               <p className="text-sm text-fatec-muted">
                 {t.alunoNome} · {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
               </p>

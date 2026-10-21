@@ -42,6 +42,7 @@ import {
   moverTrabalho,
   type GrupoParaGrade,
 } from "@/lib/data/sessoes";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Universo do ensalamento (2026-09-17, confirmado com o usuário): todo
 // trabalho que já saiu de "avaliado" pra Desempate ou Resultado Final —
@@ -1223,7 +1224,7 @@ function EnsalamentoAdminView() {
                         </p>
                         <ul className="mt-2 list-inside list-disc text-sm text-fatec-orange-700/80">
                           {naoAlocados.map((t) => (
-                            <li key={t.id}>{t.titulo}</li>
+                            <li key={t.id}>{tituloExibicao(t.titulo)}</li>
                           ))}
                         </ul>
                       </div>
@@ -1316,7 +1317,7 @@ function EnsalamentoAdminView() {
                                                       {horarioItem} —{" "}
                                                     </span>
                                                   )}
-                                                  {t?.titulo ?? id}
+                                                  {t ? tituloExibicao(t.titulo) : id}
                                                 </span>
                                                 <select
                                                   value=""

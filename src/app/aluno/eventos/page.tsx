@@ -18,6 +18,7 @@ import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useMinhaInscricao, useMinhasInscricoes, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
+import { checarTrabalhoDuplicado } from "@/lib/checarDuplicado";
 import type { User } from "firebase/auth";
 
 function CardEvento({
@@ -316,6 +317,12 @@ export default function AlunoEventosPage() {
 
   async function enviarTrabalho(dados: DadosSubmissao) {
     if (!modalEventoId || !user || !perfil) return;
+    const duplicado = await checarTrabalhoDuplicado(user, {
+      eventoId: modalEventoId,
+      titulo: dados.titulo,
+      participantesUids: dados.participantesUids,
+    });
+    if (duplicado) return duplicado;
     const ref = await addDoc(collection(db, "trabalhos"), {
       ...dados,
       eventoId: modalEventoId,

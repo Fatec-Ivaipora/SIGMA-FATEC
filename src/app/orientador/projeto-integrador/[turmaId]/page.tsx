@@ -19,6 +19,7 @@ import {
   type TurmaTrabalhoStatus,
 } from "@/lib/data/turmas";
 import { notificarConviteTurma } from "@/lib/notificarEmail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 const ETAPAS: { key: TurmaTrabalhoStatus; label: string }[] = [
   { key: "aguardando_avaliacao", label: "Aguardando avaliação" },
@@ -201,7 +202,7 @@ export default function TurmaOrientadorPage() {
                     <div key={t.id} className="rounded-2xl border border-fatec-line p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-medium text-fatec-navy-900">{t.titulo}</p>
+                          <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
                           <p className="text-sm text-fatec-muted">{t.alunoNome}</p>
                         </div>
                         {etapa === "aguardando_avaliacao" && (

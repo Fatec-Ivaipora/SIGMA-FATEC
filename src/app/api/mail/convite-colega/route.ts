@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 /** E-mail de convite pro colega adicionado num trabalho (RF-52) — chamado
  * pelo client logo depois do addDoc/updateDoc que cria o convite de
@@ -48,9 +49,9 @@ export async function POST(request: Request) {
 
   await enviarEmail({
     to: colega.email,
-    subject: `Você foi adicionado(a) num trabalho — ${trabalho.titulo}`,
+    subject: `Você foi adicionado(a) num trabalho — ${tituloExibicao(trabalho.titulo)}`,
     html: modeloEmail(
-      `<p><strong>${trabalho.alunoNome}</strong> te adicionou como autor no trabalho <strong>"${trabalho.titulo}"</strong>.</p>
+      `<p><strong>${trabalho.alunoNome}</strong> te adicionou como autor no trabalho <strong>"${tituloExibicao(trabalho.titulo)}"</strong>.</p>
        <p>Entre no SIGMA pra aceitar ou recusar o convite.</p>`,
       { texto: "Ver convite", href: `${URL_SISTEMA}/aluno` },
       colega.nome,

@@ -35,6 +35,7 @@ import {
   type CategoriaComDeclaracoes,
   type Declaracao,
 } from "@/lib/data/declaracoes";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Buscar pessoa + emitir certificado/declaração (2026-09-11) — a coordenação
 // não tinha como emitir o documento de ninguém além de si mesma: a rota
@@ -168,7 +169,7 @@ function EmitirCertificado({
         chaveLista: `certificado_${t.id}`,
         nome: nomes.join(", "),
         rotuloTipo: "Certificado de apresentação",
-        contexto: t.titulo,
+        contexto: tituloExibicao(t.titulo),
         textoBusca: nomes.join(" ").toLowerCase(),
         tipo: "aluno",
         checks: [
@@ -184,7 +185,7 @@ function EmitirCertificado({
           chaveLista: `orientador_${t.id}`,
           nome: t.nomeOrientador,
           rotuloTipo: "Declaração de orientador(a)",
-          contexto: t.titulo,
+          contexto: tituloExibicao(t.titulo),
           textoBusca: t.nomeOrientador.toLowerCase(),
           tipo: "orientador",
           // Orientador não tem conta/inscrição — nada além do trabalho
