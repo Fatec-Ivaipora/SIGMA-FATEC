@@ -113,12 +113,22 @@ function ConfirmacaoPresencaView({
   user,
   inscritos,
   modoMonitor = false,
+  somenteConsulta = false,
 }: {
   evento: Evento;
   user: User | null | undefined;
   inscritos: InscricaoEvento[];
   modoMonitor?: boolean;
+  // Evento encerrado aberto só pra consulta (2026-10-21, pedido explícito
+  // do usuário — "ver a presença diária sem ter que baixar"): sem QR e sem
+  // marcar/desmarcar presença na mão (a ata e os números de certificado já
+  // saíram com base nessas presenças). Filtro por dia, busca e o detalhe
+  // de horário/quem confirmou continuam iguais.
+  somenteConsulta?: boolean;
 }) {
+  // Selos de presença só mostram o detalhe, nunca alternam — monitor
+  // (sempre) e consulta de evento encerrado.
+  const travado = modoMonitor || somenteConsulta;
   const [busca, setBusca] = useState("");
   // Filtro por dia/período + ordenação por horário de check-in (2026-10-08,
   // pedido explícito do usuário — "hoje tá muito difícil ficar procurando
@@ -194,7 +204,7 @@ function ConfirmacaoPresencaView({
   }
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || somenteConsulta) return;
     let cancelado = false;
 
     async function buscarQr() {
@@ -222,7 +232,7 @@ function ConfirmacaoPresencaView({
       cancelado = true;
       clearInterval(intervalo);
     };
-  }, [evento.id, user, diaSelecionado]);
+  }, [evento.id, user, diaSelecionado, somenteConsulta]);
 
   const filtrados = useMemo(() => {
     // Chaves de dia relevantes pra uma pessoa, dado o filtro de dia ativo
@@ -307,6 +317,13 @@ function ConfirmacaoPresencaView({
 
   return (
     <div className="flex flex-col gap-6">
+      {somenteConsulta && (
+        <p className="rounded-2xl border border-fatec-line bg-fatec-navy-50 px-5 py-3 text-sm text-fatec-navy-900">
+          Evento encerrado — só consulta. Use o filtro abaixo pra ver quem
+          esteve presente em cada {evento.periodosPresenca ? "período" : "dia"}.
+        </p>
+      )}
+      {!somenteConsulta && (
       <section className="flex flex-col items-center gap-4 rounded-2xl border border-fatec-line bg-white p-8 text-center">
         <span className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
           <QrCode className="h-4 w-4" strokeWidth={2} />
@@ -350,6 +367,7 @@ function ConfirmacaoPresencaView({
           </div>
         )}
       </section>
+      )}
 
       {/* "Liberar certificados" foi removido daqui (2026-10-19, pedido
           explícito do usuário — nova regra: só libera depois de encerrado,
@@ -404,6 +422,11 @@ function ConfirmacaoPresencaView({
                 >
                   {evento.periodosPresenca ? "P" : "D"}
                   {dia}
+                  {/* Quantos confirmaram nesse dia (2026-10-21) — resumo
+                      diário de bate-olho, sem filtrar um por um. */}
+                  <span className="ml-1 font-normal opacity-80">
+                    · {inscritos.filter((i) => !!i.presencasConfirmadas?.[String(dia)]).length}
+                  </span>
                 </button>
               ))}
             </div>
@@ -430,7 +453,7 @@ function ConfirmacaoPresencaView({
           </button>
         </div>
 
-        {!modoMonitor && (
+        {!travado && (
           <p className="mt-2 text-xs text-fatec-muted">
             Não deu pra escanear o QR? Clique no selo do dia pra marcar (ou
             desmarcar) a presença na mão.
@@ -481,9 +504,9 @@ function ConfirmacaoPresencaView({
                       <div key={dia} className="group relative">
                         <button
                           type="button"
-                          disabled={modoMonitor ? !confirmado : emAndamento}
+                          disabled={travado ? !confirmado : emAndamento}
                           onClick={() => {
-                            if (modoMonitor) {
+                            if (travado) {
                               setDetalheAberto(aberto ? null : confirmado ? { uid: i.uid, dia } : null);
                             } else {
                               alternarPresencaManual(i.uid, dia, !confirmado);
@@ -492,7 +515,7 @@ function ConfirmacaoPresencaView({
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             confirmado
                               ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                              : modoMonitor
+                              : travado
                                 ? "cursor-default bg-fatec-navy-50 text-fatec-muted"
                                 : "bg-fatec-navy-50 text-fatec-muted hover:bg-fatec-navy-100"
                           }`}
@@ -551,7 +574,7 @@ function ConfirmacaoPresencaView({
                       Aguardando
                     </>
                   );
-                  if (modoMonitor) {
+                  if (travado) {
                     return (
                       <span
                         className={`flex-none inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -637,7 +660,21 @@ function EnsalamentoAdminView() {
   // já encerrado mora em `/eventos` → Certificado (2026-10-19, pedido
   // explícito do usuário — lá SEMPRE lista encerrado, é o lugar certo pra
   // mexer nisso depois que o evento fechou, não aqui).
-  const eventosSelecionaveis = useMemo(() => eventos.filter((e) => !e.encerrado), [eventos]);
+  // "Ver encerrados" (2026-10-21, pedido explícito do usuário — ver a
+  // presença diária de um evento que já fechou, sem baixar nada): só admin,
+  // e só evento "simples" encerrado volta pra lista — abre em
+  // ConfirmacaoPresencaView com `somenteConsulta` (sem QR, sem marcar na
+  // mão). Grade de evento completo encerrado continua fora daqui.
+  const [mostrarEncerrados, setMostrarEncerrados] = useState(false);
+  const podeVerEncerrados = perfil?.papel === "admin";
+  const eventosSelecionaveis = useMemo(
+    () =>
+      eventos.filter(
+        (e) =>
+          !e.encerrado || (podeVerEncerrados && mostrarEncerrados && e.tipo === "simples"),
+      ),
+    [eventos, podeVerEncerrados, mostrarEncerrados],
+  );
 
   const [aba, setAba] = useState<"ensalamento" | "salas">("ensalamento");
   const [eventoId, setEventoId] = useState("");
@@ -917,23 +954,44 @@ function EnsalamentoAdminView() {
             </p>
           </div>
 
-          <div className="relative">
-            <select
-              value={eventoId}
-              onChange={(e) => setEventoId(e.target.value)}
-              className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
-            >
-              <option value="">Selecione o evento</option>
-              {eventosSelecionaveis.map((ev) => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.nome}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
-              strokeWidth={1.75}
-            />
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            {podeVerEncerrados && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Esconder com um encerrado selecionado volta pro vazio,
+                  // senão ele ficaria selecionado sem aparecer no dropdown.
+                  if (mostrarEncerrados && evento?.encerrado) setEventoId("");
+                  setMostrarEncerrados((v) => !v);
+                }}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                  mostrarEncerrados
+                    ? "bg-fatec-navy-900 text-white hover:bg-fatec-navy-800"
+                    : "border border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-50"
+                }`}
+              >
+                {mostrarEncerrados ? "Ocultar encerrados" : "Ver encerrados"}
+              </button>
+            )}
+            <div className="relative">
+              <select
+                value={eventoId}
+                onChange={(e) => setEventoId(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
+              >
+                <option value="">Selecione o evento</option>
+                {eventosSelecionaveis.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.nome}
+                    {ev.encerrado ? " (encerrado)" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                strokeWidth={1.75}
+              />
+            </div>
           </div>
         </header>
 
@@ -945,7 +1003,12 @@ function EnsalamentoAdminView() {
           )}
 
           {eventoId && evento?.tipo === "simples" && (
-            <ConfirmacaoPresencaView evento={evento} user={user} inscritos={inscritosSimples} />
+            <ConfirmacaoPresencaView
+              evento={evento}
+              user={user}
+              inscritos={inscritosSimples}
+              somenteConsulta={!!evento.encerrado}
+            />
           )}
 
           {eventoId && evento?.tipo !== "simples" && modalidadesDoEvento.length === 0 && (
