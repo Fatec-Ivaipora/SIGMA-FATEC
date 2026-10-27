@@ -31,6 +31,11 @@ export default function AlunoTrabalhosPage() {
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
   const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
   const [editando, setEditando] = useState<Trabalho | null>(null);
+  // Qual tag de autor está com o aviso aberto (2026-10-27, pedido explícito
+  // do usuário) — chave única "trabalhoId:uid". Clique em vez de hover
+  // (mesmo padrão do botão "Precisa de ajuda?" em Sidebar.tsx) porque
+  // celular não tem hover — ninguém no toque veria um `title` nativo.
+  const [avisoAutorAberto, setAvisoAutorAberto] = useState<string | null>(null);
 
   async function salvarEdicao(trabalho: Trabalho, dados: DadosSubmissao) {
     // Convite pendente só é criado pra colega novo — quem já tinha aceitado
@@ -129,9 +134,54 @@ export default function AlunoTrabalhosPage() {
                         {t.areaTematica}
                       </p>
                       {(t.participantesNomes?.length ?? 0) > 0 && (
-                        <p className="mt-0.5 text-xs text-fatec-muted">
-                          Autores: {t.participantesNomes!.join(", ")}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="text-xs text-fatec-muted">Autores:</span>
+                          {t.participantesNomes!.map((nome, i) => {
+                            // Verde = já aceitou o convite; vermelho = ainda
+                            // não aceitou (pedido explícito do usuário,
+                            // 2026-10-27 — antes os nomes apareciam todos
+                            // iguais, sem jeito de saber quem já confirmou
+                            // ser autor sem abrir cada trabalho). Cruza pelo
+                            // índice porque participantesUids/Nomes andam em
+                            // pares (mesmo padrão já usado na edição, ver
+                            // SubmeterTrabalhoModal).
+                            const uid = t.participantesUids?.[i];
+                            const pendente = !!uid && t.convitesPendentes?.includes(uid);
+                            const chave = `${t.id}:${uid ?? nome}`;
+                            const aberto = avisoAutorAberto === chave;
+                            return (
+                              <div key={chave} className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setAvisoAutorAberto((atual) => (atual === chave ? null : chave))
+                                  }
+                                  className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                                    pendente
+                                      ? "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  }`}
+                                >
+                                  {nome}
+                                </button>
+                                {aberto && (
+                                  <>
+                                    <div
+                                      aria-hidden
+                                      onClick={() => setAvisoAutorAberto(null)}
+                                      className="fixed inset-0 z-10"
+                                    />
+                                    <div className="absolute left-0 top-full z-20 mt-1 w-max max-w-[220px] rounded-lg bg-fatec-navy-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
+                                      {pendente
+                                        ? `${nome} ainda não aceitou o convite`
+                                        : `${nome} já aceitou o convite`}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
 

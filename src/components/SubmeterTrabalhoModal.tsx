@@ -351,7 +351,16 @@ export function SubmeterTrabalhoModal({
     setSubArea("");
   }
 
+  // Vírgula/ponto e vírgula (2026-10-27, achado real: aluna tentou colar
+  // "Mateus Barbosa, Josiane de Oliveira, Lucas Aparecido" de uma vez só —
+  // o campo busca UM nome por vez, então isso nunca batia com ninguém, a
+  // lista de sugestões ficava vazia, e ela seguia sem perceber que nada
+  // tinha sido adicionado. Bloqueia a busca nesse caso e explica o porquê,
+  // em vez de só mostrar "nenhum resultado" (comentário logo abaixo).
+  const buscaTemSeparador = /[,;]/.test(buscaColega);
+
   const sugestoes = useMemo(() => {
+    if (buscaTemSeparador) return [];
     const termo = buscaColega.trim().toLowerCase();
     if (!termo) return [];
     const jaSelecionados = new Set(participantes.map((p) => p.uid));
@@ -363,7 +372,16 @@ export function SubmeterTrabalhoModal({
             a.email.toLowerCase().includes(termo)),
       )
       .slice(0, 5);
-  }, [alunos, buscaColega, participantes]);
+  }, [alunos, buscaColega, buscaTemSeparador, participantes]);
+
+  // "Nenhum autor encontrado" (2026-10-27, pedido explícito do usuário,
+  // mesmo achado acima) — antes a busca só ficava vazia em silêncio, sem
+  // dizer por quê; a pessoa digitava o nome do amigo, nada aparecia pra
+  // clicar, e ela seguia em frente achando que tinha "informado o nome"
+  // (nada é adicionado sem clicar numa sugestão — ver `adicionarColega`).
+  // >= 2 caracteres pra não piscar a mensagem na primeira letra digitada.
+  const buscaSemResultado =
+    !buscaTemSeparador && buscaColega.trim().length >= 2 && sugestoes.length === 0;
 
   const areaTematicaFinal = grupoSelecionado
     ? subArea
@@ -739,7 +757,9 @@ export function SubmeterTrabalhoModal({
               value={buscaColega}
               onChange={(e) => setBuscaColega(e.target.value)}
               placeholder="Buscar autor por nome ou e-mail"
-              className="w-full rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+              className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 ${
+                buscaTemSeparador ? "border-rose-300" : "border-fatec-line"
+              }`}
             />
             {sugestoes.length > 0 && (
               <div className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-fatec-line bg-white shadow-lg">
@@ -760,6 +780,19 @@ export function SubmeterTrabalhoModal({
             )}
           </div>
           )}
+          {buscaTemSeparador ? (
+            <p className="text-xs text-rose-600">
+              Busque e adicione um autor de cada vez — não dá pra colar
+              vários nomes juntos separados por vírgula ou ponto e vírgula.
+            </p>
+          ) : buscaSemResultado ? (
+            <p className="text-xs text-amber-600">
+              Nenhum autor encontrado pra &quot;{buscaColega.trim()}&quot;.
+              Confira se a pessoa já tem conta no SIGMA
+              {temTaxa && " e já demonstrou interesse neste evento"} — sem
+              clicar numa sugestão aqui, ninguém é adicionado de verdade.
+            </p>
+          ) : null}
           <span className="text-xs text-fatec-muted">
             Opcional. Autores adicionados também acompanham o status deste
             trabalho, mas só quem submeteu pode corrigir e reenviar.

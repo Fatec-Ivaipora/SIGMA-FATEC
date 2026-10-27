@@ -477,6 +477,45 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-27** — **Validação na busca de autor** (`SubmeterTrabalhoModal`,
+  pedido explícito do usuário, achado real com nome: Josiane de Oliveira
+  Taborda Barbosa — confirmado no banco que `participantesUids`/`Nomes`
+  realmente ficaram vazios, não é bug de carregamento) — duas proteções
+  novas: (1) **vírgula/ponto e vírgula bloqueado** — tem gente colando
+  "Mateus Barbosa, Josiane de Oliveira, Lucas Aparecido" de uma vez só
+  nesse campo, que busca UM nome por vez; agora mostra erro em vermelho em
+  vez de só não achar nada em silêncio; (2) **"nenhum autor encontrado"
+  explicado** — antes a busca sem resultado ficava muda, sem dizer por
+  quê, e a pessoa seguia achando que tinha "informado o nome" sem nada
+  ter sido adicionado de verdade (só clicar numa sugestão adiciona). Agora
+  avisa que a pessoa precisa já ter conta no SIGMA (e, em evento pago, já
+  ter demonstrado interesse nele). Testado ao vivo, os dois casos, com
+  conta de teste real.
+
+- **2026-10-27** — **Status de aceite dos autores visível em "Meus
+  trabalhos"** (`/aluno/trabalhos`, pedido explícito do usuário) — cada
+  nome na linha "Autores:" agora é uma tag colorida: verde = já aceitou o
+  convite, vermelho = ainda não aceitou (cruza `participantesUids` com
+  `convitesPendentes` pelo índice, mesmo par usado na edição). Clique/toque
+  na tag abre um aviso explicando ("Fulano ainda não aceitou o convite" /
+  "já aceitou") — **de propósito não usei o atributo `title` do HTML**
+  (tooltip nativo de hover): no celular não existe hover, ninguém
+  conseguiria ver nada ao tocar (achado do próprio usuário, testando ao
+  vivo). Mesmo padrão de clique-pra-abrir/clique-fora-pra-fechar do botão
+  "Precisa de ajuda?" em `Sidebar.tsx`, que já funciona em touch.
+  Testado ao vivo com duas contas de teste reais (`aluno@teste.com` /
+  `aluno2@teste.com`, senha definida só pra esse teste): trabalho
+  submetido com convite pendente pro aluno2 — tag vermelha, aviso "ainda
+  não aceitou" confirmado no DOM; aluno2 aceitou o convite pela tela de
+  verdade — tag virou verde, aviso mudou pra "já aceitou", confirmado de
+  novo. De quebra, essa mesma investigação confirmou que a aba "Autores"
+  do wizard de edição (`SubmeterTrabalhoModal`) já mostra os autores
+  salvos corretamente ao reabrir — não reproduzido o "fica em branco"
+  relatado por um aluno; suspeita mais provável é o amigo dele ainda não
+  ter demonstrado interesse no evento na hora de tentar adicionar (busca
+  só mostra quem já apareceu no evento, e sem selecionar da lista nada é
+  salvo de verdade).
+
 - **2026-10-21** — **Cadastro de aluno virou uma chamada de servidor só**
   (`POST /api/cadastro/aluno`, novo), em vez de duas etapas separadas no
   navegador (`createUserWithEmailAndPassword` + `writeBatch` do
