@@ -57,6 +57,14 @@ const PAPEIS_AVALIACAO_VISIVEIS = PAPEIS_AVALIACAO.filter((p) => p !== "orientad
 export default function UsuariosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
+  // Evento encerrado não entra como opção nova pra avaliador/moderador
+  // (2026-10-27, pedido explícito do usuário — achado real: Semana de
+  // Medicina, já encerrada, continuava aparecendo pra escolher). Só filtra
+  // os dois seletores de "adicionar atribuição" abaixo — `eventos` (sem
+  // filtro) continua sendo usado pra mostrar nome/área de atribuições já
+  // existentes num evento que encerrou depois de atribuído, senão o nome
+  // sumiria da tela de quem já estava lá.
+  const eventosParaNovaAtribuicao = eventos.filter((e) => !e.encerrado);
 
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Papel | "todos">("todos");
@@ -763,7 +771,7 @@ export default function UsuariosPage() {
                   <option value="" disabled>
                     Selecione o evento
                   </option>
-                  {eventos.map((ev) => (
+                  {eventosParaNovaAtribuicao.map((ev) => (
                     <option key={ev.id} value={ev.id}>
                       {ev.nome}
                     </option>
@@ -1038,7 +1046,7 @@ export default function UsuariosPage() {
             <option value="" disabled>
               Selecione o evento
             </option>
-            {eventos.map((ev) => (
+            {eventosParaNovaAtribuicao.map((ev) => (
               <option key={ev.id} value={ev.id}>
                 {ev.nome}
               </option>

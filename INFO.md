@@ -477,6 +477,18 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-27** — **Evento encerrado some do seletor de avaliador/moderador**
+  (`/usuarios`, pedido explícito do usuário — achado real: "Semana de
+  Medicina", já encerrada, continuava aparecendo pra escolher ao criar um
+  avaliador/moderador novo ou adicionar atribuição a um já existente).
+  Nova lista derivada `eventosParaNovaAtribuicao` (filtra `!e.encerrado`),
+  usada só nos dois `<select>` de "Selecione o evento" — a lista `eventos`
+  sem filtro continua existindo e sendo usada pra mostrar nome/área de
+  atribuições JÁ feitas antes de um evento encerrar (senão o nome sumiria
+  da tela de quem já estava atribuído lá). Testado ao vivo como admin: o
+  seletor de "criar usuário" (papel Avaliador) só mostra o MAC agora, a
+  Semana de Medicina não aparece mais.
+
 - **2026-10-27** — **Validação na busca de autor** (`SubmeterTrabalhoModal`,
   pedido explícito do usuário, achado real com nome: Josiane de Oliveira
   Taborda Barbosa — confirmado no banco que `participantesUids`/`Nomes`
