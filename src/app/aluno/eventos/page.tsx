@@ -10,6 +10,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { DestaqueEventoBanner } from "@/components/DestaqueEventoBanner";
+import { BotaoOutroTrabalho } from "@/components/BotaoOutroTrabalho";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, eventosParaAluno, dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
@@ -140,17 +141,22 @@ function CardEvento({
             {erro && <p className="text-xs text-red-600">{erro}</p>}
           </>
         ) : inscrito && temTaxa && !pago ? (
-          // Trabalho já enviado, mas pagamento ainda pendente — vira o único
-          // botão da linha (2026-08-31): mais importante que o "enviado"
+          // Trabalho já enviado, mas pagamento ainda pendente — o pagamento
+          // vem primeiro (2026-08-31): mais importante que o "enviado"
           // estático, porque ainda tem uma ação pendente de verdade.
-          <button
-            type="button"
-            onClick={() => onAbrirInscricao(evento.id)}
-            className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-          >
-            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-            Pagamento pendente — pagar agora
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => onAbrirInscricao(evento.id)}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+              Pagamento pendente — pagar agora
+            </button>
+            {podeEnviar && (
+              <BotaoOutroTrabalho onClick={() => onAbrirTrabalho(evento.id)} />
+            )}
+          </>
         ) : (
           <>
             {evento.tipo === "simples" ? (
@@ -226,10 +232,20 @@ function CardEvento({
                 />
               </>
             ) : inscrito ? (
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Trabalho enviado
-              </span>
+              // Mais de um trabalho por evento é permitido (2026-10-26,
+              // pedido explícito do usuário) — o "enviado" continua, mas
+              // dentro do prazo também aparece o botão pra mandar outro. O
+              // bloqueio de envio repetido do MESMO trabalho é feito no
+              // servidor (ver /api/trabalhos/checar-duplicado).
+              <>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Trabalho enviado
+                </span>
+                {podeEnviar && (
+                  <BotaoOutroTrabalho onClick={() => onAbrirTrabalho(evento.id)} />
+                )}
+              </>
             ) : podeEnviar ? (
               <button
                 type="button"

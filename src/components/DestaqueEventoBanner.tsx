@@ -8,6 +8,7 @@ import { dentroDoPrazoEnvio, type Evento } from "@/lib/data/eventos";
 import { useMinhaInscricao, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
+import { BotaoOutroTrabalho } from "@/components/BotaoOutroTrabalho";
 
 /** Banner do evento marcado como destaque (ou o primeiro evento aberto, na
  * falta de um marcado), com o CTA de inscrição/envio de trabalho. Extraído
@@ -148,14 +149,19 @@ export function DestaqueEventoBanner({
             {erro && <p className="-mt-2 text-xs text-rose-600">{erro}</p>}
           </>
         ) : jaInscrito && pagamentoPendente ? (
-          <button
-            type="button"
-            onClick={() => onAbrirInscricao(destaque.id)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-          >
-            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-            Pagamento pendente — pagar agora
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onAbrirInscricao(destaque.id)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+              Pagamento pendente — pagar agora
+            </button>
+            {dentroDoPrazoEnvio(destaque) && (
+              <BotaoOutroTrabalho onClick={() => onAbrirTrabalho(destaque.id)} />
+            )}
+          </div>
         ) : destaque.tipo === "simples" ? (
           // Evento simples (2026-09-22) não tem trabalho nenhum, então não
           // passa pelo branch "jaInscrito && pagamentoPendente" ali em cima
@@ -225,13 +231,20 @@ export function DestaqueEventoBanner({
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             {jaInscrito ? (
-              <Link
-                href="/aluno/trabalhos"
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                Inscrição feita — ver trabalho
-              </Link>
+              // Mais de um trabalho por evento (2026-10-26) — ver
+              // BotaoOutroTrabalho.
+              <>
+                <Link
+                  href="/aluno/trabalhos"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                  Inscrição feita — ver trabalho
+                </Link>
+                {dentroDoPrazoEnvio(destaque) && (
+                  <BotaoOutroTrabalho onClick={() => onAbrirTrabalho(destaque.id)} />
+                )}
+              </>
             ) : dentroDoPrazoEnvio(destaque) ? (
               <button
                 type="button"

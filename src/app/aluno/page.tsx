@@ -25,6 +25,7 @@ import { baixarCertificado } from "@/lib/baixarCertificado";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
+import { BotaoOutroTrabalho } from "@/components/BotaoOutroTrabalho";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
 import { navAlunoPara } from "@/lib/navAluno";
@@ -173,6 +174,9 @@ export default function AlunoPainelPage() {
       .map((evento) => ({
         evento,
         trabalho: trabalhos.find((t) => t.eventoId === evento.id) ?? null,
+        // Mais de um trabalho por evento (2026-10-26) — só pra mostrar a
+        // contagem na linha; o detalhe de cada um fica em "Meus trabalhos".
+        qtdTrabalhos: trabalhos.filter((t) => t.eventoId === evento.id).length,
         inscricao: minhasInscricoes.get(evento.id) ?? null,
       }));
   }, [eventos, trabalhos, minhasInscricoes]);
@@ -337,7 +341,7 @@ export default function AlunoPainelPage() {
               </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {eventosInscritos.map(({ evento, trabalho, inscricao }) => {
+                {eventosInscritos.map(({ evento, trabalho, qtdTrabalhos, inscricao }) => {
                   const temTaxa = !!evento.valorInscricao;
                   const pago = inscricao?.status === "pago";
                   const pagamentoPendente = temTaxa && !pago;
@@ -364,7 +368,11 @@ export default function AlunoPainelPage() {
                         <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
                         {evento.tipo !== "simples" && (
                           <p className="mt-0.5 text-sm text-fatec-muted">
-                            {trabalho ? tituloExibicao(trabalho.titulo) : "Nenhum trabalho enviado ainda"}
+                            {!trabalho
+                              ? "Nenhum trabalho enviado ainda"
+                              : qtdTrabalhos > 1
+                                ? `${qtdTrabalhos} trabalhos enviados`
+                                : tituloExibicao(trabalho.titulo)}
                           </p>
                         )}
                         {erroCertificado?.eventoId === evento.id && (
@@ -456,6 +464,12 @@ export default function AlunoPainelPage() {
                                 : "Baixar certificado"}
                             </button>
                           )}
+                        {trabalho && evento.tipo !== "simples" && dentroDoPrazoEnvio(evento) && (
+                          <BotaoOutroTrabalho
+                            onClick={() => setModalEventoId(evento.id)}
+                            className="px-2.5 py-1"
+                          />
+                        )}
                         {!trabalho &&
                           evento.tipo !== "simples" &&
                           (dentroDoPrazoEnvio(evento) ? (
