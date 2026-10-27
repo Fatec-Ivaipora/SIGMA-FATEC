@@ -5,7 +5,8 @@
  * Um trabalho já existente vira candidato quando:
  *  - tem o mesmo título (ignorando maiúscula, acento e espaços), OU
  *  - é o mesmo grupo: quem envia já está nele como autor (aceito ou convite
- *    pendente) e o dono dele está entre os autores adicionados agora;
+ *    pendente) e o dono dele está entre os autores adicionados agora; OU
+ *  - é do mesmo dono (quem envia é quem enviou o existente);
  * e o candidato só conta como o MESMO trabalho se o resumo for praticamente
  * o mesmo E o orientador não for outro (decisão do usuário — "se o resumo
  * for diferente não é o mesmo trabalho", "resumo e orientador podem ser
@@ -78,7 +79,12 @@ export function ehMesmoTrabalho(novo: EnvioNovo, t: TrabalhoExistente): boolean 
   const mesmoTitulo = normalizarTexto(t.titulo ?? "") === normalizarTexto(novo.titulo);
   const mesmoGrupo =
     autoresDele.includes(novo.uid) && novo.participantesUids.includes(t.alunoUid);
-  if (!mesmoTitulo && !mesmoGrupo) return false;
+  // Mesmo dono (2026-10-26) — com "Submeter outro trabalho" o aluno pode
+  // mandar vários no evento; sem isso, reenviar o MESMO trabalho só trocando
+  // o título passava. Resumo + orientador continuam decidindo: trabalhos de
+  // verdade diferentes do mesmo aluno não são bloqueados.
+  const mesmoDono = t.alunoUid === novo.uid;
+  if (!mesmoTitulo && !mesmoGrupo && !mesmoDono) return false;
   return (
     mesmoResumo(novo.resumo, t.resumo ?? "") &&
     mesmoOrientador(novo.nomeOrientador, t.nomeOrientador ?? "")
