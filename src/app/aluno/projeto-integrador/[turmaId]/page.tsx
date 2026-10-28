@@ -151,6 +151,7 @@ export default function TurmaAlunoPage() {
       alunoNome: perfil.nome,
       status: "submissao",
       convitesPendentes: dados.participantesUids,
+      enviadoEm: serverTimestamp(),
       atualizadoEm: serverTimestamp(),
     });
     notificarStatusTrabalho(user, ref.id, "submetido");

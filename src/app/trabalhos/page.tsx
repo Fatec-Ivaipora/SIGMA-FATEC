@@ -91,6 +91,24 @@ function formatarData(valor: unknown): string {
   return (valor as { toDate(): Date }).toDate().toLocaleDateString("pt-BR");
 }
 
+function formatarDataHora(valor: unknown): string {
+  if (!valor || typeof valor !== "object" || !("toDate" in valor)) return "—";
+  return (valor as { toDate(): Date }).toDate().toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Milissegundos do envio (cai pra última edição em trabalho sem enviadoEm) —
+// ordena a tabela pelo último envio recebido (2026-10-28).
+function momentoEnvio(t: Trabalho): number {
+  const valor = (t.enviadoEm ?? t.atualizadoEm) as { toMillis?: () => number } | undefined;
+  return typeof valor?.toMillis === "function" ? valor.toMillis() : 0;
+}
+
 /** Situação do pagamento do dono do trabalho nesse evento (2026-08-31) —
  * componente próprio só pra poder chamar useMinhaInscricao por linha da
  * tabela. Evento sem taxa não tem pagamento pra checar. A leitura funciona
@@ -546,7 +564,12 @@ export default function TrabalhosAdminPage() {
   // avaliadores/moderadores de forma estável, e não deve mudar só porque a
   // organização reordenou a tabela pra olhar as notas.
   const trabalhosExibidos = useMemo(() => {
-    if (!direcaoOrdenacaoNota) return trabalhosFiltrados;
+    // Sem ordenação por nota: o último envio recebido primeiro (2026-10-28,
+    // pedido explícito do usuário). Só a exibição — trabalhosFiltrados (usado
+    // na divisão entre avaliadores) continua como está.
+    if (!direcaoOrdenacaoNota) {
+      return [...trabalhosFiltrados].sort((a, b) => momentoEnvio(b) - momentoEnvio(a));
+    }
     // Resultado Final ordena pela SOMA (av + apr) — é o placar real de quem
     // passou por desempate; quem só tem av (venceu sem precisar de
     // apresentação) ordena só por ela.
@@ -1425,7 +1448,10 @@ export default function TrabalhosAdminPage() {
                         </th>
                       </>
                     )}
-                    <th className="px-3 py-2 font-semibold">Atualizado</th>
+                    <th className="px-3 py-2 font-semibold" title="Mais recentes primeiro">
+                      Enviado em ↓
+                    </th>
+                    <th className="px-3 py-2 font-semibold">Última edição</th>
                     <th className="px-3 py-2 font-semibold">Situação</th>
                     {etapa === "resultado_final" && (
                       <th className="border-l border-fatec-line px-4 py-2 font-semibold">Ações</th>
@@ -1498,6 +1524,9 @@ export default function TrabalhosAdminPage() {
                           </td>
                         </>
                       )}
+                      <td className="whitespace-nowrap px-3 py-2.5 align-top font-medium text-fatec-navy-900">
+                        {formatarDataHora(t.enviadoEm)}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-2.5 align-top text-fatec-muted">
                         {formatarData(t.atualizadoEm)}
                       </td>
@@ -1585,7 +1614,7 @@ export default function TrabalhosAdminPage() {
                   {trabalhosFiltrados.length === 0 && (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={10}
                         className="px-4 py-8 text-center text-sm text-fatec-muted"
                       >
                         Nenhum trabalho nesta etapa.
