@@ -23,6 +23,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DetalheTrabalhoModal } from "@/components/DetalheTrabalhoModal";
+import { AvisoConflitos } from "@/components/AvisoConflitos";
+import { conflitoDeInteresse, planejarDistribuicao } from "@/lib/conflitoInteresse";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
@@ -764,6 +766,24 @@ export default function TrabalhosAdminPage() {
     });
   }
 
+  // Conflito de interesse (2026-10-27, pedido explícito do usuário) —
+  // professor pode ser orientador e avaliador/moderador ao mesmo tempo.
+  // Divisão automática: plano que desvia os conflitos sempre que dá.
+  // Envio manual: lista os trabalhos selecionados em que a pessoa escolhida
+  // é autora/orientadora/coorientadora, pra quem envia decidir.
+  const planoDistribuicao = useMemo(
+    () => planejarDistribuicao(trabalhosSelecionadosObjs, distribuicao),
+    [trabalhosSelecionadosObjs, distribuicao],
+  );
+  const conflitosManual = useMemo(() => {
+    const pessoa = pessoasParaManual.find((a) => a.uid === avaliadorEscolhido);
+    if (!pessoa) return [];
+    return trabalhosSelecionadosObjs.flatMap((trabalho) => {
+      const conflito = conflitoDeInteresse(pessoa, trabalho);
+      return conflito ? [{ trabalho, pessoa, conflito }] : [];
+    });
+  }, [pessoasParaManual, avaliadorEscolhido, trabalhosSelecionadosObjs]);
+
   // Campos e status gravados mudam conforme o alvo do envio (2026-08-26).
   function camposEnvio(uid: string, nome: string) {
     return papelAlvoEnvio === "avaliador"
@@ -797,18 +817,16 @@ export default function TrabalhosAdminPage() {
   async function confirmarEnvioDistribuido() {
     if (somaDistribuicao !== selecionados.size) return;
 
-    const idsOrdenados = trabalhosSelecionadosObjs.map((t) => t.id);
+    // Conflito de interesse (2026-10-27): em vez de fatiar na ordem da
+    // tabela, cada trabalho vai pra quem ainda tem vaga e NÃO é autor/
+    // orientador/coorientador dele — ver planejarDistribuicao. Só sobra
+    // conflito quando não há outra opção (e aí já foi avisado na modal).
     const batch = writeBatch(db);
-    let cursor = 0;
-    for (const linha of distribuicao) {
-      const fatia = idsOrdenados.slice(cursor, cursor + linha.quantidade);
-      cursor += linha.quantidade;
-      for (const id of fatia) {
-        batch.update(doc(db, "trabalhos", id), {
-          ...camposEnvio(linha.uid, linha.nome),
-          atualizadoEm: serverTimestamp(),
-        });
-      }
+    for (const { trabalho, pessoa } of planoDistribuicao.atribuicoes) {
+      batch.update(doc(db, "trabalhos", trabalho.id), {
+        ...camposEnvio(pessoa.uid, pessoa.nome),
+        atualizadoEm: serverTimestamp(),
+      });
     }
     await batch.commit();
     if (user) {
@@ -1703,6 +1721,13 @@ export default function TrabalhosAdminPage() {
           </>
         )}
 
+        <AvisoConflitos
+          conflitos={
+            !modoManual && pessoasDaArea.length > 0 ? planoDistribuicao.conflitos : conflitosManual
+          }
+          automatico={!modoManual && pessoasDaArea.length > 0}
+        />
+
         <div className="mt-6 flex gap-2">
           <button
             type="button"
@@ -1763,6 +1788,7 @@ export default function TrabalhosAdminPage() {
             areaTematica: trabalhoEditando.areaTematica,
             modalidadeApresentacao: trabalhoEditando.modalidadeApresentacao,
             nomeOrientador: trabalhoEditando.nomeOrientador,
+            nomesCoorientadores: trabalhoEditando.nomesCoorientadores,
             participantes: (trabalhoEditando.participantesUids ?? []).map((uid, i) => ({
               uid,
               nome: trabalhoEditando.participantesNomes?.[i] ?? uid,

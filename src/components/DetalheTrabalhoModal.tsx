@@ -92,6 +92,13 @@ export function DetalheTrabalhoModal({
             <p className="text-sm text-fatec-ink">{trabalho.nomeOrientador || "—"}</p>
           </div>
 
+          {(trabalho.nomesCoorientadores?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">Coorientador(es)</span>
+              <p className="text-sm text-fatec-ink">{trabalho.nomesCoorientadores!.join(", ")}</p>
+            </div>
+          )}
+
           {trabalho.avaliadorNome && (
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fatec-navy-900">Avaliador</span>

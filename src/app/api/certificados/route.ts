@@ -100,11 +100,31 @@ export async function GET(request: Request) {
     if (!ehStaffDoEvento) {
       return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });
     }
-    if (!trabalho.nomeOrientador) {
-      return NextResponse.json(
-        { erro: "Esse trabalho não tem orientador cadastrado." },
-        { status: 400 },
-      );
+    // Coorientador (2026-10-27) — mesma rota, com `coorientador=<índice>`
+    // apontando pra uma posição de trabalho.nomesCoorientadores. O nome
+    // também é sempre lido do Firestore, nunca vindo do client.
+    const indiceCoorientador = url.searchParams.get("coorientador");
+    let nomeDeclarado: string;
+    let papelDeclarado: "orientador" | "coorientador";
+    if (indiceCoorientador !== null) {
+      const nome = ((trabalho.nomesCoorientadores ?? []) as string[])[Number(indiceCoorientador)];
+      if (!/^\d+$/.test(indiceCoorientador) || !nome) {
+        return NextResponse.json(
+          { erro: "Coorientador não encontrado nesse trabalho." },
+          { status: 400 },
+        );
+      }
+      nomeDeclarado = nome;
+      papelDeclarado = "coorientador";
+    } else {
+      if (!trabalho.nomeOrientador) {
+        return NextResponse.json(
+          { erro: "Esse trabalho não tem orientador cadastrado." },
+          { status: 400 },
+        );
+      }
+      nomeDeclarado = trabalho.nomeOrientador as string;
+      papelDeclarado = "orientador";
     }
     if (trabalho.status !== "aceito") {
       return NextResponse.json(
@@ -131,8 +151,8 @@ export async function GET(request: Request) {
     const hoje = new Date().toISOString().slice(0, 10);
     const buffer = await renderToBuffer(
       DeclaracaoPDF({
-        nome: trabalho.nomeOrientador as string,
-        papel: "orientador",
+        nome: nomeDeclarado,
+        papel: papelDeclarado,
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
         dataRealizacaoFim: (evento.dataRealizacaoFim as string) || undefined,
@@ -145,7 +165,7 @@ export async function GET(request: Request) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="declaracao-orientador-${slug(trabalho.nomeOrientador as string)}.pdf"`,
+        "Content-Disposition": `attachment; filename="declaracao-${papelDeclarado}-${slug(nomeDeclarado)}.pdf"`,
       },
     });
   }
@@ -256,6 +276,8 @@ export async function GET(request: Request) {
       ...((trabalho.participantesNomes ?? []) as string[]),
     ];
     if (trabalho.nomeOrientador) nomes.push(trabalho.nomeOrientador as string);
+    // Coorientadores logo depois do orientador (2026-10-27).
+    nomes.push(...((trabalho.nomesCoorientadores ?? []) as string[]));
 
     const premiado = trabalho.premiado === true;
     const buffer = await renderToBuffer(

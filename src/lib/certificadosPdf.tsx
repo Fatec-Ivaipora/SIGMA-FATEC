@@ -335,12 +335,14 @@ export function CertificadoApresentacaoPDF({
 }
 
 const PAPEL_TEXTO: Record<
-  "avaliador" | "moderador" | "orientador" | "monitor" | "participante",
+  "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante",
   string
 > = {
   avaliador: "avaliador(a) dos trabalhos",
   moderador: "moderador(a) dos trabalhos",
   orientador: "orientador(a) de projeto",
+  // Coorientador (2026-10-27) — texto livre no trabalho, igual ao orientador.
+  coorientador: "coorientador(a) de projeto",
   monitor: "monitor(a) de apoio ao evento",
   // Certificado de participação (2026-09-22) — evento "simples", sem
   // trabalho por trás, só a inscrição paga (ou gratuita) da pessoa.
@@ -505,7 +507,7 @@ export function DeclaracaoPDF({
   registroNumero,
 }: {
   nome: string;
-  papel: "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
+  papel: "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante";
   eventoNome: string;
   dataRealizacao: string;
   // Opcional (2026-09-30) — só vem preenchido pra evento "simples" de mais

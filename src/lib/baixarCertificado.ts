@@ -11,7 +11,9 @@ type ChaveCertificado =
   | { papel: "avaliador" | "moderador" | "monitor"; eventoId: string; uidAlvo?: string }
   // Orientador nunca é auto-atendimento — é texto livre no trabalho, sem
   // conta vinculada, só admin/organização emite (ver /api/certificados).
-  | { papel: "orientador"; trabalhoId: string }
+  // coorientador (2026-10-27): índice em trabalho.nomesCoorientadores — mesma
+  // rota do orientador, só muda o nome e o papel na declaração.
+  | { papel: "orientador"; trabalhoId: string; coorientador?: number }
   // Certificado de participação (2026-09-22) — evento "simples", sem
   // trabalho nenhum por trás, só a inscrição do próprio uid nesse evento.
   // uidAlvo (2026-10-01) — mesmo espírito do avaliador/moderador/monitor
@@ -44,7 +46,10 @@ export async function baixarCertificado(
   const idToken = await user.getIdToken();
   const query =
     chave.papel === "aluno" || chave.papel === "orientador"
-      ? `trabalhoId=${encodeURIComponent(chave.trabalhoId)}&papel=${chave.papel}`
+      ? `trabalhoId=${encodeURIComponent(chave.trabalhoId)}&papel=${chave.papel}` +
+        (chave.papel === "orientador" && chave.coorientador !== undefined
+          ? `&coorientador=${chave.coorientador}`
+          : "")
       : `eventoId=${encodeURIComponent(chave.eventoId)}&papel=${chave.papel}` +
         ("uidAlvo" in chave && chave.uidAlvo
           ? `&uidAlvo=${encodeURIComponent(chave.uidAlvo)}`

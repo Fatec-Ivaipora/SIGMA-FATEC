@@ -266,6 +266,7 @@ export default function AlunoTrabalhosPage() {
             areaTematica: editando.areaTematica,
             modalidadeApresentacao: editando.modalidadeApresentacao,
             nomeOrientador: editando.nomeOrientador,
+            nomesCoorientadores: editando.nomesCoorientadores,
             participantes: (editando.participantesUids ?? []).map((uid, i) => ({
               uid,
               nome: editando.participantesNomes?.[i] ?? uid,
