@@ -1780,6 +1780,7 @@ export default function TrabalhosAdminPage() {
           modalidadesPermitidas={eventos.find((e) => e.id === trabalhoEditando.eventoId)?.modalidadesApresentacao}
           resumoAcademico
           meuUid={user?.uid}
+          autorPrincipal={{ nome: trabalhoEditando.alunoNome, souEu: false }}
           modoEdicao
           valoresIniciais={{
             titulo: trabalhoEditando.titulo,

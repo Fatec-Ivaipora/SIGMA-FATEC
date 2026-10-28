@@ -155,7 +155,7 @@ export function CampoNomeProfessor({
         </ul>
       )}
       {naoEncontrado && (
-        <p className="mt-1.5 rounded-lg bg-fatec-sky-50 px-3 py-2 text-xs text-fatec-navy-900">
+        <p className="mt-1.5 rounded-lg bg-fatec-sky-100 px-3 py-2 text-xs text-fatec-navy-900">
           Nenhum professor da Fatec encontrado com esse nome. Sem problema:{" "}
           <strong>digite o nome completo</strong> do professor e siga normalmente — ele será
           salvo do jeito que você escrever.

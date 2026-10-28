@@ -131,3 +131,51 @@ export async function baixarListaPresenca(
 
   return { ok: true };
 }
+
+/** Relatório de participantes por curso em PDF (2026-10-28) — ver GET
+ * /api/relatorios/participantes-curso. Sem `curso` = todos os cursos. */
+export async function baixarRelatorioCursos(
+  user: User,
+  dados: { eventoId: string; curso?: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams({ eventoId: dados.eventoId, ...(dados.curso ? { curso: dados.curso } : {}) });
+  const res = await fetch(`/api/relatorios/participantes-curso?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o relatório." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "relatorio-participantes.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
+/** PDF da participação por turma do Edubox (um curso ou todos) — ver
+ * /api/relatorios/turmas-edubox. */
+export async function baixarRelatorioTurmas(
+  user: User,
+  dados: { eventoId: string; curso?: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams({
+    eventoId: dados.eventoId,
+    formato: "pdf",
+    ...(dados.curso ? { curso: dados.curso } : {}),
+  });
+  const res = await fetch(`/api/relatorios/turmas-edubox?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o relatório por turma." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "relatorio-turmas.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
