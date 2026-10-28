@@ -62,6 +62,9 @@ export type Trabalho = {
   // Escolhido pelo aluno na submissão.
   modalidadeApresentacao?: "oral" | "roda_conversa";
   nomeOrientador?: string;
+  // Coorientadores em texto livre (2026-10-27) — ver DadosSubmissao em
+  // SubmeterTrabalhoModal.tsx. Ausente nos trabalhos enviados antes.
+  nomesCoorientadores?: string[];
   resumo?: string;
   // Palavras-chave do resumo acadêmico (2026-10-09, pedido explícito do
   // usuário — "sinto que falta um campo de palavras chave tbm antes do

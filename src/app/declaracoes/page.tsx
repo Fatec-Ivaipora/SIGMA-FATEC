@@ -158,6 +158,9 @@ function EmitirCertificado({
     for (const t of trabalhosDoEvento) {
       const nomes = [t.alunoNome, ...(t.participantesNomes ?? [])];
       if (t.nomeOrientador) nomes.push(t.nomeOrientador);
+      // Mesma ordem do certificado (ver /api/certificados) — coorientadores
+      // logo depois do orientador (2026-10-27).
+      nomes.push(...(t.nomesCoorientadores ?? []));
       // Pagamento é checado só pelo aluno principal (2026-10-01) — um
       // trabalho em grupo sai num PDF só, com todos os nomes juntos (ver
       // CertificadoApresentacaoPDF), não tem como checar "o pagamento de
@@ -194,6 +197,23 @@ function EmitirCertificado({
           gerar: () => baixarCertificado(user, { papel: "orientador", trabalhoId: t.id }),
         });
       }
+
+      // Uma declaração por coorientador (2026-10-27) — mesma regra do
+      // orientador: texto livre no trabalho, sem conta, só o resultado final
+      // aceito libera. Fica no mesmo filtro "Orientadores".
+      (t.nomesCoorientadores ?? []).forEach((nomeCoorientador, indice) => {
+        lista.push({
+          chaveLista: `coorientador_${t.id}_${indice}`,
+          nome: nomeCoorientador,
+          rotuloTipo: "Declaração de coorientador(a)",
+          contexto: tituloExibicao(t.titulo),
+          textoBusca: nomeCoorientador.toLowerCase(),
+          tipo: "orientador",
+          checks: [{ label: "Resultado final aceito", ok: true }],
+          gerar: () =>
+            baixarCertificado(user, { papel: "orientador", trabalhoId: t.id, coorientador: indice }),
+        });
+      });
     }
 
     const avaliadores = new Map<string, string>();

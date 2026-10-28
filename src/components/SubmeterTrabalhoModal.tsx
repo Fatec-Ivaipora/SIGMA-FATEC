@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Bold, Check, Download, Italic, Mic, Presentation, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
+import { CampoNomeProfessor } from "@/components/CampoNomeProfessor";
 import { useAlunosParaBusca, type AlunoParaBusca } from "@/lib/data/usuarios";
 import { useInscritosUids } from "@/lib/data/inscricoes";
 import type { AreaTematicaComplexa } from "@/lib/data/eventos";
@@ -84,9 +85,18 @@ export type DadosSubmissao = {
   // palavras-chave (não é um resumo em formato acadêmico ABNT).
   palavrasChave?: string;
   nomeOrientador: string;
+  // Coorientadores (2026-10-27, pedido explícito do usuário — trabalho com
+  // mais de um professor ajudando, inclusive professor que é da organização
+  // e não aparece na busca de autores): texto livre, igual ao orientador,
+  // sem precisar de cadastro no sistema. Vazio = nenhum.
+  nomesCoorientadores: string[];
   participantesUids: string[];
   participantesNomes: string[];
 };
+
+// Limite de coorientadores por trabalho — só pra a lista não crescer sem fim
+// na tela e no certificado (que imprime todos os nomes juntos).
+const MAX_COORIENTADORES = 3;
 
 /** Campo de resumo com negrito/itálico + pré-visualização (2026-10-09,
  * pedido explícito do usuário — "sinto uma falta de formatação... procure
@@ -276,6 +286,7 @@ export function SubmeterTrabalhoModal({
     areaTematica?: string;
     modalidadeApresentacao?: "oral" | "roda_conversa";
     nomeOrientador?: string;
+    nomesCoorientadores?: string[];
     participantes?: { uid: string; nome: string }[];
   };
   // Edição de um trabalho já submetido (2026-09-04, trava de prazo — ver
@@ -314,6 +325,9 @@ export function SubmeterTrabalhoModal({
   const [fase, setFase] = useState<1 | 2 | 3>(1);
   const [titulo, setTitulo] = useState(valoresIniciais?.titulo ?? "");
   const [nomeOrientador, setNomeOrientador] = useState(valoresIniciais?.nomeOrientador ?? "");
+  const [coorientadores, setCoorientadores] = useState<string[]>(
+    valoresIniciais?.nomesCoorientadores ?? [],
+  );
   const [areaNivel1, setAreaNivel1] = useState(areaInicial.areaNivel1);
   const [subArea, setSubArea] = useState(areaInicial.subArea);
   const [modalidadeApresentacao, setModalidadeApresentacao] = useState<
@@ -411,6 +425,7 @@ export function SubmeterTrabalhoModal({
     setFase(1);
     setTitulo(valoresIniciais?.titulo ?? "");
     setNomeOrientador(valoresIniciais?.nomeOrientador ?? "");
+    setCoorientadores(valoresIniciais?.nomesCoorientadores ?? []);
     setAreaNivel1(areaInicial.areaNivel1);
     setSubArea(areaInicial.subArea);
     setModalidadeApresentacao(modalidadeInicial());
@@ -432,6 +447,9 @@ export function SubmeterTrabalhoModal({
       resumo: resumo.trim(),
       ...(resumoAcademico ? { palavrasChave: palavrasChave.trim() } : {}),
       nomeOrientador: nomeOrientador.trim(),
+      // Campos deixados em branco são descartados (o aluno pode ter clicado
+      // em "adicionar" e desistido).
+      nomesCoorientadores: coorientadores.map((n) => n.trim()).filter(Boolean),
       participantesUids: participantes.map((p) => p.uid),
       participantesNomes: participantes.map((p) => p.nome),
     });
@@ -701,20 +719,68 @@ export function SubmeterTrabalhoModal({
           <span className="text-sm font-medium text-fatec-navy-900">
             Nome do orientador <span className="text-fatec-orange-600">*</span>
           </span>
-          <input
-            type="text"
+          <CampoNomeProfessor
             required
             disabled={somenteLeitura}
             value={nomeOrientador}
-            onChange={(e) => setNomeOrientador(e.target.value)}
+            onChange={setNomeOrientador}
             placeholder="Nome completo do professor orientador"
-            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-50 disabled:text-fatec-muted"
+            ariaLabel="Nome do orientador"
           />
           <span className="text-xs text-fatec-muted">
-            Apenas identificação — a aprovação do orientador acontece fora do
-            sistema.
+            Digite pelo menos 3 letras para ver os professores da Fatec e
+            selecionar. Apenas identificação — a aprovação do orientador
+            acontece fora do sistema.
           </span>
         </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-fatec-navy-900">
+            Coorientador(es) <span className="font-normal text-fatec-muted">(opcional)</span>
+          </span>
+          {coorientadores.map((nome, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="flex-1">
+                <CampoNomeProfessor
+                  disabled={somenteLeitura}
+                  value={nome}
+                  onChange={(valor) =>
+                    setCoorientadores((prev) => prev.map((n, j) => (j === i ? valor : n)))
+                  }
+                  placeholder="Nome completo do professor coorientador"
+                  ariaLabel={`Coorientador ${i + 1}`}
+                />
+              </div>
+              {!somenteLeitura && (
+                <button
+                  type="button"
+                  onClick={() => setCoorientadores((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label={`Remover coorientador ${i + 1}`}
+                  className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-fatec-muted transition-colors hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <X className="h-4 w-4" strokeWidth={2} />
+                </button>
+              )}
+            </div>
+          ))}
+          {!somenteLeitura && coorientadores.length < MAX_COORIENTADORES && (
+            <button
+              type="button"
+              onClick={() => setCoorientadores((prev) => [...prev, ""])}
+              className="w-fit rounded-lg px-1 py-1 text-sm font-semibold text-fatec-sky-600 transition-colors hover:text-fatec-navy-900"
+            >
+              + Adicionar coorientador
+            </button>
+          )}
+          {somenteLeitura && coorientadores.length === 0 && (
+            <span className="text-sm text-fatec-muted">Nenhum.</span>
+          )}
+          <span className="text-xs text-fatec-muted">
+            Para quando mais de um professor auxiliou no trabalho. Digite pelo
+            menos 3 letras para ver os professores da Fatec, ou escreva o nome
+            completo — não precisa ter cadastro no sistema.
+          </span>
+        </div>
         </>
         )}
 

@@ -272,6 +272,8 @@ export default function AlunoPainelPage() {
                       <p className="mt-0.5 text-sm text-fatec-muted">
                         {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
                         {t.nomeOrientador && ` · Orientador: ${t.nomeOrientador}`}
+                        {(t.nomesCoorientadores?.length ?? 0) > 0 &&
+                          ` · Coorientador(es): ${t.nomesCoorientadores!.join(", ")}`}
                       </p>
                     </div>
                   </div>
