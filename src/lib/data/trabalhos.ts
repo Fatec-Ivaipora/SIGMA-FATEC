@@ -111,6 +111,11 @@ export type Trabalho = {
   // que esse trabalho foi designado pela grade automática (2026-09-17) — ver
   // src/lib/data/sessoes.ts e /ensalamento. Ausente = ainda não ensalado.
   sessaoId?: string | null;
+  // Quando o trabalho foi ENVIADO (2026-10-28, pedido explícito do usuário —
+  // "organizar pelo último envio recebido, não pela edição"). Gravado só na
+  // criação; atualizadoEm continua mudando a cada edição. Trabalhos antigos
+  // receberam o momento em que o documento foi criado.
+  enviadoEm?: unknown;
   atualizadoEm?: unknown;
 };
 
