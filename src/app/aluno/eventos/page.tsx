@@ -450,6 +450,7 @@ export default function AlunoEventosPage() {
           modalidadesPermitidas={eventoModal.modalidadesApresentacao}
           resumoAcademico
           meuUid={user?.uid}
+          autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTrabalho}
         />

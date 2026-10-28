@@ -314,6 +314,7 @@ export default function TurmaAlunoPage() {
           areasComplexas={eventoEscolhido.areasTematicasComplexas ?? []}
           modalidadesPermitidas={eventoEscolhido.modalidadesApresentacao}
           meuUid={user?.uid}
+          autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           valoresIniciais={{ titulo: trabalho?.titulo, resumo: trabalho?.resumo }}
           onClose={() => setModalInscricao(false)}
           onSubmit={enviarInscricao}

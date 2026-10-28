@@ -98,6 +98,11 @@ export type DadosSubmissao = {
 // na tela e no certificado (que imprime todos os nomes juntos).
 const MAX_COORIENTADORES = 3;
 
+// Minúsculo e sem acento — busca de colega ("cassia" acha "Cássia").
+function semAcento(texto: string): string {
+  return (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
 /** Campo de resumo com negrito/itálico + pré-visualização (2026-10-09,
  * pedido explícito do usuário — "sinto uma falta de formatação... procure
  * exemplos"). Padrão "Escrever/Pré-visualizar" (GitHub, editores de
@@ -236,6 +241,7 @@ export function SubmeterTrabalhoModal({
   modalidadesPermitidas = ["oral", "roda_conversa"],
   resumoAcademico = false,
   meuUid,
+  autorPrincipal,
   valoresIniciais,
   modoEdicao = false,
   somenteLeitura = false,
@@ -275,6 +281,12 @@ export function SubmeterTrabalhoModal({
   // caracteres — pedido explícito do usuário, 2026-10-09).
   resumoAcademico?: boolean;
   meuUid: string | undefined;
+  // Autor principal (2026-10-28, pedido explícito do usuário — "deixar claro
+  // pra quem está enviando que, ao adicionar os demais autores, o nome dele
+  // já vai estar incluso; muitos estão confusos"). Mostrado como selo fixo
+  // na etapa Autores. `souEu` decide o texto ("você" × nome de quem enviou,
+  // ex.: admin editando o trabalho de um aluno). Ausente = selo genérico.
+  autorPrincipal?: { nome: string; souEu: boolean };
   // Pré-preenche o formulário — usado tanto ao inscrever num evento um
   // trabalho já aprovado pelo orientador numa turma do Projeto Integrador
   // (2026-08-25, só titulo/resumo) quanto no modo edição (2026-09-04, todos
@@ -337,6 +349,7 @@ export function SubmeterTrabalhoModal({
   const [palavrasChave, setPalavrasChave] = useState(valoresIniciais?.palavrasChave ?? "");
   const [buscaColega, setBuscaColega] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [participantes, setParticipantes] = useState<AlunoParaBusca[]>(
     (valoresIniciais?.participantes ?? []).map((p) => ({ ...p, email: "" })),
@@ -373,18 +386,21 @@ export function SubmeterTrabalhoModal({
   // em vez de só mostrar "nenhum resultado" (comentário logo abaixo).
   const buscaTemSeparador = /[,;]/.test(buscaColega);
 
+  // Cada palavra digitada precisa aparecer no nome (ou e-mail), em qualquer
+  // ordem e sem acento (2026-10-28, caso real da X MAC: "Maria Fernanda
+  // Souza" não achava "Maria Fernanda de Souza", e "Cassia" não achava
+  // "Cássia" — a busca antiga exigia o texto inteiro, igualzinho).
   const sugestoes = useMemo(() => {
     if (buscaTemSeparador) return [];
-    const termo = buscaColega.trim().toLowerCase();
-    if (!termo) return [];
+    const termos = semAcento(buscaColega).split(/\s+/).filter(Boolean);
+    if (termos.length === 0) return [];
     const jaSelecionados = new Set(participantes.map((p) => p.uid));
     return alunos
-      .filter(
-        (a) =>
-          !jaSelecionados.has(a.uid) &&
-          (a.nome.toLowerCase().includes(termo) ||
-            a.email.toLowerCase().includes(termo)),
-      )
+      .filter((a) => {
+        if (jaSelecionados.has(a.uid)) return false;
+        const alvo = `${semAcento(a.nome)} ${semAcento(a.email)}`;
+        return termos.every((t) => alvo.includes(t));
+      })
       .slice(0, 5);
   }, [alunos, buscaColega, buscaTemSeparador, participantes]);
 
@@ -437,10 +453,17 @@ export function SubmeterTrabalhoModal({
   }
 
   async function enviar() {
-    if (!valido || enviando) return;
+    // Trava em ref, não só no estado (2026-10-28): caso real da X MAC — o
+    // mesmo trabalho gravado 2x no mesmo segundo (clique duplo). O estado
+    // `enviando` só vale na próxima renderização; o 2º clique chegava antes
+    // e passava pela checagem de duplicidade junto com o 1º.
+    if (!valido || enviandoRef.current) return;
+    enviandoRef.current = true;
     setErroEnvio(null);
     setEnviando(true);
-    const erro = await onSubmit({
+    let erro: string | void;
+    try {
+      erro = await onSubmit({
       titulo: titulo.trim(),
       areaTematica: areaTematicaFinal,
       ...(modalidadeApresentacao ? { modalidadeApresentacao } : {}),
@@ -452,8 +475,11 @@ export function SubmeterTrabalhoModal({
       nomesCoorientadores: coorientadores.map((n) => n.trim()).filter(Boolean),
       participantesUids: participantes.map((p) => p.uid),
       participantesNomes: participantes.map((p) => p.nome),
-    });
-    setEnviando(false);
+      });
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(false);
+    }
     if (erro) {
       setErroEnvio(erro);
       return;
@@ -788,12 +814,32 @@ export function SubmeterTrabalhoModal({
         <>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-fatec-navy-900">
-            Autores (participantes)
+            Autores do trabalho
           </span>
 
-          {participantes.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {participantes.map((p) => (
+          {!somenteLeitura && (autorPrincipal?.souEu ?? true) && (
+            <p className="rounded-xl bg-fatec-sky-100 px-4 py-3 text-sm text-fatec-navy-900">
+              <strong>Você já está incluído(a) como autor principal</strong> — não
+              precisa se adicionar. Aqui você adiciona{" "}
+              <strong>somente os outros autores</strong> (colegas que fizeram o
+              trabalho com você). Se fez sozinho(a), é só enviar.
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-1.5">
+            {/* Selo fixo do autor principal — não sai da lista, nunca tem X. */}
+            <span className="flex items-center gap-1.5 rounded-full border border-fatec-sky-600/40 bg-fatec-sky-100 py-1.5 pl-2.5 pr-3.5 text-sm font-medium text-fatec-navy-900">
+              <Check className="h-3.5 w-3.5 text-fatec-sky-600" strokeWidth={2.5} />
+              {autorPrincipal?.nome
+                ? autorPrincipal.souEu
+                  ? `${autorPrincipal.nome} (você)`
+                  : autorPrincipal.nome
+                : "Você"}
+              <span className="text-xs font-normal text-fatec-muted">
+                · autor principal · já incluído
+              </span>
+            </span>
+            {participantes.map((p) => (
                 <span
                   key={p.uid}
                   className="flex items-center gap-1.5 rounded-full bg-fatec-navy-50 py-1.5 pl-3.5 pr-2 text-sm font-medium text-fatec-navy-900"
@@ -811,8 +857,7 @@ export function SubmeterTrabalhoModal({
                   )}
                 </span>
               ))}
-            </div>
-          )}
+          </div>
 
           {/* Busca de autor some inteira em modo leitura (2026-09-09) —
               colega convidado só acompanha, não adiciona/remove ninguém. */}
@@ -822,7 +867,7 @@ export function SubmeterTrabalhoModal({
               type="text"
               value={buscaColega}
               onChange={(e) => setBuscaColega(e.target.value)}
-              placeholder="Buscar autor por nome ou e-mail"
+              placeholder="Adicionar outro autor: buscar colega por nome ou e-mail"
               className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600 ${
                 buscaTemSeparador ? "border-rose-300" : "border-fatec-line"
               }`}
@@ -854,14 +899,19 @@ export function SubmeterTrabalhoModal({
           ) : buscaSemResultado ? (
             <p className="text-xs text-amber-600">
               Nenhum autor encontrado pra &quot;{buscaColega.trim()}&quot;.
-              Confira se a pessoa já tem conta no SIGMA
-              {temTaxa && " e já demonstrou interesse neste evento"} — sem
-              clicar numa sugestão aqui, ninguém é adicionado de verdade.
+              Para aparecer aqui, o colega precisa{" "}
+              <strong>
+                criar a conta no SIGMA{temTaxa && " e se inscrever neste evento"}
+              </strong>{" "}
+              antes. Sem clicar numa sugestão aqui, ninguém é adicionado de
+              verdade — se ele se inscrever depois, você pode editar o
+              trabalho e adicioná-lo.
             </p>
           ) : null}
           <span className="text-xs text-fatec-muted">
-            Opcional. Autores adicionados também acompanham o status deste
-            trabalho, mas só quem submeteu pode corrigir e reenviar.
+            Opcional — só para os outros autores (quem envia já está incluído).
+            Autores adicionados também acompanham o status deste trabalho, mas
+            só quem submeteu pode corrigir e reenviar.
             {temTaxa &&
               " Só aparecem autores que já demonstraram interesse neste evento."}
           </span>

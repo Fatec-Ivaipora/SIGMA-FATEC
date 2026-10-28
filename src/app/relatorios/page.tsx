@@ -25,6 +25,8 @@ import { useInscricoesRelatorio, diasConfirmadosCount } from "@/lib/data/inscric
 import { periodosDoEvento } from "@/lib/periodosPresenca";
 import { separarGrupoSubArea } from "@/lib/areasTematicas";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import { RelatorioParticipantesCurso } from "@/components/RelatorioParticipantesCurso";
+import { RelatorioTurmasEdubox } from "@/components/RelatorioTurmasEdubox";
 
 const LIMITE_RANKING = 10;
 
@@ -274,7 +276,7 @@ function RelatoriosContent() {
   // pedagógica (nota média, melhores trabalhos — só faz sentido depois que
   // os trabalhos já têm nota). Evento simples não usa essas abas, tem as
   // próprias seções fixas mais abaixo.
-  const [abaRelatorioCompleto, setAbaRelatorioCompleto] = useState<"perfil" | "avaliacao">(
+  const [abaRelatorioCompleto, setAbaRelatorioCompleto] = useState<"perfil" | "avaliacao" | "cursos">(
     "perfil",
   );
 
@@ -540,7 +542,9 @@ function RelatoriosContent() {
               [
                 { key: "perfil", label: "Perfil dos inscritos" },
                 { key: "avaliacao", label: "Avaliação dos trabalhos" },
-              ] as { key: "perfil" | "avaliacao"; label: string }[]
+                // 2026-10-28 — relatório pra entregar aos coordenadores.
+                { key: "cursos", label: "Participantes por curso" },
+              ] as { key: "perfil" | "avaliacao" | "cursos"; label: string }[]
             ).map((aba) => (
               <button
                 key={aba.key}
@@ -556,6 +560,27 @@ function RelatoriosContent() {
               </button>
             ))}
           </div>
+          )}
+
+          {!ehSimples && abaRelatorioCompleto === "cursos" && (
+            <div className="mt-6">
+              {eventoSelecionado ? (
+                <div className="flex flex-col gap-4">
+                  <RelatorioParticipantesCurso
+                    user={user}
+                    eventoId={eventoSelecionado.id}
+                    inscricoes={inscricoesDoEvento}
+                    cursoPorUid={cursoPorUid}
+                    trabalhos={trabalhosDoEvento}
+                  />
+                  <RelatorioTurmasEdubox key={eventoSelecionado.id} user={user} eventoId={eventoSelecionado.id} />
+                </div>
+              ) : (
+                <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+                  Escolha um evento no topo para ver os participantes por curso.
+                </p>
+              )}
+            </div>
           )}
 
           {!ehSimples && abaRelatorioCompleto === "perfil" && (

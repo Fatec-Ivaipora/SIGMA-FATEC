@@ -554,6 +554,7 @@ export default function AlunoPainelPage() {
           areasComplexas={eventoModal.areasTematicasComplexas ?? []}
           resumoAcademico
           meuUid={user?.uid}
+          autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTrabalho}
         />

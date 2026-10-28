@@ -258,6 +258,7 @@ export default function AlunoTrabalhosPage() {
           }
           resumoAcademico
           meuUid={user?.uid}
+          autorPrincipal={{ nome: editando.alunoNome, souEu: editando.alunoUid === user?.uid }}
           comentarioRevisao={editando.status === "revisao" ? editando.comentarioRevisao : null}
           valoresIniciais={{
             titulo: editando.titulo,

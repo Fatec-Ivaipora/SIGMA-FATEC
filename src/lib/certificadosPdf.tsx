@@ -3,6 +3,12 @@ import fs from "node:fs";
 import { Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
 import type { Style } from "@react-pdf/types";
 import type { AssinanteCertificado } from "@/lib/assinantesCertificado";
+import {
+  ROTULO_INSCRICAO,
+  ROTULO_STATUS_TRABALHO,
+  type RelatorioCurso,
+} from "@/lib/relatorioCursos";
+import { ROTULO_SITUACAO, type CursoTurmas } from "@/lib/relatorioTurmas";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -883,6 +889,230 @@ export function ListaPresencaPDF({
           /Paraná{"\n"}www.fatecivaipora.com.br
         </Text>
       </Page>
+    </Document>
+  );
+}
+
+/** Relatório de participantes por curso (2026-10-28, pedido explícito do
+ * usuário — entregar aos coordenadores). Uma página (ou mais) por curso:
+ * resumo, grupos (trabalhos enviados com os integrantes) e a lista de
+ * alunos inscritos, com quem ainda está sem trabalho. Mesmo cabeçalho e
+ * rodapé da Ata. Dados já montados por montarRelatorioCursos
+ * (src/lib/relatorioCursos.ts) — a tela e o PDF usam a mesma regra. */
+export function RelatorioCursosPDF({
+  eventoNome,
+  geradoEm,
+  cursos,
+}: {
+  eventoNome: string;
+  geradoEm: string;
+  cursos: RelatorioCurso[];
+}) {
+  const cel = (largura: number | undefined, extra: Style = {}): Style => ({
+    ...estiloAta.celulaNome,
+    ...(largura ? { width: largura, flex: undefined } : {}),
+    fontSize: 8.5,
+    ...extra,
+  });
+  const cab = (largura: number | undefined): Style => ({
+    ...estiloAta.celulaNomeCabecalho,
+    ...(largura ? { width: largura, flex: undefined } : {}),
+    fontSize: 8.5,
+    textAlign: "left",
+  });
+  return (
+    <Document>
+      {cursos.map((r) => (
+        <Page key={r.curso} size="A4" style={estiloAta.page}>
+          <View style={estiloAta.cabecalho} fixed>
+            <Image src={LOGO_PADRAO} style={estiloAta.logoCabecalho} />
+            <Text style={estiloAta.textoCredenciamento}>
+              Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+              UNESVI{"\n"}
+              Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+              {"\n"}
+              Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+            </Text>
+          </View>
+
+          <Text style={estiloAta.titulo}>Relatório de participantes — {r.curso}</Text>
+          <Text style={estiloAta.evento}>Evento: {eventoNome.toUpperCase()}</Text>
+          <Text style={[estiloAta.evento, { fontSize: 9, color: cores.muted, marginBottom: 8 }]}>
+            Gerado em {geradoEm} — situação no momento da geração.
+          </Text>
+          <Text style={estiloAta.participantes}>
+            {r.resumo.inscritos} inscrito{r.resumo.inscritos === 1 ? "" : "s"} · {r.resumo.pagos} com inscrição
+            paga · {r.resumo.comTrabalho} com trabalho · {r.resumo.semTrabalho} sem trabalho ·{" "}
+            {r.resumo.trabalhos} trabalho{r.resumo.trabalhos === 1 ? "" : "s"} enviado
+            {r.resumo.trabalhos === 1 ? "" : "s"}
+          </Text>
+
+          <Text style={[estiloAta.participantes, { fontSize: 11, marginBottom: 6 }]}>
+            Trabalhos enviados (grupos)
+          </Text>
+          {r.grupos.length === 0 ? (
+            <Text style={[estiloAta.corpo, { fontSize: 9.5 }]}>Nenhum trabalho enviado com aluno deste curso.</Text>
+          ) : (
+            <View style={[estiloAta.tabela, { marginBottom: 16 }]}>
+              <View style={estiloAta.linhaCabecalho} fixed>
+                <Text style={cab(150)}>TRABALHO</Text>
+                <Text style={cab(undefined)}>INTEGRANTES</Text>
+                <Text style={cab(95)}>ORIENTAÇÃO</Text>
+                <Text style={cab(70)}>SITUAÇÃO</Text>
+              </View>
+              {r.grupos.map((g) => (
+                <View key={g.id} style={estiloAta.linha} wrap={false}>
+                  <Text style={cel(150, { fontFamily: "Helvetica-Bold" })}>{g.titulo.toUpperCase()}</Text>
+                  <Text style={cel(undefined)}>
+                    {g.membros
+                      .map(
+                        (m) =>
+                          `${m.nome}${m.principal ? " (principal)" : ""}${m.convitePendente ? " (convite pendente)" : ""}${
+                            m.curso !== r.curso ? ` — ${m.curso}` : ""
+                          }`,
+                      )
+                      .join("\n")}
+                  </Text>
+                  <Text style={cel(95)}>
+                    {[g.orientador, ...g.coorientadores.map((c) => `${c} (coorient.)`)].filter(Boolean).join("\n") || "—"}
+                  </Text>
+                  <Text style={cel(70)}>{ROTULO_STATUS_TRABALHO[g.status] ?? g.status}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <Text style={[estiloAta.participantes, { fontSize: 11, marginBottom: 6 }]}>Alunos inscritos</Text>
+          <View style={estiloAta.tabela}>
+            <View style={estiloAta.linhaCabecalho} fixed>
+              <Text style={cab(26)}>Nº</Text>
+              <Text style={cab(undefined)}>ALUNO</Text>
+              <Text style={cab(80)}>INSCRIÇÃO</Text>
+              <Text style={cab(170)}>TRABALHO</Text>
+            </View>
+            {r.alunos.map((a, i) => (
+              <View key={a.uid} style={estiloAta.linha} wrap={false}>
+                <Text style={cel(26, { textAlign: "center" })}>{i + 1}</Text>
+                <Text style={cel(undefined)}>
+                  {a.nome.toUpperCase()}
+                  {a.email ? `\n${a.email}` : ""}
+                </Text>
+                <Text style={cel(80)}>{ROTULO_INSCRICAO[a.inscricao] ?? a.inscricao}</Text>
+                <Text style={cel(170, a.trabalhos.length ? {} : { color: "#b45309", fontFamily: "Helvetica-Bold" })}>
+                  {a.trabalhos.length
+                    ? a.trabalhos.map((t) => `${t.titulo.toUpperCase()} (${t.papel.toLowerCase()})`).join("\n")
+                    : "NENHUM TRABALHO ENVIADO"}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <Text fixed style={estiloAta.rodape}>
+            Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+            /Paraná{"\n"}www.fatecivaipora.com.br
+          </Text>
+        </Page>
+      ))}
+    </Document>
+  );
+}
+
+/** Relatório por TURMA do Edubox (2026-10-28, pedido explícito do usuário —
+ * "bater com o Edubox, turmas e alunos ativos"). Um curso por página (ou
+ * mais): cada turma ativa com todos os alunos de matrícula ativa e a situação
+ * de cada um no evento (não se inscreveu / inscrito sem trabalho / com
+ * trabalho). Dados de montarRelatorioTurmas (src/lib/relatorioTurmas.ts). */
+export function RelatorioTurmasPDF({
+  eventoNome,
+  geradoEm,
+  semestres,
+  cursos,
+}: {
+  eventoNome: string;
+  geradoEm: string;
+  semestres: string[];
+  cursos: CursoTurmas[];
+}) {
+  const cel = (largura: number | undefined, extra: Style = {}): Style => ({
+    ...estiloAta.celulaNome,
+    ...(largura ? { width: largura, flex: undefined } : {}),
+    fontSize: 8.5,
+    ...extra,
+  });
+  const cab = (largura: number | undefined): Style => ({
+    ...estiloAta.celulaNomeCabecalho,
+    ...(largura ? { width: largura, flex: undefined } : {}),
+    fontSize: 8.5,
+    textAlign: "left",
+  });
+  const corSituacao = { nao_inscrito: "#be123c", inscrito_sem_trabalho: "#b45309", com_trabalho: "#047857" } as const;
+  return (
+    <Document>
+      {cursos.map((c) => (
+        <Page key={c.curso} size="A4" style={estiloAta.page}>
+          <View style={estiloAta.cabecalho} fixed>
+            <Image src={LOGO_PADRAO} style={estiloAta.logoCabecalho} />
+            <Text style={estiloAta.textoCredenciamento}>
+              Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+              UNESVI{"\n"}
+              Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+              {"\n"}
+              Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+            </Text>
+          </View>
+
+          <Text style={estiloAta.titulo}>Participação por turma — {c.curso}</Text>
+          <Text style={estiloAta.evento}>Evento: {eventoNome.toUpperCase()}</Text>
+          <Text style={[estiloAta.evento, { fontSize: 9, color: cores.muted, marginBottom: 8 }]}>
+            Gerado em {geradoEm} — alunos com matrícula ativa no Edubox ({semestres.join(", ")}).
+          </Text>
+          <Text style={estiloAta.participantes}>
+            {c.resumo.ativos} aluno{c.resumo.ativos === 1 ? "" : "s"} ativo{c.resumo.ativos === 1 ? "" : "s"} ·{" "}
+            {c.resumo.inscritos} inscrito{c.resumo.inscritos === 1 ? "" : "s"} · {c.resumo.comTrabalho} com trabalho ·{" "}
+            {c.resumo.naoInscritos} não se inscreve{c.resumo.naoInscritos === 1 ? "u" : "ram"}
+          </Text>
+
+          {c.turmas.map((t) => (
+            <View key={t.turma} style={{ marginBottom: 14 }}>
+              <Text style={[estiloAta.participantes, { fontSize: 10.5, marginBottom: 5 }]} minPresenceAhead={60}>
+                {t.nome}
+                {t.periodo ? ` — ${t.periodo}º período` : ""} · {t.resumo.ativos} ativos · {t.resumo.inscritos} inscritos ·{" "}
+                {t.resumo.comTrabalho} com trabalho
+              </Text>
+              <View style={estiloAta.tabela}>
+                <View style={estiloAta.linhaCabecalho}>
+                  <Text style={cab(26)}>Nº</Text>
+                  <Text style={cab(undefined)}>ALUNO</Text>
+                  <Text style={cab(118)}>SITUAÇÃO</Text>
+                  <Text style={cab(150)}>TRABALHO</Text>
+                </View>
+                {t.alunos.map((a, i) => (
+                  <View key={a.ra} style={estiloAta.linha} wrap={false}>
+                    <Text style={cel(26, { textAlign: "center" })}>{i + 1}</Text>
+                    <Text style={cel(undefined)}>
+                      {a.nome.toUpperCase()}
+                      {`\nRA ${a.ra}`}
+                    </Text>
+                    <Text style={cel(118, { color: corSituacao[a.situacao], fontFamily: "Helvetica-Bold" })}>
+                      {ROTULO_SITUACAO[a.situacao]}
+                    </Text>
+                    <Text style={cel(150)}>
+                      {a.trabalhos.length
+                        ? a.trabalhos.map((tr) => `${tr.titulo.toUpperCase()} (${tr.papel.toLowerCase()})`).join("\n")
+                        : "—"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <Text fixed style={estiloAta.rodape}>
+            Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+            /Paraná{"\n"}www.fatecivaipora.com.br
+          </Text>
+        </Page>
+      ))}
     </Document>
   );
 }
