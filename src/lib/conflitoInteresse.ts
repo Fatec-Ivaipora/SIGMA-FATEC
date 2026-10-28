@@ -61,31 +61,53 @@ export function conflitoDeInteresse(pessoa: Pessoa, trabalho: TrabalhoParaConfli
   return achados.find((c) => c.nivel === "certo") ?? achados[0] ?? null;
 }
 
-/** Divide os trabalhos entre as pessoas respeitando a quantidade de cada uma
- * e EVITANDO conflito sempre que possível: cada trabalho vai pra quem ainda
- * tem vaga e não tem conflito com ele; só cai em alguém com conflito se não
- * sobrar outra opção (aí o conflito volta na lista pra avisar quem envia). */
+/** Divide os trabalhos entre as pessoas respeitando a quantidade de cada uma.
+ * Conflito "certo" (autor, ou nome de orientador/coorientador batendo por
+ * completo) é TRAVA DE VERDADE (2026-10-28, pedido explícito do usuário) —
+ * essa pessoa nunca recebe esse trabalho pra avaliar/moderar, nem que seja a
+ * única com vaga sobrando; o trabalho fica sem ninguém nesse caso (devolvido
+ * em `naoAtribuidos`), até alguém resolver manualmente. Conflito "possivel"
+ * (só o primeiro nome bateu, nome incompleto no trabalho) continua só como
+ * aviso — não impede, porque é só um palpite, não confirmação: travar nisso
+ * arriscaria bloquear gente errada por coincidência de nome. */
 export function planejarDistribuicao<T extends TrabalhoParaConflito & { id: string }>(
   trabalhos: T[],
   cotas: (Pessoa & { quantidade: number })[],
-): { atribuicoes: { trabalho: T; pessoa: Pessoa }[]; conflitos: { trabalho: T; pessoa: Pessoa; conflito: Conflito }[] } {
+): {
+  atribuicoes: { trabalho: T; pessoa: Pessoa }[];
+  conflitos: { trabalho: T; pessoa: Pessoa; conflito: Conflito }[];
+  naoAtribuidos: { trabalho: T; conflito: Conflito }[];
+} {
   const vagas = cotas.map((c) => ({ ...c, resta: c.quantidade }));
-  // Trabalhos com mais conflitos primeiro — são os que têm menos opção.
-  const nConflitos = (t: T) => vagas.filter((v) => conflitoDeInteresse(v, t)).length;
-  const ordem = [...trabalhos].sort((a, b) => nConflitos(b) - nConflitos(a));
+  // Trabalhos com mais gente travada primeiro — são os que têm menos opção.
+  const nTravados = (t: T) =>
+    vagas.filter((v) => conflitoDeInteresse(v, t)?.nivel === "certo").length;
+  const ordem = [...trabalhos].sort((a, b) => nTravados(b) - nTravados(a));
   const atribuicoes: { trabalho: T; pessoa: Pessoa }[] = [];
   const conflitos: { trabalho: T; pessoa: Pessoa; conflito: Conflito }[] = [];
+  const naoAtribuidos: { trabalho: T; conflito: Conflito }[] = [];
   for (const t of ordem) {
     const livres = vagas.filter((v) => v.resta > 0);
-    const semConflito = livres.filter((v) => !conflitoDeInteresse(v, t));
+    // Trava: tira de vez quem tem conflito "certo" com esse trabalho.
+    const semTrava = livres.filter((v) => conflitoDeInteresse(v, t)?.nivel !== "certo");
+    if (semTrava.length === 0) {
+      if (livres.length > 0) {
+        // Só sobrava gente travada — não atribui ninguém, avisa o porquê.
+        naoAtribuidos.push({ trabalho: t, conflito: conflitoDeInteresse(livres[0], t)! });
+      }
+      continue;
+    }
+    // Entre quem não está travado, prefere quem também não tem conflito
+    // "possivel" (nome incompleto); só cai nisso se não sobrar outra opção.
+    const semConflitoNenhum = semTrava.filter((v) => !conflitoDeInteresse(v, t));
+    const candidatos = semConflitoNenhum.length ? semConflitoNenhum : semTrava;
     // Entre as opções, prefere quem tem mais vaga sobrando (mantém a divisão equilibrada).
-    const escolha = (semConflito.length ? semConflito : livres).sort((a, b) => b.resta - a.resta)[0];
-    if (!escolha) continue;
+    const escolha = candidatos.sort((a, b) => b.resta - a.resta)[0];
     escolha.resta--;
     const pessoa = { uid: escolha.uid, nome: escolha.nome };
     atribuicoes.push({ trabalho: t, pessoa });
     const c = conflitoDeInteresse(pessoa, t);
     if (c) conflitos.push({ trabalho: t, pessoa, conflito: c });
   }
-  return { atribuicoes, conflitos };
+  return { atribuicoes, conflitos, naoAtribuidos };
 }

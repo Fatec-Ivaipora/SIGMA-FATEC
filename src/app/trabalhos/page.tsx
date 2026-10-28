@@ -24,7 +24,7 @@ import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DetalheTrabalhoModal } from "@/components/DetalheTrabalhoModal";
 import { AvisoConflitos } from "@/components/AvisoConflitos";
-import { conflitoDeInteresse, planejarDistribuicao } from "@/lib/conflitoInteresse";
+import { planejarDistribuicao } from "@/lib/conflitoInteresse";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
@@ -379,7 +379,6 @@ export default function TrabalhosAdminPage() {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [modalEnviar, setModalEnviar] = useState(false);
   const [papelAlvoEnvio, setPapelAlvoEnvio] = useState<"avaliador" | "moderador">("avaliador");
-  const [avaliadorEscolhido, setAvaliadorEscolhido] = useState("");
   const [distribuicao, setDistribuicao] = useState<
     { uid: string; nome: string; quantidade: number }[]
   >([]);
@@ -597,12 +596,19 @@ export default function TrabalhosAdminPage() {
   const pessoasDisponiveis: UsuarioRegistro[] =
     papelAlvoEnvio === "avaliador" ? avaliadoresDisponiveis : moderadoresDisponiveis;
 
-  // Trabalhos selecionados na etapa Submissão, na mesma ordem da tabela —
-  // usada tanto pra descobrir se compartilham evento/área quanto pra fatiar
-  // a divisão entre avaliadores em ordem estável.
+  // Trabalhos selecionados na etapa Submissão — usada tanto pra descobrir
+  // se compartilham evento/área quanto pra fatiar a divisão entre
+  // avaliadores. Deriva de `trabalhos` (lista inteira), não de
+  // `trabalhosFiltrados` (2026-10-28, corrigido — achado ao vivo: marcar
+  // trabalhos em buscas diferentes, com o campo de busca ainda preenchido
+  // na última, fazia a modal "Enviar para avaliação" só considerar o
+  // trabalho ainda visível no filtro atual, mesmo com o contador "(N)" do
+  // botão mostrando a seleção global certa). `selecionados` é zerado toda
+  // troca de etapa (ver setEtapa), então já não precisa refiltrar por
+  // etapa aqui — ids ali dentro sempre pertencem à etapa atual.
   const trabalhosSelecionadosObjs = useMemo(
-    () => trabalhosFiltrados.filter((t) => selecionados.has(t.id)),
-    [trabalhosFiltrados, selecionados],
+    () => trabalhos.filter((t) => selecionados.has(t.id)),
+    [trabalhos, selecionados],
   );
 
   const eventoComumSelecionado = useMemo(() => {
@@ -672,16 +678,6 @@ export default function TrabalhosAdminPage() {
               (at.areasTematicas ?? []).includes(areaComumSelecionada),
           ),
         );
-    const paraManual =
-      !eventoComumSelecionado
-        ? disponiveis
-        : (() => {
-            const doEvento = disponiveis.filter((a) =>
-              (a.atribuicoesEventos ?? []).some((at) => at.eventoId === eventoComumSelecionado),
-            );
-            return doEvento.length > 0 ? doEvento : disponiveis;
-          })();
-
     setModoManual(daArea.length === 0);
     setDistribuicao(
       daArea.length > 0
@@ -691,17 +687,50 @@ export default function TrabalhosAdminPage() {
           )
         : [],
     );
-    setAvaliadorEscolhido(paraManual[0]?.uid ?? "");
     setModalEnviar(true);
   }
 
-  function ajustarQuantidade(index: number, delta: number) {
+  function ajustarQuantidade(uid: string, delta: number) {
     setDistribuicao((prev) =>
-      prev.map((linha, i) =>
-        i === index
+      prev.map((linha) =>
+        linha.uid === uid
           ? { ...linha, quantidade: Math.max(0, linha.quantidade + delta) }
           : linha,
       ),
+    );
+  }
+
+  // Modo manual (2026-10-28, pedido explícito do usuário — achado real: "não
+  // conseguimos selecionar mais de um avaliador por vez sem área temática")
+  // — marca/desmarca uma pessoa na divisão; some da lista some do
+  // `distribuicao`, aparece já com 1 trabalho reservado (fácil de ajustar
+  // pelos botões +/-, mesmo padrão da divisão automática).
+  function alternarPessoaManual(pessoa: { uid: string; nome: string }) {
+    setDistribuicao((prev) => {
+      const jaMarcada = prev.some((p) => p.uid === pessoa.uid);
+      if (jaMarcada) return prev.filter((p) => p.uid !== pessoa.uid);
+      return [...prev, { ...pessoa, quantidade: 1 }];
+    });
+  }
+
+  // "Selecionar todos" no modo manual (2026-10-28, pedido explícito do
+  // usuário — achado real: marcar um por um fica complicado com 25
+  // avaliadores). Marca todo mundo já dividindo os trabalhos igualmente
+  // entre eles (mesmo cálculo de "Dividir igualmente entre os marcados"),
+  // em vez de 1 trabalho reservado por pessoa — evita que a soma passe
+  // longe do total e precise ajustar manualmente depois.
+  const todosManualMarcados =
+    pessoasParaManual.length > 0 &&
+    pessoasParaManual.every((a) => distribuicao.some((d) => d.uid === a.uid));
+
+  function alternarTodosManual() {
+    setDistribuicao(
+      todosManualMarcados
+        ? []
+        : distribuicaoPadrao(
+            pessoasParaManual.map((a) => ({ uid: a.uid, nome: a.nome })),
+            selecionados.size,
+          ),
     );
   }
 
@@ -733,9 +762,11 @@ export default function TrabalhosAdminPage() {
 
   // Só os selecionados que ainda fazem sentido aceitar (já apresentados,
   // aguardando decisão) — selecionar um já aceito/recusado não faz nada.
+  // Mesmo bug do trabalhosSelecionadosObjs acima, mesma correção — selação
+  // pode ter vindo de buscas/filtros diferentes dentro da mesma etapa.
   const selecionadosElegiveisParaAceite = useMemo(
-    () => trabalhosFiltrados.filter((t) => selecionados.has(t.id) && t.status === "apresentado"),
-    [trabalhosFiltrados, selecionados],
+    () => trabalhos.filter((t) => selecionados.has(t.id) && t.status === "apresentado"),
+    [trabalhos, selecionados],
   );
 
   function alternarSelecao(id: string) {
@@ -775,15 +806,6 @@ export default function TrabalhosAdminPage() {
     () => planejarDistribuicao(trabalhosSelecionadosObjs, distribuicao),
     [trabalhosSelecionadosObjs, distribuicao],
   );
-  const conflitosManual = useMemo(() => {
-    const pessoa = pessoasParaManual.find((a) => a.uid === avaliadorEscolhido);
-    if (!pessoa) return [];
-    return trabalhosSelecionadosObjs.flatMap((trabalho) => {
-      const conflito = conflitoDeInteresse(pessoa, trabalho);
-      return conflito ? [{ trabalho, pessoa, conflito }] : [];
-    });
-  }, [pessoasParaManual, avaliadorEscolhido, trabalhosSelecionadosObjs]);
-
   // Campos e status gravados mudam conforme o alvo do envio (2026-08-26).
   function camposEnvio(uid: string, nome: string) {
     return papelAlvoEnvio === "avaliador"
@@ -791,36 +813,15 @@ export default function TrabalhosAdminPage() {
       : { status: "aguardando_apresentacao" as const, moderadorUid: uid, moderadorNome: nome };
   }
 
-  async function confirmarEnvio() {
-    const pessoa = pessoasParaManual.find((a) => a.uid === avaliadorEscolhido);
-    if (!pessoa) return;
-
-    const batch = writeBatch(db);
-    for (const id of selecionados) {
-      batch.update(doc(db, "trabalhos", id), {
-        ...camposEnvio(pessoa.uid, pessoa.nome),
-        atualizadoEm: serverTimestamp(),
-      });
-    }
-    await batch.commit();
-    if (user) {
-      notificarAtribuicao(
-        user,
-        [{ uid: pessoa.uid, papel: papelAlvoEnvio, quantidade: selecionados.size }],
-        eventoComumSelecionado,
-      );
-    }
-    setSelecionados(new Set());
-    setModalEnviar(false);
-  }
-
   async function confirmarEnvioDistribuido() {
     if (somaDistribuicao !== selecionados.size) return;
 
-    // Conflito de interesse (2026-10-27): em vez de fatiar na ordem da
-    // tabela, cada trabalho vai pra quem ainda tem vaga e NÃO é autor/
-    // orientador/coorientador dele — ver planejarDistribuicao. Só sobra
-    // conflito quando não há outra opção (e aí já foi avisado na modal).
+    // Conflito de interesse (2026-10-27, trava de verdade desde 2026-10-28):
+    // em vez de fatiar na ordem da tabela, cada trabalho vai pra quem ainda
+    // tem vaga e NÃO é autor/orientador/coorientador dele — ver
+    // planejarDistribuicao. Trabalho que só tinha o próprio orientador como
+    // opção fica fora de `atribuicoes` (listado em `naoAtribuidos`, já
+    // avisado na modal antes de chegar aqui) — nunca é enviado pra ele.
     const batch = writeBatch(db);
     for (const { trabalho, pessoa } of planoDistribuicao.atribuicoes) {
       batch.update(doc(db, "trabalhos", trabalho.id), {
@@ -1618,15 +1619,18 @@ export default function TrabalhosAdminPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setModoManual(true)}
+                onClick={() => {
+                  setModoManual(true);
+                  setDistribuicao([]);
+                }}
                 className="flex-none text-xs font-semibold text-fatec-sky-600 hover:text-fatec-navy-800"
               >
-                Escolher 1 avaliador manualmente
+                Escolher manualmente
               </button>
             </div>
 
             <div className="flex flex-col gap-2">
-              {distribuicao.map((linha, i) => (
+              {distribuicao.map((linha) => (
                 <div
                   key={linha.uid}
                   className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-2.5"
@@ -1638,7 +1642,7 @@ export default function TrabalhosAdminPage() {
                     <button
                       type="button"
                       aria-label={`Diminuir para ${linha.nome}`}
-                      onClick={() => ajustarQuantidade(i, -1)}
+                      onClick={() => ajustarQuantidade(linha.uid, -1)}
                       disabled={linha.quantidade <= 0}
                       className="flex h-7 w-7 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
@@ -1650,7 +1654,7 @@ export default function TrabalhosAdminPage() {
                     <button
                       type="button"
                       aria-label={`Aumentar para ${linha.nome}`}
-                      onClick={() => ajustarQuantidade(i, 1)}
+                      onClick={() => ajustarQuantidade(linha.uid, 1)}
                       className="flex h-7 w-7 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                     >
                       <Plus className="h-3.5 w-3.5" strokeWidth={2} />
@@ -1673,58 +1677,144 @@ export default function TrabalhosAdminPage() {
             </p>
           </div>
         ) : (
-          <>
+          <div className="mt-5 flex flex-col gap-3">
             {areaComumSelecionada && pessoasDaArea.length === 0 && (
-              <p className="mt-4 text-sm text-fatec-muted">
+              <p className="text-sm text-fatec-muted">
                 Nenhum {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"} cadastrado
-                para {areaComumSelecionada} neste evento — escolha manualmente.
+                para {areaComumSelecionada} neste evento — escolha manualmente abaixo.
               </p>
             )}
 
-            <label className="mt-4 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-fatec-navy-900">
-                Selecione o {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"}
+                Marque um ou mais {papelAlvoEnvio === "avaliador" ? "avaliadores" : "moderadores"}
               </span>
-              <div className="relative">
-                <select
-                  value={avaliadorEscolhido}
-                  onChange={(e) => setAvaliadorEscolhido(e.target.value)}
-                  className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
-                >
-                  {pessoasParaManual.length === 0 && (
-                    <option value="">
-                      Nenhum {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"} cadastrado
-                    </option>
-                  )}
-                  {pessoasParaManual.map((a) => (
-                    <option key={a.uid} value={a.uid}>
-                      {a.nome}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
-                  strokeWidth={1.75}
-                />
+              <div className="flex flex-none items-center gap-3">
+                {pessoasParaManual.length > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-fatec-sky-600">
+                    <input
+                      type="checkbox"
+                      checked={todosManualMarcados}
+                      onChange={alternarTodosManual}
+                      className="h-3.5 w-3.5 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-sky-600"
+                    />
+                    Selecionar todos
+                  </label>
+                )}
+                {pessoasDaArea.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoManual(false);
+                      setDistribuicao(
+                        distribuicaoPadrao(
+                          pessoasDaArea.map((a) => ({ uid: a.uid, nome: a.nome })),
+                          selecionados.size,
+                        ),
+                      );
+                    }}
+                    className="flex-none text-xs font-semibold text-fatec-sky-600 hover:text-fatec-navy-800"
+                  >
+                    Voltar pra divisão automática
+                  </button>
+                )}
               </div>
-            </label>
+            </div>
 
-            {pessoasDaArea.length > 0 && (
+            {/* Lista com checkbox (2026-10-28, pedido explícito do usuário —
+                achado real: "hoje não conseguimos selecionar mais de um
+                avaliador por vez sem área temática") — marcar adiciona na
+                divisão (1 trabalho reservado pra começar), desmarcar tira;
+                os números ajustam com os mesmos botões +/- da divisão
+                automática. Scroll porque pode ter 25+ pessoas na lista. */}
+            <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">
+              {pessoasParaManual.length === 0 && (
+                <p className="text-sm text-fatec-muted">
+                  Nenhum {papelAlvoEnvio === "avaliador" ? "avaliador" : "moderador"} cadastrado.
+                </p>
+              )}
+              {pessoasParaManual.map((a) => {
+                const linha = distribuicao.find((d) => d.uid === a.uid);
+                const marcado = !!linha;
+                return (
+                  <div
+                    key={a.uid}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-2.5"
+                  >
+                    <label className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() => alternarPessoaManual({ uid: a.uid, nome: a.nome })}
+                        className="h-4 w-4 flex-none rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-sky-600"
+                      />
+                      <span className="truncate text-sm font-medium text-fatec-navy-900">
+                        {a.nome}
+                      </span>
+                    </label>
+                    {marcado && (
+                      <div className="flex flex-none items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Diminuir para ${a.nome}`}
+                          onClick={() => ajustarQuantidade(a.uid, -1)}
+                          disabled={linha.quantidade <= 0}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Minus className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <span className="w-6 text-center text-sm font-semibold tabular-nums text-fatec-navy-900">
+                          {linha.quantidade}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Aumentar para ${a.nome}`}
+                          onClick={() => ajustarQuantidade(a.uid, 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                        >
+                          <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {distribuicao.length > 1 && (
               <button
                 type="button"
-                onClick={() => setModoManual(false)}
-                className="mt-2 text-xs font-semibold text-fatec-sky-600 hover:text-fatec-navy-800"
+                onClick={() =>
+                  setDistribuicao(
+                    distribuicaoPadrao(
+                      distribuicao.map(({ uid, nome }) => ({ uid, nome })),
+                      selecionados.size,
+                    ),
+                  )
+                }
+                className="self-start text-xs font-semibold text-fatec-sky-600 hover:text-fatec-navy-800"
               >
-                Voltar pra divisão automática
+                Dividir igualmente entre os marcados
               </button>
             )}
-          </>
+
+            <p
+              className={`text-sm ${
+                somaDistribuicao === selecionados.size
+                  ? "text-fatec-muted"
+                  : "font-medium text-fatec-orange-600"
+              }`}
+            >
+              {somaDistribuicao} / {selecionados.size} trabalhos distribuídos
+              {somaDistribuicao !== selecionados.size &&
+                " — marque mais gente ou ajuste os números"}
+            </p>
+          </div>
         )}
 
         <AvisoConflitos
-          conflitos={
-            !modoManual && pessoasDaArea.length > 0 ? planoDistribuicao.conflitos : conflitosManual
-          }
+          conflitos={planoDistribuicao.conflitos}
+          naoAtribuidos={planoDistribuicao.naoAtribuidos}
           automatico={!modoManual && pessoasDaArea.length > 0}
         />
 
@@ -1738,16 +1828,8 @@ export default function TrabalhosAdminPage() {
           </button>
           <button
             type="button"
-            onClick={
-              !modoManual && pessoasDaArea.length > 0
-                ? confirmarEnvioDistribuido
-                : confirmarEnvio
-            }
-            disabled={
-              !modoManual && pessoasDaArea.length > 0
-                ? somaDistribuicao !== selecionados.size
-                : !avaliadorEscolhido
-            }
+            onClick={confirmarEnvioDistribuido}
+            disabled={somaDistribuicao !== selecionados.size}
             className="rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
           >
             Enviar
