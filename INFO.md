@@ -477,6 +477,169 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-10-28** — **Dois ajustes pedidos depois do autocadastro acima**:
+  1. **Texto do moderador corrigido** (`/seja-avaliador`) — achado real do
+     usuário: o card "O que faz um(a) moderador(a)" só falava em conduzir
+     a apresentação, mas moderador também avalia (atribui nota/parecer),
+     igual avaliador. Texto agora reflete isso.
+  2. **"Selecionar todos" no modo manual de envio** (`/trabalhos`, achado
+     real: "marcar um a um é complicado" com 25 avaliadores sem área
+     temática) — checkbox novo ao lado de "Marque um ou mais
+     avaliadores/moderadores", no cabeçalho da lista manual. Marcar
+     seleciona todo mundo já dividindo os trabalhos igualmente entre eles
+     (mesmo cálculo de "Dividir igualmente entre os marcados", não 1 por
+     pessoa — senão a soma passaria longe do total com 20+ marcados de
+     uma vez); desmarcar limpa a seleção toda. Testado ao vivo: marquei,
+     confirmou "1 / 1 trabalhos distribuídos" com todo mundo marcado,
+     desmarquei e voltou a zero.
+  **Também respondida, confirmada no código e no banco**: a trava "certo"
+  nunca atribui o trabalho (ver `conflitoInteresse.ts`) já vale pra
+  coorientador, não só orientador — `conflitoDeInteresse` cruza o nome da
+  pessoa contra `nomeOrientador` E contra cada item de
+  `nomesCoorientadores`, e `planejarDistribuicao` bloqueia em cima de
+  `nivel === "certo"` sem olhar o papel (autor/orientador/coorientador
+  tratados igual). Achei um caso real de coorientador em conflito (Mariana
+  Nunes dos Santos Sismeiro, coorientadora de um trabalho de brucelose
+  bovina) e confirmei via script que bate como `"certo"`/`"coorientador(a)"`
+  — mas ela está cadastrada como `papel: "organizacao"`, não avaliador,
+  então nem aparece pra escolher na tela hoje (não dava pra demonstrar na
+  UI ao vivo por falta de um coorientador que também seja avaliador
+  cadastrado agora). O mecanismo de bloqueio em si já foi validado ao vivo
+  duas vezes com conflito de orientador (Milene, Abel) — é o mesmo código,
+  sem distinção por papel.
+
+- **2026-10-28** — **Autocadastro público de candidato a avaliador/moderador**
+  (pedido explícito do usuário — hoje o convite é feito um a um pelo
+  WhatsApp, "às vezes não conhecemos a pessoa"). Três peças novas:
+  1. **Página pública `/seja-avaliador`** (sem login, link novo "Seja
+     avaliador(a)" no `SiteHeader` e faixa de destaque na home) — explica o
+     que faz avaliador/moderador, depois formulário: nome, área de
+     formação (texto livre), telefone, e-mail, interesse (avaliador/
+     moderador/os dois).
+  2. **`POST /api/candidatos`** (pública, sem login) — valida tudo no
+     servidor (mesmo padrão de `/api/cadastro/aluno`), grava em
+     `candidatosAvaliacao` (nova coleção, trancada no `firestore.rules`,
+     só Admin SDK lê/escreve) e manda e-mail "recebemos suas informações"
+     (`enviarEmail`/`modeloEmail`, mesmo padrão de sempre). Duas proteções
+     contra bot, pedidas explicitamente pelo usuário (projeto não tem
+     reCAPTCHA configurado em lugar nenhum): **honeypot** (campo `empresa`
+     escondido do humano via CSS — se vier preenchido, finge sucesso sem
+     gravar nada) e **upsert por e-mail** (reenviar o mesmo e-mail
+     atualiza o cadastro em vez de duplicar — testado ao vivo: reenviei
+     com nome/área/interesse diferentes, confirmei que só existe 1
+     documento, já atualizado, sem duplicata).
+  3. **Tela admin `/candidatos`** (item novo no menu, só
+     admin/organização) — lista só pra contato (decisão explícita do
+     usuário: não cria conta de avaliador/moderador automaticamente, isso
+     continua manual em `/usuarios` depois que a comissão decide chamar
+     alguém), com busca por nome/e-mail, filtro por interesse, e atalho
+     direto pro WhatsApp/e-mail da pessoa.
+  **Testado ao vivo de ponta a ponta**: enviei o formulário público,
+  confirmei a tela de sucesso, conferi o candidato aparecendo certinho em
+  `/candidatos` (nome, área, badges de interesse, filtro, busca), reenviei
+  com o mesmo e-mail e confirmei o upsert (sem duplicata), depois apaguei
+  o registro de teste do Firestore. **Pendente, não fiz**: as regras novas
+  em `firestore.rules` só valem de verdade depois de um
+  `firebase deploy --only firestore:rules` manual (esse projeto não tem
+  deploy automático de rules, só o Vercel publica o Next.js sozinho a
+  cada push) — até lá, a coleção já fica protegida mesmo assim (Firestore
+  nega por padrão qualquer coleção sem regra explícita), então não é
+  urgente, mas o arquivo só reflete a regra de verdade depois do deploy.
+
+  **Corrigido de brinde, mesmo pedido do usuário**: bug real achado
+  durante o teste da trava de conflito de interesse (ver entrada anterior,
+  caso do Abel Felipe Freitag) — `trabalhosSelecionadosObjs` e
+  `selecionadosElegiveisParaAceite` (`/trabalhos`) derivavam de
+  `trabalhosFiltrados` (lista filtrada pela busca/filtro ATUAL na tela) em
+  vez da seleção global. Selecionar trabalhos em buscas diferentes e abrir
+  a modal "Enviar para avaliação"/"Aceitar selecionados" com o campo de
+  busca ainda preenchido da última busca fazia a modal só considerar o
+  trabalho ainda visível naquele filtro — mesmo com o contador "(N)" do
+  botão mostrando a seleção global certa. Corrigido pra derivar de
+  `trabalhos` (lista inteira) filtrado só por `selecionados.has(t.id)` —
+  `selecionados` já é zerado a cada troca de etapa, então não precisa
+  refiltrar por etapa também. Testado ao vivo reproduzindo o cenário real:
+  selecionei os 3 trabalhos do Abel em buscas separadas, deixei "caixa
+  organizadora" no campo, abri a modal — os 3 apareceram certinho no
+  aviso vermelho, mesmo com o filtro ainda ativo por trás.
+
+- **2026-10-28** — **Seleção manual de vários avaliadores/moderadores de
+  uma vez + trava real de conflito de interesse** (`/trabalhos`, pedido
+  explícito do usuário, conversa com o administrativo do evento — hoje 25
+  avaliadores, boa parte sem área temática cadastrada no evento, e alguns
+  são ao mesmo tempo orientadores de trabalhos). Dois problemas reais,
+  resolvidos juntos:
+  1. **"Hoje não conseguimos selecionar mais de um avaliador por vez sem
+     área temática"** — o modo manual (fallback de quando ninguém tem a
+     área do trabalho cadastrada nesse evento) era um `<select>` de
+     escolha única, obrigando a mandar TODOS os trabalhos selecionados
+     pra UMA só pessoa. Virou uma lista com checkbox (`pessoasParaManual`,
+     já existia, só não tinha como marcar mais de um) — marca quem quiser,
+     cada um começa com 1 trabalho reservado, ajustável pelos mesmos
+     botões +/- da divisão automática, com atalho "Dividir igualmente
+     entre os marcados". `confirmarEnvio` (único) foi removido —
+     `confirmarEnvioDistribuido` (que já existia pra divisão automática)
+     passou a atender os dois modos, mesmo código, menos duplicação.
+  2. **"Não podemos deixar que o orientador avalie o próprio orientando"**
+     — já existia um aviso (entrada de 2026-10-27, de outra pessoa) pra
+     conflito de interesse, mas só avisava, não travava. Virou **trava de
+     verdade** (pedido explícito, confirmado via pergunta direta: aceitou
+     o trade-off de o trabalho ficar sem ninguém em vez de arriscar mandar
+     pro próprio orientador) — `planejarDistribuicao`
+     (`src/lib/conflitoInteresse.ts`) nunca mais atribui alguém com
+     conflito "certo" (autor, ou nome completo batendo com
+     orientador/coorientador); se não sobrar outra opção na seleção, o
+     trabalho simplesmente não é enviado a ninguém (`naoAtribuidos`, novo
+     retorno da função), listado num aviso vermelho na modal — fica assim
+     até alguém resolver manualmente. Conflito "possivel" (só o primeiro
+     nome bateu, nome incompleto no trabalho) continua só como aviso
+     amarelo, não trava — travar nisso arriscaria bloquear gente errada
+     por coincidência de nome. `AvisoConflitos.tsx` ganhou o bloco
+     vermelho novo pros não-atribuídos, separado do amarelo de aviso.
+  **Testado ao vivo com dados reais de produção** (não inventei nada —
+  achei via script os conflitos de verdade já existentes no MAC: Milene
+  Aparecida Bobato é avaliadora E orientadora de 2 trabalhos reais
+  diferentes): marcando só ela, os 2 trabalhos dela apareceram no aviso
+  vermelho "não serão enviados"; marcando mais uma pessoa (Fernanda) e
+  clicando "Dividir igualmente", o sistema sozinho desviou os 2 trabalhos
+  da Milene pra Fernanda, zerando o aviso — 4/4 distribuídos, sem nenhum
+  conflito. Cancelei antes de clicar "Enviar" nos dois testes, pra não
+  mexer em avaliação real de trabalhos de verdade. Conferida também a
+  regressão do modo automático (quando a área tem avaliador cadastrado) —
+  continua funcionando igual, incluindo o toggle pro modo manual e volta.
+  **Segundo teste ao vivo, pedido explícito do usuário** (preocupação:
+  "tenho quase certeza que vi um trabalho com o nome dele [Abel] mas pode
+  ser que a pessoa não escreveu completo" — nomes incompletos só dão
+  conflito "possivel", que não trava): Abel Felipe Freitag é avaliador e
+  orientador de 3 trabalhos reais no MAC (INSPIRATEC, Calendário do
+  Cuidado, Caixa Organizadora de Medicamentos), todos com o nome completo
+  e correto escrito no trabalho → bateu "certo" nos 3, não "possivel".
+  Selecionei os 3 (sem filtro de busca ativo — ver nota abaixo) e marquei
+  só o Abel na modal: os 3 caíram certinho no aviso vermelho
+  "não serão enviados", como esperado. Rodei também um script só-leitura
+  cruzando todo trabalho real com todo avaliador real: **zero conflitos
+  "possivel" existem hoje em produção** — a lógica do aviso amarelo (nome
+  incompleto, só avisa, não trava) está implementada e pronta, mas ainda
+  não tem um caso real pra mostrar; deve aparecer quando um trabalho mais
+  antigo (antes da busca estruturada de professor do Edubox do colega)
+  tiver nome de orientador incompleto. Cancelei sem clicar "Enviar" nos
+  dois casos, pra não mexer em avaliação real.
+  **Achado colateral durante o teste (bug pré-existente, não introduzido
+  aqui, não corrigido ainda)**: se o admin busca por um trabalho já
+  selecionado (pra achar outro) e abre a modal com o campo de busca ainda
+  preenchido, a modal só considera os trabalhos **visíveis no filtro
+  atual** pra calcular a distribuição/conflito — mesmo o contador
+  "Enviar para avaliação (N)" mostrando o total global selecionado
+  corretamente. Reproduzi isso sem querer (busquei os 3 trabalhos do Abel
+  um de cada vez; com a busca do último ainda no campo, só 1 dos 3
+  aparecia no aviso). Limpar o campo de busca antes de abrir a modal
+  resolve. Não mexi nisso — fora do escopo do pedido, só documentando.
+  **Conta de teste "mateus reck"**: usuário confirmou "pode apagar" —
+  removida (Auth + `usuarios/{uid}`; não existia em `usuariosPublicos`,
+  como esperado pra avaliador). Conferido antes, via script, que nenhum
+  trabalho real referenciava o uid dela como `avaliadorUid`/`moderadorUid`
+  (zero em ambos).
+
 - **2026-10-27** — **Evento encerrado some do seletor de avaliador/moderador**
   (`/usuarios`, pedido explícito do usuário — achado real: "Semana de
   Medicina", já encerrada, continuava aparecendo pra escolher ao criar um

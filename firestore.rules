@@ -358,6 +358,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // candidatosAvaliacao/{id} (2026-10-28, pedido explícito do usuário) —
+    // autocadastro público de quem quer ser avaliador/moderador (nome,
+    // área de formação, telefone, email). Grava telefone/email de gente
+    // de fora do sistema, então ninguém lê ou escreve direto do client:
+    // envio passa por /api/candidatos (Admin SDK, com honeypot e limite de
+    // envio repetido pro mesmo e-mail), leitura só pela tela de admin
+    // (/candidatos), via rota protegida que confere papel admin/organizacao.
+    match /candidatosAvaliacao/{id} {
+      allow read, write: if false;
+    }
+
     // declaracaoCategorias/{id} e declaracoes/{id} (2026-09-04) — biblioteca
     // pública de declarações antigas (PDFs por ano/categoria), acessível no
     // menu da home pública sem login (mesmo padrão de eventos com

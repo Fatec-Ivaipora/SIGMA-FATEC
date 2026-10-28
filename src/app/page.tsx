@@ -8,6 +8,7 @@ import {
   CalendarOff,
   ChevronLeft,
   ChevronRight,
+  GraduationCap,
   Mail,
   MapPin,
   MessageCircle,
@@ -487,6 +488,37 @@ export default function HomePage() {
               Entre em contato com o suporte · {CONTATOS.suporteWhatsapp.label}
             </a>
           </div>
+        </div>
+      </section>
+
+      {/* CTA "Seja avaliador(a)/moderador(a)" (2026-10-28, pedido explícito
+          do usuário — hoje o convite pra avaliador/moderador é feito um a
+          um pelo WhatsApp, "às vezes não conhecemos a pessoa"). Faixa
+          estreita entre "Ajuda" e "Como funciona", mesmo espírito da faixa
+          de localização mais abaixo: uma chamada só, sem competir com o
+          botão laranja principal da página (que é "Acessar" no header). */}
+      <section className="bg-fatec-navy-900 px-6 py-10 md:px-12">
+        <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-white/10 text-white">
+              <GraduationCap className="h-5 w-5" strokeWidth={1.75} />
+            </span>
+            <div>
+              <p className="text-base font-semibold text-white">
+                Quer ser avaliador(a) ou moderador(a) nos nossos eventos?
+              </p>
+              <p className="mt-1 text-sm text-white/70">
+                Deixe seus dados que a comissão científica entra em contato.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/seja-avaliador"
+            className="flex flex-none items-center gap-2 rounded-lg bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+          >
+            Quero participar
+            <ArrowRight className="h-4 w-4" strokeWidth={2.25} />
+          </Link>
         </div>
       </section>
 

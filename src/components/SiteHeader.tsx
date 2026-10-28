@@ -83,6 +83,9 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
           <Link href="/#ajuda" onClick={irParaAncora("ajuda")} className={itemNav}>
             Ajuda
           </Link>
+          <Link href="/seja-avaliador" className={itemNav}>
+            Seja avaliador(a)
+          </Link>
           <Link
             href="/login"
             className="flex items-center gap-2 rounded-lg bg-fatec-sky-600 px-5 py-2.5 text-base font-semibold text-white transition-colors hover:bg-fatec-sky-600/85"
@@ -136,6 +139,13 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
               className="rounded-lg px-3 py-3 text-base font-semibold text-white/90 transition-colors hover:bg-white/10 hover:text-white"
             >
               Ajuda
+            </Link>
+            <Link
+              href="/seja-avaliador"
+              onClick={() => setAberto(false)}
+              className="rounded-lg px-3 py-3 text-base font-semibold text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Seja avaliador(a)
             </Link>
             <Link
               href="/login"
