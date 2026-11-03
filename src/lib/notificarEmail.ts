@@ -28,7 +28,13 @@ export function notificarConviteTurma(user: User, turmaId: string, alunoUid: str
   void chamar(user, "/api/mail/convite-turma", { turmaId, alunoUid });
 }
 
-export type TipoStatusTrabalho = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito";
+export type TipoStatusTrabalho =
+  | "submetido"
+  | "revisao"
+  | "avaliado"
+  | "aceito"
+  | "nao_aceito"
+  | "rejeitado";
 
 export function notificarStatusTrabalho(user: User, trabalhoId: string, tipo: TipoStatusTrabalho) {
   void chamar(user, "/api/mail/trabalho-status", { trabalhoId, tipo });

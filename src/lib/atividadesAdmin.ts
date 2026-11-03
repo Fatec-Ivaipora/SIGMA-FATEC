@@ -13,6 +13,10 @@ export type TipoAtividade =
   | "avaliado"
   | "aceito"
   | "nao_aceito"
+  // Resumo rejeitado pelo avaliador direto na Avaliação (2026-11-03) —
+  // separado de "nao_aceito" (resultado final pós-apresentação), ver
+  // /api/mail/trabalho-status.
+  | "rejeitado"
   | "convite_aceito"
   | "pagamento"
   | "atribuicao"

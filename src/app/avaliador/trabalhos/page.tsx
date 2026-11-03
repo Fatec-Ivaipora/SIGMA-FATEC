@@ -519,7 +519,13 @@ export default function AvaliadorTrabalhosPage() {
                   status: "nao_aceito",
                   atualizadoEm: serverTimestamp(),
                 });
-                if (user) notificarStatusTrabalho(user, id, "nao_aceito");
+                // "rejeitado" (não "nao_aceito") — e-mail específico de
+                // resumo rejeitado na avaliação, texto formal pedido pelo
+                // usuário (2026-11-03); o status salvo no trabalho continua
+                // "nao_aceito" mesmo, só o tipo de e-mail/feed é diferente
+                // (ver TEXTO_ATIVIDADE/CONTEUDO em
+                // /api/mail/trabalho-status/route.ts).
+                if (user) notificarStatusTrabalho(user, id, "rejeitado");
               }}
             />
           ) : (

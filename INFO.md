@@ -497,6 +497,32 @@ commit que sobe pro git.
   comentário do avaliador visível. Evento e trabalho de teste apagados
   depois.
 
+- **2026-11-03** — **E-mail de rejeição de resumo com texto formal próprio**
+  (`/api/mail/trabalho-status`, pedido explícito do usuário — "para o email
+  de rejeição do trabalho vamos usar esse", colando o texto completo).
+  Quando o avaliador clica "Rejeitar trabalho" (ver entrada logo abaixo), o
+  e-mail que o aluno recebe agora tem assunto e corpo específicos — citando
+  o Edital nº 056/2026 item 6.1 e os 5 critérios de avaliação — em vez do
+  texto genérico "Resultado final... já está disponível" que também é usado
+  pela decisão de Resultado Final do admin/organização. Os dois fluxos
+  continuam gravando o mesmo `status: "nao_aceito"` no trabalho (nada mudou
+  nos dados); só o e-mail passou a ter um `tipo` próprio (`"rejeitado"`,
+  novo em `TipoStatusTrabalho`), separado de `"nao_aceito"` — assim o texto
+  formal de resumo rejeitado não vaza pro e-mail de Resultado Final, que é
+  outro contexto (pós-apresentação). "X MAC 2026" do texto original virou
+  `${eventoNome}` (evento de verdade, funciona pra qualquer ano/evento
+  futuro); "Edital nº 056/2026" ficou fixo como veio — não tem campo pra
+  isso no evento, editais futuros vão precisar trocar esse número direto no
+  código. Saudação/assinatura seguem o padrão único do sistema (mesma
+  assinatura "Comissão Científica — Fatec Ivaiporã" de todo e-mail do
+  SIGMA) — só a saudação "Olá, nome" foi omitida porque o texto pedido já
+  vem com "Prezado(a) acadêmico(a)," próprio.
+  Testado ao vivo de ponta a ponta: criei avaliador + trabalho de teste
+  descartáveis, cliquei "Rejeitar trabalho" de verdade pela tela, e conferi
+  o doc gravado em `mail/` — assunto e HTML batendo com o texto pedido,
+  `delivery.state: "SUCCESS"`. Tudo apagado depois (trabalho, usuários de
+  teste, conta Auth, doc de e-mail).
+
 - **2026-11-04** — **Botão "Rejeitar trabalho" pro avaliador**
   (`/avaliador/trabalhos`, pedido explícito do usuário — "caso o trabalho
   não siga os 5 critérios avaliativos"). Na etapa Avaliação (resumo), além

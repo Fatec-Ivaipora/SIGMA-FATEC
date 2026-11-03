@@ -4,7 +4,7 @@ import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
-type Tipo = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito";
+type Tipo = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito" | "rejeitado";
 
 // Texto do feed da tela inicial do aluno (2026-09-09) — frase pronta por
 // tipo, mesma ideia do CONTEUDO abaixo (mas pro feed, não pro e-mail).
@@ -36,22 +36,42 @@ const TEXTO_ATIVIDADE: Record<
     texto: `O resultado final do seu trabalho "${tituloExibicao(t.titulo)}" já está disponível.`,
     negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
+  // Rejeição direto na etapa de Avaliação, pelo avaliador (2026-11-03) — ver
+  // comentário em `autorizado` mais abaixo. Tipo de e-mail/feed separado de
+  // "nao_aceito": esse último continua sendo o resultado final pós-
+  // apresentação (decidido pelo admin), com texto genérico; "rejeitado" é
+  // específico do resumo reprovado na avaliação, com o texto formal que a
+  // Comissão Científica pediu pra usar.
+  rejeitado: (t) => ({
+    texto: `Seu resumo "${tituloExibicao(t.titulo)}" não foi aprovado na avaliação.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
+  }),
 };
 
 // Assunto não depende do destinatário (só de tipo+título) — separado do
 // CONTEUDO abaixo pra não precisar montar um e-mail inteiro só pra pegar o
 // assunto (ver loop de destinatários no POST).
-const ASSUNTO: Record<Tipo, (trabalho: FirebaseFirestore.DocumentData) => string> = {
+const ASSUNTO: Record<
+  Tipo,
+  (trabalho: FirebaseFirestore.DocumentData, eventoNome: string) => string
+> = {
   submetido: (t) => `Trabalho enviado — ${tituloExibicao(t.titulo)}`,
   revisao: (t) => `Revisão solicitada — ${tituloExibicao(t.titulo)}`,
   avaliado: (t) => `Trabalho avaliado — ${tituloExibicao(t.titulo)}`,
   aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
   nao_aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
+  // Assunto exato pedido pelo usuário (2026-11-03), só trocando "X MAC 2026"
+  // pelo nome de verdade do evento, pra não ficar errado em edições futuras.
+  rejeitado: (_t, eventoNome) => `${eventoNome} – Esclarecimentos sobre resumo rejeitado.`,
 };
 
 const CONTEUDO: Record<
   Tipo,
-  (trabalho: FirebaseFirestore.DocumentData, nome: string | undefined) => string
+  (
+    trabalho: FirebaseFirestore.DocumentData,
+    nome: string | undefined,
+    eventoNome: string,
+  ) => string
 > = {
   submetido: (t, nome) =>
     modeloEmail(
@@ -87,6 +107,32 @@ const CONTEUDO: Record<
       { texto: "Ver detalhes", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),
+  // Texto formal pedido pelo usuário (2026-11-03, "vamos usar esse"), colado
+  // quase ao pé da letra — só "X MAC 2026" virou ${eventoNome} (fica certo
+  // em qualquer evento/ano futuro que reusar essa rejeição). "Edital nº
+  // 056/2026" ficou fixo igual ao pedido: é o número de verdade desse
+  // edital; não tem campo pra isso no evento, então editais futuros vão
+  // precisar trocar esse número aqui no código. Sem saudação "Olá, nome" nem
+  // botão — o pedido veio com saudação e fechamento próprios ("Prezado(a)
+  // acadêmico(a)" / sem call-to-action), então omitimos o `nome` do
+  // modeloEmail (pula a saudação automática) e escrevemos a abertura formal
+  // direto no corpo; a assinatura "Comissão Científica — Fatec Ivaiporã" no
+  // rodapé continua sendo a fixa do sistema (já confirmado antes que não
+  // varia por contexto — ver comentário em modeloEmail).
+  rejeitado: (_t, _nome, eventoNome) =>
+    modeloEmail(`
+      <p>Prezado(a) acadêmico(a),</p>
+      <p>Informamos que o resumo científico submetido à <strong>${eventoNome}</strong> não foi aprovado, por não atender satisfatoriamente aos critérios de avaliação estabelecidos no Edital nº 056/2026. Conforme o item 6.1 do edital, os resumos são avaliados por avaliadores externos, considerando cinco critérios:</p>
+      <ul style="margin:0 0 16px;padding-left:20px;">
+        <li><strong>Suficiência:</strong> apresentação de informações necessárias à compreensão do trabalho.</li>
+        <li><strong>Coerência:</strong> relação lógica entre objetivos, metodologia, resultados e conclusões.</li>
+        <li><strong>Estrutura do texto:</strong> atendimento à organização exigida pelo edital.</li>
+        <li><strong>Clareza e precisão:</strong> apresentação objetiva e compreensível das informações.</li>
+        <li><strong>Aplicabilidade e relevância:</strong> contribuição científica, acadêmica ou social do trabalho.</li>
+      </ul>
+      <p>A rejeição decorre da avaliação técnico-científica realizada conforme as normas estabelecidas no edital.</p>
+      <p>Em caso de dúvidas ou necessidade de esclarecimentos, o(a) acadêmico(a) deverá entrar em contato diretamente com a Comissão Científica e Organizadora do evento, pelo e-mail <a href="mailto:pesq.extensao@fatecivaipora.com.br">pesq.extensao@fatecivaipora.com.br</a>.</p>
+    `),
 };
 
 /** E-mail + atividade da tela inicial de mudança de status do trabalho — um
@@ -126,12 +172,14 @@ export async function POST(request: Request) {
     autorizado = trabalho.alunoUid === chamadorUid;
   } else if (tipo === "revisao" || tipo === "avaliado") {
     autorizado = trabalho.avaliadorUid === chamadorUid;
-  } else if (tipo === "nao_aceito" && trabalho.avaliadorUid === chamadorUid) {
-    // Avaliador rejeitando direto na etapa de Avaliação (2026-11-04, pedido
+  } else if (tipo === "rejeitado" && trabalho.avaliadorUid === chamadorUid) {
+    // Avaliador rejeitando direto na etapa de Avaliação (2026-11-03, pedido
     // explícito do usuário — "caso o trabalho não siga os 5 critérios
-    // avaliativos"), sem passar por revisão/apresentação/resultado final —
-    // mesmo "nao_aceito" que admin/organização já emitiam no Resultado
-    // Final, só que disparado antes, pelo próprio avaliador.
+    // avaliativos"), sem passar por revisão/apresentação/resultado final. O
+    // trabalho em si continua indo pro mesmo status "nao_aceito" que
+    // admin/organização usam no Resultado Final (ver onRejeitar em
+    // avaliador/trabalhos/page.tsx) — só o e-mail/feed é diferente, porque é
+    // uma rejeição de resumo, não um resultado final pós-apresentação.
     autorizado = true;
   } else {
     const chamadorSnap = await db.doc(`usuarios/${chamadorUid}`).get();
@@ -161,7 +209,7 @@ export async function POST(request: Request) {
   const eventoSnap = await db.doc(`eventos/${trabalho.eventoId}`).get();
   const eventoNome = (eventoSnap.data()?.nome as string | undefined) ?? "seu evento";
   const { texto, negritos } = TEXTO_ATIVIDADE[tipo](trabalho, eventoNome);
-  const subject = ASSUNTO[tipo](trabalho);
+  const subject = ASSUNTO[tipo](trabalho, eventoNome);
 
   await Promise.all(
     destinatariosUids.map(async (uid) => {
@@ -185,7 +233,7 @@ export async function POST(request: Request) {
       }
 
       if (!usuario.email) return;
-      const html = CONTEUDO[tipo](trabalho, usuario.nome);
+      const html = CONTEUDO[tipo](trabalho, usuario.nome, eventoNome);
       await enviarEmail({ to: usuario.email, subject, html });
     }),
   );
