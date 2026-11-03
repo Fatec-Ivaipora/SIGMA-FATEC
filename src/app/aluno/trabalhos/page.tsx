@@ -106,7 +106,12 @@ export default function AlunoTrabalhosPage() {
               {trabalhos.map((t) => {
                 const evento = eventos.find((e) => e.id === t.eventoId);
                 const souDono = t.alunoUid === user?.uid;
-                const podeEditar = souDono && dentroDoPrazoEdicao(evento);
+                // Em "revisão" (avaliador pediu ajuste) edita mesmo fora do
+                // prazo (2026-11-04, corrigido — achado real: firestore.rules
+                // já permitia isso, mas o botão "Corrigir" ficava escondido
+                // se o prazo de edição já tivesse passado, travando o aluno
+                // sem como corrigir o que o avaliador pediu).
+                const podeEditar = souDono && (t.status === "revisao" || dentroDoPrazoEdicao(evento));
                 return (
                   <div
                     key={t.id}

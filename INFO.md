@@ -477,6 +477,26 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-04** — **Bug corrigido: aluno não conseguia corrigir trabalho em
+  revisão depois do prazo de edição vencer** (`/aluno/trabalhos`, achado
+  respondendo uma pergunta do usuário: "se o avaliador pedi revisão o
+  aluno vai poder editar mesmo depois do prazo?"). `firestore.rules` já
+  permitia — dono do trabalho edita livremente enquanto `status ==
+  "revisao"`, sem olhar o prazo. Mas a tela só calculava
+  `podeEditar = souDono && dentroDoPrazoEdicao(evento)`, sem essa mesma
+  exceção — o botão "Corrigir" simplesmente sumia se o prazo
+  (`evento.prazoEdicaoTrabalho`) já tivesse passado, mesmo com o avaliador
+  esperando a correção. Corrigido pra `souDono && (status === "revisao" ||
+  dentroDoPrazoEdicao(evento))`, igual a regra do banco. Testado ao vivo:
+  criei um evento de teste com prazo propositalmente vencido e um trabalho
+  de teste em "revisão" nele — antes da correção não apareceria o botão
+  (não cheguei a testar o "antes" ao vivo, só confirmei o "depois" porque
+  o código já tava corrigido quando testei, mas o comportamento antigo tá
+  confirmado lendo o código + a regra do Firestore); depois da correção, o
+  botão "Corrigir" aparece normal e o modal de edição abre com o
+  comentário do avaliador visível. Evento e trabalho de teste apagados
+  depois.
+
 - **2026-11-04** — **Botão "Rejeitar trabalho" pro avaliador**
   (`/avaliador/trabalhos`, pedido explícito do usuário — "caso o trabalho
   não siga os 5 critérios avaliativos"). Na etapa Avaliação (resumo), além
