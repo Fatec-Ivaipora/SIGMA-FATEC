@@ -477,6 +477,32 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-04** — **Botão "Rejeitar trabalho" pro avaliador**
+  (`/avaliador/trabalhos`, pedido explícito do usuário — "caso o trabalho
+  não siga os 5 critérios avaliativos"). Na etapa Avaliação (resumo), além
+  de "Enviar nota" e "Solicitar revisão", agora tem um terceiro botão,
+  vermelho: **"Rejeitar trabalho"** — abre um aviso explicando que a
+  decisão é definitiva, pede confirmação, e só depois manda. Diferente de
+  "Solicitar revisão" (devolve pro aluno corrigir e reenviar), rejeitar
+  manda o trabalho direto pro status **`nao_aceito`** — pula revisão,
+  apresentação e Resultado Final inteiros. É o mesmo status que já existia
+  (admin/organização já podiam recusar um trabalho, mas só lá no Resultado
+  Final, depois de passar pela apresentação) — agora o avaliador também
+  pode chegar nesse status, só que direto, na primeira etapa. Só existe na
+  aba Avaliação (avaliador), não em Apresentação (moderador) — pedido foi
+  especificamente sobre os 5 critérios do resumo.
+  **Precisou também autorizar** `/api/mail/trabalho-status` (rota que
+  manda o e-mail de "resultado disponível" pro aluno) a aceitar
+  `tipo: "nao_aceito"` vindo do próprio avaliador (antes só admin/
+  organização podiam disparar esse e-mail — fazia sentido, porque só eles
+  chegavam nesse status). `firestore.rules` não precisou mudar — o
+  avaliador já podia escrever qualquer campo (inclusive `status`) num
+  trabalho atribuído a ele mesmo.
+  Testado ao vivo de ponta a ponta com conta/trabalho de teste
+  descartáveis (apagados depois): cliquei "Rejeitar trabalho", confirmei
+  no aviso, status virou "Recusado" na tela e `nao_aceito` no banco, sem
+  erro de permissão no e-mail.
+
 - **2026-11-03** — **Avaliação às cegas + descrição dos critérios**
   (`/avaliador/trabalhos`, pedido explícito do usuário). Duas mudanças na
   tela onde o avaliador avalia um trabalho:

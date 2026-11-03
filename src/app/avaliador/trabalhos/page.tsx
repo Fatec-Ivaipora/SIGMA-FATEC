@@ -122,8 +122,10 @@ function PainelTrabalhos({
   statusPendente,
   mensagemVazia,
   permiteRevisao,
+  permiteRejeitar,
   onEnviarNota,
   onSolicitarRevisao,
+  onRejeitar,
 }: {
   trabalhos: Trabalho[];
   eventos: Evento[];
@@ -131,14 +133,24 @@ function PainelTrabalhos({
   statusPendente: TrabalhoStatus;
   mensagemVazia: string;
   permiteRevisao: boolean;
+  // Rejeitar direto (2026-11-04, pedido explícito do usuário — "caso o
+  // trabalho não siga os 5 critérios avaliativos") — só na etapa Avaliação
+  // (resumo), não em Apresentação. Pula revisão/apresentação/resultado
+  // final: vai direto pra "Não aceito", decisão final, sem segunda chance —
+  // diferente de "Solicitar revisão", que devolve pro aluno corrigir.
+  permiteRejeitar?: boolean;
   onEnviarNota: (id: string, soma: number, notas: Record<string, number>) => void;
   onSolicitarRevisao?: (id: string, comentario: string) => void;
+  onRejeitar?: (id: string) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [eventoId, setEventoId] = useState(TODOS_MEUS_EVENTOS);
   const [avaliando, setAvaliando] = useState<string | null>(null);
   const [notas, setNotas] = useState<Record<string, number>>({});
-  const [pedindoRevisao, setPedindoRevisao] = useState(false);
+  // "notas" (padrão) | "revisao" (pedir ajuste) | "rejeicao" (confirmar
+  // rejeição definitiva) — 3 sub-telas dentro do painel de avaliação de um
+  // trabalho, nunca mais de uma aberta ao mesmo tempo.
+  const [modoAcao, setModoAcao] = useState<"notas" | "revisao" | "rejeicao">("notas");
   const [comentarioRevisao, setComentarioRevisao] = useState("");
 
   const somaNotas = criterios.reduce((acc, c) => acc + (notas[c.key] ?? 0), 0);
@@ -159,7 +171,7 @@ function PainelTrabalhos({
   function abrirAvaliacao(id: string) {
     setAvaliando((cur) => (cur === id ? null : id));
     setNotas({});
-    setPedindoRevisao(false);
+    setModoAcao("notas");
     setComentarioRevisao("");
   }
 
@@ -174,8 +186,15 @@ function PainelTrabalhos({
     if (!comentarioRevisao.trim() || !onSolicitarRevisao) return;
     onSolicitarRevisao(id, comentarioRevisao.trim());
     setAvaliando(null);
-    setPedindoRevisao(false);
+    setModoAcao("notas");
     setComentarioRevisao("");
+  }
+
+  function confirmarRejeicao(id: string) {
+    if (!onRejeitar) return;
+    onRejeitar(id);
+    setAvaliando(null);
+    setModoAcao("notas");
   }
 
   return (
@@ -254,7 +273,7 @@ function PainelTrabalhos({
                 </div>
               )}
 
-              {!pedindoRevisao ? (
+              {modoAcao === "notas" ? (
                 <>
                   <div className="flex flex-col gap-3">
                     <span className="text-sm font-medium text-fatec-navy-900">
@@ -306,15 +325,24 @@ function PainelTrabalhos({
                     {permiteRevisao && (
                       <button
                         type="button"
-                        onClick={() => setPedindoRevisao(true)}
+                        onClick={() => setModoAcao("revisao")}
                         className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                       >
                         Solicitar revisão
                       </button>
                     )}
+                    {permiteRejeitar && (
+                      <button
+                        type="button"
+                        onClick={() => setModoAcao("rejeicao")}
+                        className="rounded-xl border border-rose-200 px-6 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+                      >
+                        Rejeitar trabalho
+                      </button>
+                    )}
                   </div>
                 </>
-              ) : (
+              ) : modoAcao === "revisao" ? (
                 <>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-sm font-medium text-fatec-navy-900">
@@ -340,7 +368,37 @@ function PainelTrabalhos({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPedindoRevisao(false)}
+                      onClick={() => setModoAcao("notas")}
+                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-rose-700">
+                      Rejeitar esse trabalho é definitivo
+                    </p>
+                    <p className="mt-1 text-sm text-rose-700">
+                      O trabalho vai direto pra &quot;Não aceito&quot;, sem passar por revisão
+                      nem apresentação — o aluno é avisado, mas não tem como reenviar. Use só
+                      quando o trabalho realmente não segue os 5 critérios avaliativos.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => confirmarRejeicao(t.id)}
+                      className="rounded-xl bg-rose-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/25 transition-colors hover:bg-rose-700"
+                    >
+                      Confirmar rejeição
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModoAcao("notas")}
                       className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                     >
                       Voltar
@@ -438,6 +496,7 @@ export default function AvaliadorTrabalhosPage() {
               statusPendente="aguardando_avaliacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao
+              permiteRejeitar
               onEnviarNota={async (id, soma, notas) => {
                 await atualizarTrabalho(id, {
                   status: "avaliado",
@@ -454,6 +513,13 @@ export default function AvaliadorTrabalhosPage() {
                   atualizadoEm: serverTimestamp(),
                 });
                 if (user) notificarStatusTrabalho(user, id, "revisao");
+              }}
+              onRejeitar={async (id) => {
+                await atualizarTrabalho(id, {
+                  status: "nao_aceito",
+                  atualizadoEm: serverTimestamp(),
+                });
+                if (user) notificarStatusTrabalho(user, id, "nao_aceito");
               }}
             />
           ) : (

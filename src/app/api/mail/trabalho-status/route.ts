@@ -126,6 +126,13 @@ export async function POST(request: Request) {
     autorizado = trabalho.alunoUid === chamadorUid;
   } else if (tipo === "revisao" || tipo === "avaliado") {
     autorizado = trabalho.avaliadorUid === chamadorUid;
+  } else if (tipo === "nao_aceito" && trabalho.avaliadorUid === chamadorUid) {
+    // Avaliador rejeitando direto na etapa de Avaliação (2026-11-04, pedido
+    // explícito do usuário — "caso o trabalho não siga os 5 critérios
+    // avaliativos"), sem passar por revisão/apresentação/resultado final —
+    // mesmo "nao_aceito" que admin/organização já emitiam no Resultado
+    // Final, só que disparado antes, pelo próprio avaliador.
+    autorizado = true;
   } else {
     const chamadorSnap = await db.doc(`usuarios/${chamadorUid}`).get();
     const chamador = chamadorSnap.data();
