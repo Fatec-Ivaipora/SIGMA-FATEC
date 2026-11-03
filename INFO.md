@@ -477,6 +477,23 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-03** — **Avaliação às cegas + descrição dos critérios**
+  (`/avaliador/trabalhos`, pedido explícito do usuário). Duas mudanças na
+  tela onde o avaliador avalia um trabalho:
+  1. **Nome do aluno removido** — não aparece mais nem no card (antes
+     mostrava "{aluno} · {evento}", agora só o evento) nem na busca (campo
+     e placeholder viraram só "Buscar por título"). Avaliação do resumo é
+     às cegas, avaliador não deve saber de quem é o trabalho.
+  2. **Descrição em cada critério** — o edital (item 6.1/6.4) só nomeia os
+     critérios ("Suficiência", "Coerência", etc.), sem explicar o que cada
+     um significa. Escrevi uma descrição curta pra cada um dos 5 critérios
+     de avaliação do resumo e dos 7 de apresentação (moderador), mostrada
+     embaixo do nome do critério, antes dos botões de nota. **Texto nosso,
+     não do edital** — avisar a comissão científica se quiserem outra
+     redação.
+  Testado ao vivo com a conta de avaliador de teste: nome sumiu do
+  card/busca, descrições aparecem certinho abaixo de cada critério.
+
 - **2026-11-03** — **🔴 BUG CRÍTICO corrigido: nenhum avaliador real conseguia
   ver os trabalhos atribuídos a ele** (`src/lib/data/trabalhos.ts`,
   `useTrabalhos`). Achado criando uma conta de avaliador de teste pra

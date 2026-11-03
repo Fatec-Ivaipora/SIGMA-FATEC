@@ -24,31 +24,91 @@ import { tituloExibicao } from "@/lib/tituloTrabalho";
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 const NOTAS = [1, 2, 3, 4, 5];
 
-type CriterioDef = { key: string; label: string };
+type CriterioDef = { key: string; label: string; descricao: string };
 
 // Critérios do edital do evento (item 6.1) — cada um recebe nota de 1 a 5
 // (item 6.2); a nota final somada é o que ranqueia os resumos mais bem
-// pontuados.
+// pontuados. `descricao` (2026-11-03, pedido explícito do usuário —
+// "colocar na frente de cada critério a sua descrição") — o edital só
+// nomeia os critérios, sem explicar o que cada um significa; texto
+// escrito por nós, pode ser ajustado se a comissão científica quiser
+// outra redação.
 const CRITERIOS_AVALIACAO: CriterioDef[] = [
-  { key: "suficiencia", label: "Suficiência" },
-  { key: "coerencia", label: "Coerência" },
-  { key: "estruturaTexto", label: "Estrutura do texto" },
-  { key: "clarezaPrecisao", label: "Clareza e precisão" },
-  { key: "aplicabilidadeRelevancia", label: "Aplicabilidade e relevância" },
+  {
+    key: "suficiencia",
+    label: "Suficiência",
+    descricao:
+      "O resumo traz informação suficiente (contexto, objetivo, método, resultados) pra dar pra entender do que se trata o trabalho.",
+  },
+  {
+    key: "coerencia",
+    label: "Coerência",
+    descricao:
+      "As partes do resumo se conectam sem contradição — o que foi proposto bate com o que foi apresentado como resultado.",
+  },
+  {
+    key: "estruturaTexto",
+    label: "Estrutura do texto",
+    descricao:
+      "Segue a estrutura esperada pelo edital: introdução, objetivos, materiais e métodos, resultados, considerações finais.",
+  },
+  {
+    key: "clarezaPrecisao",
+    label: "Clareza e precisão",
+    descricao: "Escrita clara e direta, sem termos vagos, ambíguos ou informação confusa.",
+  },
+  {
+    key: "aplicabilidadeRelevancia",
+    label: "Aplicabilidade e relevância",
+    descricao:
+      "O trabalho tem relevância científica, acadêmica ou social, com contribuição ou aplicação prática reconhecível.",
+  },
 ];
 
 // Critérios da etapa de Apresentação (item 6.4 do edital X MAC, conferido
 // 2026-09-08 contra o PDF real — substituem os 5 placeholder de antes, que
 // nunca bateram com o edital de verdade). 7 critérios, 1 a 5 cada, soma
-// 7-35 — ver NotasCriteriosApresentacao.
+// 7-35 — ver NotasCriteriosApresentacao. `descricao` ver comentário acima.
 const CRITERIOS_APRESENTACAO: CriterioDef[] = [
-  { key: "pontualidade", label: "Pontualidade para início da apresentação" },
-  { key: "numeroApresentadores", label: "Respeito ao número máximo de apresentadores" },
-  { key: "linguagemTecnica", label: "Uso de linguagem formal e técnica apropriada" },
-  { key: "qualidadeSlides", label: "Qualidade dos slides" },
-  { key: "clarezaObjetividade", label: "Clareza e objetividade das informações" },
-  { key: "ordemLogica", label: "Ordem lógica da apresentação" },
-  { key: "postura", label: "Postura adequada ao longo da apresentação" },
+  {
+    key: "pontualidade",
+    label: "Pontualidade para início da apresentação",
+    descricao: "O(s) apresentador(es) estavam presentes e começaram no horário agendado pelo ensalamento.",
+  },
+  {
+    key: "numeroApresentadores",
+    label: "Respeito ao número máximo de apresentadores",
+    descricao: "No máximo 2 pessoas apresentaram (edital, item 3.2 — é facultativo, mas o limite é esse).",
+  },
+  {
+    key: "linguagemTecnica",
+    label: "Uso de linguagem formal e técnica apropriada",
+    descricao:
+      "Linguagem formal e adequada ao conteúdo técnico/científico do trabalho, sem informalidade excessiva.",
+  },
+  {
+    key: "qualidadeSlides",
+    label: "Qualidade dos slides",
+    descricao:
+      "Slides (quando usados) claros, legíveis e bem organizados, sem poluição visual ou excesso de texto.",
+  },
+  {
+    key: "clarezaObjetividade",
+    label: "Clareza e objetividade das informações",
+    descricao: "As informações foram passadas de forma clara e direta, sem rodeio nem informação desnecessária.",
+  },
+  {
+    key: "ordemLogica",
+    label: "Ordem lógica da apresentação",
+    descricao:
+      "Seguiu uma sequência lógica — ex.: introdução, objetivo, método, resultados, conclusão — fácil de acompanhar.",
+  },
+  {
+    key: "postura",
+    label: "Postura adequada ao longo da apresentação",
+    descricao:
+      "Postura profissional durante toda a apresentação (tom de voz, postura corporal, respeito ao tempo e ao público).",
+  },
 ];
 
 /** Lista + formulário de nota (5 critérios, 1 a 5 cada) reaproveitado tanto
@@ -84,14 +144,14 @@ function PainelTrabalhos({
   const somaNotas = criterios.reduce((acc, c) => acc + (notas[c.key] ?? 0), 0);
   const notasCompletas = criterios.every((c) => notas[c.key]);
 
+  // Busca só por título (2026-11-03, pedido explícito do usuário — "vamos
+  // remover o nome dos alunos" da tela do avaliador, avaliação não deve
+  // identificar o autor). Nunca filtra por alunoNome.
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return trabalhos.filter((t) => {
       const bateEvento = eventoId === TODOS_MEUS_EVENTOS || t.eventoId === eventoId;
-      const bateBusca =
-        !termo ||
-        t.titulo.toLowerCase().includes(termo) ||
-        t.alunoNome?.toLowerCase().includes(termo);
+      const bateBusca = !termo || t.titulo.toLowerCase().includes(termo);
       return bateEvento && bateBusca;
     });
   }, [busca, eventoId, trabalhos]);
@@ -126,7 +186,7 @@ function PainelTrabalhos({
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por título ou nome do aluno"
+            placeholder="Buscar por título"
             className="min-w-0 flex-1 bg-transparent text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none"
           />
         </div>
@@ -163,7 +223,7 @@ function PainelTrabalhos({
             <div className="min-w-0">
               <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
               <p className="text-sm text-fatec-muted">
-                {t.alunoNome} · {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
+                {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -203,10 +263,13 @@ function PainelTrabalhos({
                     {criterios.map((c) => (
                       <div
                         key={c.key}
-                        className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
                       >
-                        <span className="text-sm text-fatec-ink">{c.label}</span>
-                        <div className="flex gap-2">
+                        <div className="min-w-0 sm:max-w-sm">
+                          <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
+                          <p className="text-xs text-fatec-muted">{c.descricao}</p>
+                        </div>
+                        <div className="flex flex-none gap-2">
                           {NOTAS.map((n) => (
                             <button
                               key={n}
