@@ -518,6 +518,32 @@ commit que sobe pro git.
   verdade (não só o arquivo local), batendo direto na API do Firestore
   com o token da conta de teste.
 
+- **2026-11-03** — **Logo da MAC no certificado de apresentação**
+  (`public/certificados/fundo-apresentacao.png`, pedido explícito do
+  usuário — "recortar a logo da MAC com a escrita embaixo da logo da
+  FATEC"). A logo oficial da MAC (ícone lâmpada/cérebro + "MAC" +
+  "Mostra Acadêmica Científica") não existia solta em lugar nenhum do
+  projeto — achei ela embutida como imagem dentro do PDF de referência
+  que o usuário mandou (`AVALIADORES`/exemplos de certificado do ano
+  passado), recortei, tirei o fundo cinza-escuro original (virou
+  transparente, por pedido explícito — a alternativa era manter a
+  caixa escura) e recoloni o texto branco pra navy (`#003263`, cor da
+  marca) pra não sumir no fundo branco do certificado. Original limpo
+  salvo em `public/certificados/logo-mac.png` (fonte, caso precise
+  reposicionar/redimensionar depois). Colada direto no
+  `fundo-apresentacao.png` (imagem de fundo única usada só por
+  `CertificadoApresentacaoPDF`, sem lógica de posicionamento no código
+  — mesmo padrão que já existia pra essa imagem), alinhada pela direita
+  com a logo da FATEC, logo abaixo dela. **Achado durante o teste**: o
+  servidor de dev lê esse PNG uma vez só (`fs.readFileSync` em
+  `certificadosPdf.tsx`, no carregamento do módulo) — editar o arquivo
+  sem reiniciar o `next dev` mantinha a imagem antiga em memória; é
+  assim também em produção, então **depois do deploy, o Vercel builda
+  do zero e lê o arquivo novo normalmente, não precisa reiniciar nada
+  lá**. Testado ao vivo gerando um certificado real (trabalho de teste
+  descartável, apagado depois, junto com o contador de registro que
+  ele consumiu — revertido pro estado de antes).
+
 - **2026-10-28** — **Dois ajustes pedidos depois do autocadastro acima**:
   1. **Texto do moderador corrigido** (`/seja-avaliador`) — achado real do
      usuário: o card "O que faz um(a) moderador(a)" só falava em conduzir
