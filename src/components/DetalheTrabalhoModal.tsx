@@ -152,7 +152,8 @@ export function DetalheTrabalhoModal({
         )}
 
         <p className="text-xs text-fatec-muted">
-          Atualizado em {formatarData(trabalho.atualizadoEm)}
+          {trabalho.enviadoEm ? <>Enviado em {formatarData(trabalho.enviadoEm)} · </> : null}
+          Última edição em {formatarData(trabalho.atualizadoEm)}
         </p>
 
         <div className="flex items-center justify-between border-t border-fatec-line pt-5">
