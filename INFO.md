@@ -477,6 +477,47 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-03** — **🔴 BUG CRÍTICO corrigido: nenhum avaliador real conseguia
+  ver os trabalhos atribuídos a ele** (`src/lib/data/trabalhos.ts`,
+  `useTrabalhos`). Achado criando uma conta de avaliador de teste pra
+  demonstração ao administrativo — enviei um trabalho pra ela, loguei como
+  ela, e a tela de "Trabalhos" (e o painel) vinha sempre vazia, mesmo o
+  trabalho estando corretamente atribuído no banco (`avaliadorUid` certo).
+  Console do navegador mostrava `permission-denied` no listener do
+  Firestore.
+  **Causa raiz**: a query usava `or(where("avaliadorUid","==",uid),
+  where("moderadorUid","==",uid))` numa chamada só. `firestore.rules`
+  libera leitura de `trabalhos` separadamente por papel (avaliador só pode
+  ler onde é `avaliadorUid`, moderador só onde é `moderadorUid`) — mas
+  numa query `or()` sobre dois CAMPOS diferentes, o Firestore só autoriza
+  se CADA metade da query, isolada, já for coberta pela regra pra quem tá
+  perguntando. Avaliador que não é também moderador nunca bate no ramo
+  `moderadorUid==uid` da regra — essa metade da query é negada, e isso
+  **nega a query inteira**, mesmo a metade (`avaliadorUid==uid`) que seria
+  permitida sozinha.
+  **Confirmei que isso atinge todo mundo**: rodei um script conferindo os
+  25 avaliadores reais cadastrados no MAC — **nenhum dos 25 tem
+  "moderador" em `papeisAvaliacao`**. Ou seja, assim que a avaliação for
+  distribuída de verdade, todo avaliador real ia abrir o SIGMA e ver a
+  tela de trabalhos vazia, sem erro nenhum visível pra eles (só no console
+  do navegador). Sorte de pegar isso agora, testando com conta de
+  mentirinha, antes da avaliação de verdade começar.
+  **Correção**: `useTrabalhos` agora abre **dois listeners separados**
+  (um só com `avaliadorUid==uid`, outro só com `moderadorUid==uid`) e
+  junta o resultado em memória — cada um bate exatamente no ramo da regra
+  que já libera aquele papel, sem nunca precisar da autorização combinada
+  dos dois campos na mesma query. Confirmado que o ramo do aluno (`or` de
+  `alunoUid`/`participantesUids`) **não** tem esse problema — os dois
+  campos aí dependem só de `meuPapel() == "aluno"`, igual pra ambos, sem
+  precisar de papel extra — continua uma query só.
+  **Testado ao vivo, de ponta a ponta**: conta de avaliador de teste
+  (`avaliador.teste@teste.com`), trabalho de teste atribuído a ela,
+  logado como ela — antes da correção, painel mostrava 0/0 e a lista
+  vinha vazia; depois, mostrou "1 aguardando sua nota" e o trabalho
+  apareceu certinho com botão "Avaliar". Validei a regra em produção de
+  verdade (não só o arquivo local), batendo direto na API do Firestore
+  com o token da conta de teste.
+
 - **2026-10-28** — **Dois ajustes pedidos depois do autocadastro acima**:
   1. **Texto do moderador corrigido** (`/seja-avaliador`) — achado real do
      usuário: o card "O que faz um(a) moderador(a)" só falava em conduzir

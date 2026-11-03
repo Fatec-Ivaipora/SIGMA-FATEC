@@ -9,7 +9,6 @@ import {
   query,
   updateDoc,
   where,
-  type Query,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { temPapel, type PerfilUsuario } from "@/lib/auth";
@@ -128,11 +127,15 @@ export function useTrabalhos(
     if (!perfil || !uid) return;
 
     const ref = collection(db, "trabalhos");
-    let q: Query;
 
     if (perfil.papel === "admin") {
-      q = query(ref);
-    } else if (perfil.papel === "organizacao") {
+      return onSnapshot(query(ref), (snap) => {
+        setTrabalhos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Trabalho));
+        setCarregando(false);
+      });
+    }
+
+    if (perfil.papel === "organizacao") {
       if (!perfil.eventosPermitidos || perfil.eventosPermitidos.length === 0) {
         Promise.resolve().then(() => {
           setTrabalhos([]);
@@ -140,8 +143,14 @@ export function useTrabalhos(
         });
         return;
       }
-      q = query(ref, where("eventoId", "in", perfil.eventosPermitidos.slice(0, 30)));
-    } else if (
+      const q = query(ref, where("eventoId", "in", perfil.eventosPermitidos.slice(0, 30)));
+      return onSnapshot(q, (snap) => {
+        setTrabalhos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Trabalho));
+        setCarregando(false);
+      });
+    }
+
+    if (
       temPapel(perfil, "avaliador") ||
       temPapel(perfil, "orientador") ||
       temPapel(perfil, "moderador")
@@ -150,15 +159,76 @@ export function useTrabalhos(
       // uma pessoa pode ser avaliadorUid de uns trabalhos e moderadorUid de
       // outros ao mesmo tempo; a tela em si separa por aba (ver
       // src/app/avaliador/trabalhos/page.tsx).
-      q = query(ref, or(where("avaliadorUid", "==", uid), where("moderadorUid", "==", uid)));
-    } else {
-      // Dono do trabalho ou colega adicionado como participante (RF-08).
-      q = query(
-        ref,
-        or(where("alunoUid", "==", uid), where("participantesUids", "array-contains", uid)),
-      );
+      //
+      // Dois listeners separados, não um só `or(avaliadorUid==uid,
+      // moderadorUid==uid)` (2026-11-03, corrigido — achado real: TODOS os
+      // 25 avaliadores reais do MAC têm só "avaliador" em papeisAvaliacao,
+      // nenhum tem "moderador" também. firestore.rules autoriza cada ramo
+      // (avaliador/moderador) separadamente, checando o papel de quem
+      // pergunta — mas numa query `or()` sobre DOIS campos diferentes, o
+      // Firestore só libera se CADA sub-filtro da query, isolado, já for
+      // coberto pela regra pra esse usuário. Quem não é moderador nunca
+      // bate no ramo `moderadorUid==uid` da regra, então esse pedaço da
+      // query é negado — e nega a query INTEIRA, mesmo a metade
+      // (avaliadorUid==uid) que seria permitida sozinha. Resultado: todo
+      // avaliador sem o papel moderador tomava "permission-denied" e via a
+      // tela de trabalhos sempre vazia. Confirmado direto contra as regras
+      // publicadas (não só o arquivo local) testando como um avaliador de
+      // teste de verdade. Dois onSnapshot separados, cada um só com o
+      // campo que a regra já cobre pra esse papel, evita o problema.
+      const comoAvaliador = query(ref, where("avaliadorUid", "==", uid));
+      const comoModerador = query(ref, where("moderadorUid", "==", uid));
+      const porId = new Map<string, Trabalho>();
+      let carregouAvaliador = false;
+      let carregouModerador = false;
+
+      function publicar() {
+        setTrabalhos(Array.from(porId.values()));
+        if (carregouAvaliador && carregouModerador) setCarregando(false);
+      }
+
+      const paraTrabalho = (d: { id: string; data: () => unknown }) =>
+        ({ id: d.id, ...(d.data() as object) }) as Trabalho;
+
+      const unsubAvaliador = onSnapshot(comoAvaliador, (snap) => {
+        for (const d of snap.docs) porId.set(d.id, paraTrabalho(d));
+        // Remove quem saiu do resultado (deixou de ser o avaliador).
+        const idsAtuais = new Set(snap.docs.map((d) => d.id));
+        for (const [id, t] of porId) {
+          if (t.avaliadorUid === uid && !idsAtuais.has(id)) porId.delete(id);
+        }
+        carregouAvaliador = true;
+        publicar();
+      });
+      const unsubModerador = onSnapshot(comoModerador, (snap) => {
+        for (const d of snap.docs) {
+          const existente = porId.get(d.id);
+          porId.set(d.id, existente ? { ...existente, ...paraTrabalho(d) } : paraTrabalho(d));
+        }
+        const idsAtuais = new Set(snap.docs.map((d) => d.id));
+        for (const [id, t] of porId) {
+          if (t.moderadorUid === uid && t.avaliadorUid !== uid && !idsAtuais.has(id)) {
+            porId.delete(id);
+          }
+        }
+        carregouModerador = true;
+        publicar();
+      });
+
+      return () => {
+        unsubAvaliador();
+        unsubModerador();
+      };
     }
 
+    // Dono do trabalho ou colega adicionado como participante (RF-08) — os
+    // dois ramos dessa `or()` já são cobertos pela MESMA condição de regra
+    // (meuPapel() == "aluno"), sem depender de outro papel por campo, então
+    // não sofre do problema acima — continua uma query só.
+    const q = query(
+      ref,
+      or(where("alunoUid", "==", uid), where("participantesUids", "array-contains", uid)),
+    );
     return onSnapshot(q, (snap) => {
       setTrabalhos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Trabalho));
       setCarregando(false);
