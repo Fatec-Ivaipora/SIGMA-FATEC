@@ -740,6 +740,7 @@ export default function EventosPage() {
   const [fimInscricoesConfig, setFimInscricoesConfig] = useState("");
   const [inicioEnvioTrabalhoConfig, setInicioEnvioTrabalhoConfig] = useState("");
   const [fimEnvioTrabalhoConfig, setFimEnvioTrabalhoConfig] = useState("");
+  const [prazoAvaliacaoConfig, setPrazoAvaliacaoConfig] = useState("");
   const [modalidadesApresentacaoConfig, setModalidadesApresentacaoConfig] = useState<
     ("oral" | "roda_conversa")[]
   >([]);
@@ -952,6 +953,19 @@ export default function EventosPage() {
     setFimInscricoesConfig(evento.fimInscricoes ?? "");
     setInicioEnvioTrabalhoConfig(evento.inicioEnvioTrabalho ?? "");
     setFimEnvioTrabalhoConfig(evento.fimEnvioTrabalho ?? "");
+    // prazoAvaliacao é Timestamp (não string ISO como os campos acima) —
+    // volta pro <input type="date"> pelas partes LOCAIS da data (não
+    // toISOString, que é UTC e pode voltar um dia errado perto da
+    // meia-noite, já que o campo é sempre gravado como 23:59 local).
+    if (evento.prazoAvaliacao) {
+      const d = evento.prazoAvaliacao.toDate();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      setPrazoAvaliacaoConfig(`${yyyy}-${mm}-${dd}`);
+    } else {
+      setPrazoAvaliacaoConfig("");
+    }
     setModalidadesApresentacaoConfig(evento.modalidadesApresentacao ?? []);
   }
 
@@ -980,6 +994,11 @@ export default function EventosPage() {
         // junto, em vez de ficar preso na data antiga.
         prazoEdicaoTrabalho: fimInscricoesConfig
           ? Timestamp.fromDate(new Date(`${fimInscricoesConfig}T23:55:00`))
+          : deleteField(),
+        // Prazo final de avaliação (2026-11-03) — igual ao padrão acima,
+        // sempre 23:59 do dia escolhido.
+        prazoAvaliacao: prazoAvaliacaoConfig
+          ? Timestamp.fromDate(new Date(`${prazoAvaliacaoConfig}T23:59:00`))
           : deleteField(),
         // Sempre grava a lista, mesmo vazia (2026-09-24) — campo ausente é
         // lido como "evento antigo, as duas modalidades" pelo
@@ -2348,6 +2367,23 @@ export default function EventosPage() {
           <span className="-mt-3 text-xs text-fatec-muted">
             Depois dessa data, o aluno não consegue mais enviar um trabalho
             novo pra esse evento.
+          </span>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Prazo final de avaliação
+            </span>
+            <input
+              type="date"
+              value={prazoAvaliacaoConfig}
+              onChange={(e) => setPrazoAvaliacaoConfig(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600 sm:max-w-xs"
+            />
+          </label>
+          <span className="-mt-3 text-xs text-fatec-muted">
+            Até as 23:59 desse dia o avaliador consegue dar nota, pedir
+            revisão ou rejeitar um trabalho. Depois, trava — mesmo tentando
+            direto sem passar pela tela. Vazio = sem prazo.
           </span>
 
           <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">

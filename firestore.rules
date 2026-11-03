@@ -68,6 +68,15 @@ service cloud.firestore {
       return !("prazoEdicaoTrabalho" in evento) || request.time < evento.prazoEdicaoTrabalho;
     }
 
+    // Prazo final pro AVALIADOR escrever num trabalho (2026-11-03, pedido
+    // explícito do usuário) — mesmo padrão de dentroDoPrazoEdicao acima, só
+    // que pro papel avaliador/orientador-como-avaliador, não pro dono do
+    // trabalho. Ver prazoAvaliacao em src/lib/data/eventos.ts.
+    function dentroDoPrazoAvaliacao(eventoId) {
+      let evento = get(/databases/$(database)/documents/eventos/$(eventoId)).data;
+      return !("prazoAvaliacao" in evento) || request.time < evento.prazoAvaliacao;
+    }
+
     // usuarios/{uid} — RF-26/RF-27/RF-28: qualquer um lê o próprio perfil (para
     // saber seu papel no login); organizacao/admin listam todos. Escrita é do
     // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
@@ -162,7 +171,8 @@ service cloud.firestore {
       allow update: if logado() && (
         souAdmin() ||
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
-        ((souAvaliacao("avaliador") || souAvaliacao("orientador")) && resource.data.avaliadorUid == request.auth.uid) ||
+        ((souAvaliacao("avaliador") || souAvaliacao("orientador")) && resource.data.avaliadorUid == request.auth.uid &&
+          dentroDoPrazoAvaliacao(resource.data.eventoId)) ||
         // Moderador só mexe nos campos da própria nota de apresentação —
         // nunca em status de avaliação, resumo, etc (papel novo, mais
         // restrito que o avaliador de propósito).

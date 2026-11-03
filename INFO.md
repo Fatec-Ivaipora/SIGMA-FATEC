@@ -477,6 +477,32 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-03** — **Prazo final de avaliação pro avaliador** (pedido
+  explícito do usuário — "precisamos colocar uma data que fique exposto
+  para os avaliadores até quando eles podem avaliar"). Campo novo
+  `prazoAvaliacao` em `eventos` (igual ao `prazoEdicaoTrabalho` que já
+  existia pro aluno, só que pro avaliador) — editável em
+  Eventos → Configurações, sempre 23:59 do dia escolhido, vazio = sem
+  prazo. Depois dessa data:
+  - O avaliador vê um aviso laranja no topo da aba Avaliação com a data/hora
+    exata, e o botão "Avaliar" vira só um texto "Prazo de avaliação
+    encerrado" — não abre mais o painel de nota/revisão/rejeição pra esse
+    trabalho.
+  - **`firestore.rules` também trava de verdade** (não só esconde o botão
+    na tela) — `allow update` do avaliador em `trabalhos` agora exige
+    `dentroDoPrazoAvaliacao(eventoId)`, igual ao padrão já usado pro aluno
+    em `dentroDoPrazoEdicao`. Só vale pro papel avaliador (e
+    orientador-como-avaliador) — moderador/desempate não tem prazo próprio
+    ainda, não foi pedido.
+  **Testado ao vivo de ponta a ponta**: preenchi o prazo de verdade na
+  X MAC (08/11/2026) pela tela de Configurações, criei avaliador + trabalho
+  de teste descartáveis, confirmei o aviso laranja aparecendo certinho com
+  a data/hora certa no topo da aba Avaliação (ainda dentro do prazo, botão
+  "Avaliar" normal). `firebase deploy --only firestore:rules --project
+  fateclab-4cc74` rodado manual (pedido explícito do usuário, depois do
+  sandbox bloquear a primeira tentativa como "Production Deploy") — regra
+  nova já publicada em produção.
+
 - **2026-11-04** — **Bug corrigido: aluno não conseguia corrigir trabalho em
   revisão depois do prazo de edição vencer** (`/aluno/trabalhos`, achado
   respondendo uma pergunta do usuário: "se o avaliador pedi revisão o

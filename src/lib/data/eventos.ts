@@ -148,6 +148,16 @@ export type Evento = {
   // nas firestore.rules. Ausente = sem prazo definido, edição nunca trava
   // (eventos criados antes dessa feature, ou sem fimInscricoes preenchido).
   prazoEdicaoTrabalho?: Timestamp;
+  // Prazo final pro AVALIADOR dar nota/pedir revisão/rejeitar um trabalho
+  // (2026-11-03, pedido explícito do usuário — "precisamos colocar uma
+  // data que fique exposto para os avaliadores até quando eles podem
+  // avaliar"). Independente de prazoEdicaoTrabalho (aquele é do aluno) —
+  // data+hora escolhida direto pelo admin em Configurações, sempre 23:59
+  // do dia marcado. Ausente = sem prazo, avaliador nunca trava por data
+  // (mesmo padrão "campo ausente = sem restrição" do resto do app). Só
+  // vale pro papel avaliador — moderador (etapa Apresentação/desempate)
+  // não tem prazo próprio ainda.
+  prazoAvaliacao?: Timestamp;
   // Encerrar evento (2026-09-10, pedido do usuário) — botão do admin que
   // desliga TUDO de uma vez (banner de destaque, aceitar inscrição nova,
   // enviar trabalho), reversível ("clicar pra reabrir"), independente das
@@ -257,6 +267,16 @@ export function dentroDoPrazoEnvio(evento: Evento | undefined): boolean {
   if (evento?.encerrado) return false;
   if (!evento?.fimEnvioTrabalho) return true;
   return new Date(`${evento.fimEnvioTrabalho}T23:59:59`).getTime() > Date.now();
+}
+
+/** Pode o AVALIADOR ainda dar nota/pedir revisão/rejeitar um trabalho desse
+ * evento? Ausente prazoAvaliacao = sem prazo, nunca trava (mesmo padrão de
+ * "campo ausente = sem restrição" do resto do app). Ver prazoAvaliacao em
+ * Evento acima — é um Timestamp real (não string ISO como fimEnvioTrabalho),
+ * já comparável direto com Date.now(). */
+export function dentroDoPrazoAvaliacao(evento: Evento | undefined): boolean {
+  if (!evento?.prazoAvaliacao) return true;
+  return evento.prazoAvaliacao.toMillis() > Date.now();
 }
 
 /** Indicador do item "Eventos" no menu do aluno (2026-09-04): só acende se
