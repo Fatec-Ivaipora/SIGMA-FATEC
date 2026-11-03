@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { serverTimestamp } from "firebase/firestore";
+import { Modal } from "@/components/Modal";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { temPapel } from "@/lib/auth";
-import { useEventos, type Evento } from "@/lib/data/eventos";
+import { useEventos, dentroDoPrazoAvaliacao, type Evento } from "@/lib/data/eventos";
 import { renderResumoFormatado } from "@/lib/textoFormatado";
 import {
   useTrabalhos,
@@ -131,6 +132,7 @@ function PainelTrabalhos({
   mensagemVazia,
   permiteRevisao,
   permiteRejeitar,
+  respeitaPrazoAvaliacao,
   onEnviarNota,
   onSolicitarRevisao,
   onRejeitar,
@@ -147,6 +149,10 @@ function PainelTrabalhos({
   // final: vai direto pra "Não aceito", decisão final, sem segunda chance —
   // diferente de "Solicitar revisão", que devolve pro aluno corrigir.
   permiteRejeitar?: boolean;
+  // Prazo final de avaliação (2026-11-03, pedido explícito do usuário) — só
+  // true na aba Avaliação (avaliador); Apresentação (moderador) não tem
+  // prazo próprio ainda. Ver dentroDoPrazoAvaliacao em src/lib/data/eventos.
+  respeitaPrazoAvaliacao?: boolean;
   onEnviarNota: (id: string, soma: number, notas: Record<string, number>) => void;
   onSolicitarRevisao?: (id: string, comentario: string) => void;
   onRejeitar?: (id: string) => void;
@@ -177,7 +183,14 @@ function PainelTrabalhos({
   }, [busca, eventoId, trabalhos]);
 
   function abrirAvaliacao(id: string) {
-    setAvaliando((cur) => (cur === id ? null : id));
+    setAvaliando(id);
+    setNotas({});
+    setModoAcao("notas");
+    setComentarioRevisao("");
+  }
+
+  function fecharAvaliacao() {
+    setAvaliando(null);
     setNotas({});
     setModoAcao("notas");
     setComentarioRevisao("");
@@ -205,8 +218,49 @@ function PainelTrabalhos({
     setModoAcao("notas");
   }
 
+  // Prazo final de avaliação (2026-11-03) — eventos (dentre os que essa
+  // pessoa atua) que têm prazoAvaliacao definido, pra avisar no topo da
+  // aba. Normalmente é só 1 evento; lista cada um porque, em tese, dá pra
+  // atuar em mais de um evento com prazos diferentes.
+  const eventosComPrazo = respeitaPrazoAvaliacao
+    ? eventos.filter((ev) => ev.prazoAvaliacao)
+    : [];
+
+  // Modal de avaliação (2026-11-03, pedido explícito do usuário — "hoje tá
+  // muito ruim, ele clica, desce a avaliação ali mesmo, fica confuso e
+  // depende do tamanho do título quebra os botões"). Antes a avaliação
+  // abria embutida embaixo do próprio card, empurrando a lista; agora abre
+  // num modal com fundo escurecido, focando só naquele trabalho — resolve
+  // os dois problemas de uma vez (confusão de contexto + botões quebrando,
+  // já que o modal é bem mais largo que um card). Busca em `trabalhos`
+  // (não em `trabalhosFiltrados`) de propósito: se a busca/filtro mudar
+  // com o modal aberto, ele continua mostrando o mesmo trabalho.
+  const trabalhoAvaliando = trabalhos.find((t) => t.id === avaliando);
+  const eventoDoTrabalhoAvaliando = eventos.find(
+    (e) => e.id === trabalhoAvaliando?.eventoId,
+  );
+
   return (
     <div className="flex flex-col gap-4">
+      {eventosComPrazo.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-xl border border-fatec-orange-200 bg-fatec-orange-50 px-4 py-3">
+          {eventosComPrazo.map((ev) => (
+            <p key={ev.id} className="text-sm text-fatec-orange-700">
+              <span className="font-semibold">
+                {eventosComPrazo.length > 1 ? `${ev.nome} — prazo` : "Prazo"} para avaliar:
+              </span>{" "}
+              até{" "}
+              {ev.prazoAvaliacao!.toDate().toLocaleDateString("pt-BR")} às{" "}
+              {ev.prazoAvaliacao!.toDate().toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              . Depois disso não dá mais pra dar nota, pedir revisão ou rejeitar.
+            </p>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 sm:max-w-sm sm:flex-1">
           <Search className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={1.75} />
@@ -244,180 +298,206 @@ function PainelTrabalhos({
         </p>
       )}
 
-      {trabalhosFiltrados.map((t) => (
-        <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
-              <p className="text-sm text-fatec-muted">
-                {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <StatusBadge status={t.status} />
-              {t.status === statusPendente && (
-                <button
-                  type="button"
-                  onClick={() => abrirAvaliacao(t.id)}
-                  className="rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-                >
-                  {avaliando === t.id ? "Fechar" : "Avaliar"}
-                </button>
-              )}
+      {trabalhosFiltrados.map((t) => {
+        const prazoEncerrado =
+          respeitaPrazoAvaliacao &&
+          !dentroDoPrazoAvaliacao(eventos.find((e) => e.id === t.eventoId));
+        return (
+          <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
+                <p className="text-sm text-fatec-muted">
+                  {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <StatusBadge status={t.status} />
+                {t.status === statusPendente &&
+                  (prazoEncerrado ? (
+                    <span className="text-xs font-medium text-fatec-muted">
+                      Prazo de avaliação encerrado
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirAvaliacao(t.id)}
+                      className="rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                    >
+                      Avaliar
+                    </button>
+                  ))}
+              </div>
             </div>
           </div>
+        );
+      })}
 
-          {avaliando === t.id && (
-            <div className="mt-5 flex flex-col gap-4 border-t border-fatec-line pt-5">
-              {t.palavrasChave?.trim() && (
-                <p className="text-sm text-fatec-ink">
-                  <span className="font-medium text-fatec-navy-900">Palavras-chave: </span>
-                  {t.palavrasChave}
-                </p>
-              )}
-              {t.resumo && (
-                <div className="text-sm leading-relaxed text-fatec-ink">
-                  {renderResumoFormatado(t.resumo)}
-                </div>
-              )}
-
-              {modoAcao === "notas" ? (
-                <>
-                  <div className="flex flex-col gap-3">
-                    <span className="text-sm font-medium text-fatec-navy-900">
-                      Critérios (1 a 5 cada — a nota final é a soma)
-                    </span>
-                    {criterios.map((c) => (
-                      <div
-                        key={c.key}
-                        className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
-                      >
-                        <div className="min-w-0 sm:max-w-sm">
-                          <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
-                          <p className="text-xs text-fatec-muted">{c.descricao}</p>
-                        </div>
-                        <div className="flex flex-none gap-2">
-                          {NOTAS.map((n) => (
-                            <button
-                              key={n}
-                              type="button"
-                              onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n }))}
-                              className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors ${
-                                notas[c.key] === n
-                                  ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
-                                  : "border-fatec-line text-fatec-navy-900 hover:border-fatec-orange-500/60"
-                              }`}
-                            >
-                              {n}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                    <p className="text-sm text-fatec-muted">
-                      Total:{" "}
-                      <span className="font-semibold text-fatec-navy-900">{somaNotas}</span> /{" "}
-                      {criterios.length * 5}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => enviar(t.id)}
-                      disabled={!notasCompletas}
-                      className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
-                    >
-                      Enviar nota
-                    </button>
-                    {permiteRevisao && (
-                      <button
-                        type="button"
-                        onClick={() => setModoAcao("revisao")}
-                        className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                      >
-                        Solicitar revisão
-                      </button>
-                    )}
-                    {permiteRejeitar && (
-                      <button
-                        type="button"
-                        onClick={() => setModoAcao("rejeicao")}
-                        className="rounded-xl border border-rose-200 px-6 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
-                      >
-                        Rejeitar trabalho
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : modoAcao === "revisao" ? (
-                <>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium text-fatec-navy-900">
-                      O que o aluno precisa revisar?
-                    </span>
-                    <textarea
-                      rows={3}
-                      value={comentarioRevisao}
-                      onChange={(e) => setComentarioRevisao(e.target.value)}
-                      placeholder="Explique o que precisa ser ajustado antes de reenviar"
-                      className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
-                    />
-                  </label>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => enviarRevisao(t.id)}
-                      disabled={!comentarioRevisao.trim()}
-                      className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
-                    >
-                      Enviar solicitação
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModoAcao("notas")}
-                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                    >
-                      Voltar
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-rose-700">
-                      Rejeitar esse trabalho é definitivo
-                    </p>
-                    <p className="mt-1 text-sm text-rose-700">
-                      O trabalho vai direto pra &quot;Não aceito&quot;, sem passar por revisão
-                      nem apresentação — o aluno é avisado, mas não tem como reenviar. Use só
-                      quando o trabalho realmente não segue os 5 critérios avaliativos.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => confirmarRejeicao(t.id)}
-                      className="rounded-xl bg-rose-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/25 transition-colors hover:bg-rose-700"
-                    >
-                      Confirmar rejeição
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModoAcao("notas")}
-                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                    >
-                      Voltar
-                    </button>
-                  </div>
-                </>
-              )}
+      <Modal
+        open={!!trabalhoAvaliando}
+        onClose={fecharAvaliacao}
+        title="Avaliar trabalho"
+        size="lg"
+      >
+        {trabalhoAvaliando && (
+          <div className="flex flex-col gap-5">
+            <div>
+              <h3 className="text-lg font-bold leading-snug text-fatec-navy-900">
+                {tituloExibicao(trabalhoAvaliando.titulo)}
+              </h3>
+              <p className="mt-1 text-sm text-fatec-muted">
+                {eventoDoTrabalhoAvaliando?.nome ?? trabalhoAvaliando.eventoId}
+              </p>
             </div>
-          )}
-        </div>
-      ))}
+
+            {trabalhoAvaliando.palavrasChave?.trim() && (
+              <p className="text-sm text-fatec-ink">
+                <span className="font-medium text-fatec-navy-900">Palavras-chave: </span>
+                {trabalhoAvaliando.palavrasChave}
+              </p>
+            )}
+            {trabalhoAvaliando.resumo && (
+              <div className="text-sm leading-relaxed text-fatec-ink">
+                {renderResumoFormatado(trabalhoAvaliando.resumo)}
+              </div>
+            )}
+
+            {modoAcao === "notas" ? (
+              <>
+                <div className="flex flex-col gap-3 border-t border-fatec-line pt-5">
+                  <span className="text-sm font-medium text-fatec-navy-900">
+                    Critérios (1 a 5 cada — a nota final é a soma)
+                  </span>
+                  {criterios.map((c) => (
+                    <div
+                      key={c.key}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="min-w-0 sm:max-w-sm">
+                        <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
+                        <p className="text-xs text-fatec-muted">{c.descricao}</p>
+                      </div>
+                      <div className="flex flex-none gap-2">
+                        {NOTAS.map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n }))}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors ${
+                              notas[c.key] === n
+                                ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
+                                : "border-fatec-line text-fatec-navy-900 hover:border-fatec-orange-500/60"
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-sm text-fatec-muted">
+                    Total:{" "}
+                    <span className="font-semibold text-fatec-navy-900">{somaNotas}</span> /{" "}
+                    {criterios.length * 5}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => enviar(trabalhoAvaliando.id)}
+                    disabled={!notasCompletas}
+                    className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+                  >
+                    Enviar nota
+                  </button>
+                  {permiteRevisao && (
+                    <button
+                      type="button"
+                      onClick={() => setModoAcao("revisao")}
+                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                    >
+                      Solicitar revisão
+                    </button>
+                  )}
+                  {permiteRejeitar && (
+                    <button
+                      type="button"
+                      onClick={() => setModoAcao("rejeicao")}
+                      className="rounded-xl border border-rose-200 px-6 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+                    >
+                      Rejeitar trabalho
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : modoAcao === "revisao" ? (
+              <>
+                <label className="flex flex-col gap-1.5 border-t border-fatec-line pt-5">
+                  <span className="text-sm font-medium text-fatec-navy-900">
+                    O que o aluno precisa revisar?
+                  </span>
+                  <textarea
+                    rows={3}
+                    value={comentarioRevisao}
+                    onChange={(e) => setComentarioRevisao(e.target.value)}
+                    placeholder="Explique o que precisa ser ajustado antes de reenviar"
+                    className="resize-none rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none transition-colors focus:border-fatec-sky-600"
+                  />
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => enviarRevisao(trabalhoAvaliando.id)}
+                    disabled={!comentarioRevisao.trim()}
+                    className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+                  >
+                    Enviar solicitação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModoAcao("notas")}
+                    className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-rose-700">
+                    Rejeitar esse trabalho é definitivo
+                  </p>
+                  <p className="mt-1 text-sm text-rose-700">
+                    O trabalho vai direto pra &quot;Não aceito&quot;, sem passar por revisão nem
+                    apresentação — o aluno é avisado, mas não tem como reenviar. Use só quando o
+                    trabalho realmente não segue os 5 critérios avaliativos.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => confirmarRejeicao(trabalhoAvaliando.id)}
+                    className="rounded-xl bg-rose-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/25 transition-colors hover:bg-rose-700"
+                  >
+                    Confirmar rejeição
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModoAcao("notas")}
+                    className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -505,6 +585,7 @@ export default function AvaliadorTrabalhosPage() {
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao
               permiteRejeitar={REJEICAO_HABILITADA}
+              respeitaPrazoAvaliacao
               onEnviarNota={async (id, soma, notas) => {
                 await atualizarTrabalho(id, {
                   status: "avaliado",

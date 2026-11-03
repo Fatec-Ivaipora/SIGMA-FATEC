@@ -477,6 +477,23 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-03** — **Tela de avaliação do avaliador virou modal**
+  (`/avaliador/trabalhos`, pedido explícito do usuário — "hoje tá muito
+  ruim, ele clica, desce a avaliação ali mesmo, fica confuso e depende do
+  tamanho do título quebra os botões"). Antes, clicar "Avaliar" abria um
+  painel embutido embaixo do próprio card, empurrando a lista pra baixo —
+  confuso, e títulos longos quebravam a linha de botões (Enviar nota/
+  Solicitar revisão/Rejeitar). Agora abre no `Modal` já usado no resto do
+  app (fundo escurecido com blur, `size="lg"`): foca só naquele trabalho,
+  e por ser bem mais largo que um card, título longo nunca mais quebra os
+  botões. Mesmo conteúdo/lógica de antes (resumo, critérios 1-5, as 3
+  sub-telas notas/revisão/rejeição) — só mudou o container. Fecha com X,
+  Esc ou clique fora (comportamento padrão do `Modal`).
+  Testado ao vivo com avaliador + trabalho de teste descartáveis, usando
+  de propósito um título bem comprido (o caso que mais quebrava antes) —
+  card e modal renderizam limpo, scroll do modal funciona com resumo
+  longo, os três botões de ação cabem numa linha só. Tudo apagado depois.
+
 - **2026-11-03** — **Prazo final de avaliação pro avaliador** (pedido
   explícito do usuário — "precisamos colocar uma data que fique exposto
   para os avaliadores até quando eles podem avaliar"). Campo novo
