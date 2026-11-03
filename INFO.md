@@ -497,6 +497,15 @@ commit que sobe pro git.
   comentário do avaliador visível. Evento e trabalho de teste apagados
   depois.
 
+- **2026-11-03** — **Botão "Rejeitar trabalho" desligado por enquanto**
+  (`/avaliador/trabalhos`, pedido explícito do usuário — "por hora não
+  vamos usar nesse evento mas deixe o código dele quando formos
+  reativálo"). O código inteiro da feature continua igual (painel de
+  confirmação, `onRejeitar`, e-mail "rejeitado") — só criei a flag
+  `REJEICAO_HABILITADA = false` no topo do arquivo, que esconde o botão da
+  tela. Pra religar quando for usar de novo, é só voltar essa constante pra
+  `true`.
+
 - **2026-11-03** — **E-mail de rejeição de resumo com texto formal próprio**
   (`/api/mail/trabalho-status`, pedido explícito do usuário — "para o email
   de rejeição do trabalho vamos usar esse", colando o texto completo).

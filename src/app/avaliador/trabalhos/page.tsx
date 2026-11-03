@@ -24,6 +24,14 @@ import { tituloExibicao } from "@/lib/tituloTrabalho";
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 const NOTAS = [1, 2, 3, 4, 5];
 
+// Liga/desliga o botão "Rejeitar trabalho" (2026-11-03, pedido explícito do
+// usuário — "oculte o botão... por hora não vamos usar nesse evento mas
+// deixe o código dele quando formos reativálo"). Todo o resto da feature
+// (painel de confirmação, onRejeitar, e-mail "rejeitado") continua intacto
+// — só essa flag esconde o botão da tela. Pra reativar, basta voltar pra
+// `true`.
+const REJEICAO_HABILITADA = false;
+
 type CriterioDef = { key: string; label: string; descricao: string };
 
 // Critérios do edital do evento (item 6.1) — cada um recebe nota de 1 a 5
@@ -496,7 +504,7 @@ export default function AvaliadorTrabalhosPage() {
               statusPendente="aguardando_avaliacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao
-              permiteRejeitar
+              permiteRejeitar={REJEICAO_HABILITADA}
               onEnviarNota={async (id, soma, notas) => {
                 await atualizarTrabalho(id, {
                   status: "avaliado",
