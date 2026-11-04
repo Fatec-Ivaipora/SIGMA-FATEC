@@ -60,6 +60,16 @@ const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: st
   aceito: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
   nao_aceito: { icone: XCircle, cor: "bg-rose-50 text-rose-600", fundo: "bg-rose-50/60" },
   rejeitado: { icone: XCircle, cor: "bg-rose-50 text-rose-600", fundo: "bg-rose-50/60" },
+  entregue_fora_prazo: {
+    icone: Pencil,
+    cor: "bg-fatec-orange-100 text-fatec-orange-600",
+    fundo: "bg-fatec-orange-50",
+  },
+  lembrete_prazo_avaliacao: {
+    icone: Pencil,
+    cor: "bg-fatec-orange-100 text-fatec-orange-600",
+    fundo: "bg-fatec-orange-50",
+  },
   convite_aceito: {
     icone: UserPlus,
     cor: "bg-fatec-navy-100 text-fatec-navy-800",

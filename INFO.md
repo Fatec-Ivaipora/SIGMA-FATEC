@@ -477,6 +477,47 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-04** — **Lembrete de prazo + trabalho "entregue com atraso"**
+  (pedido explícito do usuário, duas partes do mesmo problema: "os alunos
+  têm que devolver esse trabalho... seria interessante que um dia antes do
+  prazo se encerrar fosse mandando uma mensagem... se a pessoa não devolveu
+  até o fim do prazo, ele consegue devolver mas fica... pro avaliador vai
+  chegar uma mensagem falando que foi devolvido fora do prazo e ele pode
+  avaliar").
+  1. **Lembrete automático 1 dia antes do prazo** — `/api/cron/
+     lembrete-prazo-avaliacao`, batida 1x/dia pelo **Vercel Cron**
+     (`vercel.json`, primeira automação por data deste projeto — tudo antes
+     era disparado por ação do usuário). Acha eventos cujo `prazoAvaliacao`
+     cai amanhã, manda e-mail + feed pra quem tem trabalho em "revisao"
+     nesses eventos. Idempotente por trabalho (`lembretePrazoEnviadoEm`) —
+     não repete mesmo se o cron rodar de novo no mesmo dia. Protegida por
+     `CRON_SECRET` (variável de ambiente, já cadastrada pelo usuário na
+     Vercel).
+  2. **Novo status `entregue_com_atraso`** — aluno corrige um trabalho em
+     "revisao" depois que `evento.prazoAvaliacao` já passou: continua
+     listado na aba Revisão do admin (`StatusBadge` mostra "Entregue com
+     atraso"), serve de registro no fim do evento (quem nunca respondeu
+     versus quem respondeu atrasado). **Diferente da primeira versão desta
+     mudança** (corrigida ainda no mesmo dia, pedido do usuário): o
+     avaliador GANHA uma exceção pra esse trabalho específico — continua
+     dando nota/pedindo revisão/rejeitando nele normalmente mesmo com o
+     prazo geral do evento vencido (`firestore.rules`:
+     `dentroDoPrazoAvaliacao(eventoId) || status == "entregue_com_atraso"`).
+     Duas notificações separadas: e-mail+feed pro aluno confirmando a
+     entrega, e e-mail+feed pro avaliador avisando que pode avaliar esse
+     trabalho — sem citar o nome do aluno (mantém a avaliação às cegas).
+  **Testado ao vivo de ponta a ponta**, incluindo depois de publicar o
+  `firestore.rules` novo (`firebase deploy --only firestore:rules`, pedido
+  explícito do usuário): cron rodado duas vezes seguidas (1ª manda e marca
+  `lembretePrazoEnviadoEm`, 2ª pula — não duplica); aluno devolve um
+  trabalho fora do prazo via REST da Firestore (regras de verdade, não
+  Admin SDK) — write aceito, status vira `entregue_com_atraso`, as duas
+  notificações saem certas (sem vazar nome do aluno pro avaliador);
+  avaliador dá nota nesse trabalho específico mesmo com o prazo geral do
+  evento vencido — aceito (200); pra garantir que não abriu brecha demais,
+  testei também um trabalho comum (sem a exceção) no mesmo evento com
+  prazo vencido — bloqueado (403), como já era antes. Tudo apagado depois.
+
 - **2026-11-03** — **Tela de avaliação do avaliador virou modal**
   (`/avaliador/trabalhos`, pedido explícito do usuário — "hoje tá muito
   ruim, ele clica, desce a avaliação ali mesmo, fica confuso e depende do

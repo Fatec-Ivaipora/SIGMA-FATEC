@@ -21,7 +21,19 @@ export type TrabalhoStatus =
   | "aguardando_apresentacao"
   | "apresentado"
   | "aceito"
-  | "nao_aceito";
+  | "nao_aceito"
+  // Aluno corrigiu um trabalho em "revisao" depois que evento.prazoAvaliacao
+  // já tinha passado (2026-11-04, pedido explícito do usuário — "ele vai
+  // ficar entregue, pro avaliador vai chegar uma mensagem... e ele pode
+  // avaliar"). Diferente de um trabalho comum fora do prazo: o avaliador
+  // GANHA uma exceção pra esse trabalho específico e continua conseguindo
+  // dar nota/pedir revisão/rejeitar nele, mesmo com o prazo geral do evento
+  // já vencido (ver dentroDoPrazoAvaliacao(eventoId) || status ==
+  // "entregue_com_atraso" em firestore.rules). Continua listado na aba
+  // Revisão do admin (ver STATUS_POR_ETAPA em src/app/trabalhos/page.tsx) —
+  // serve de registro, no final do evento, de quem foi mandado pra revisão
+  // e nunca respondeu versus quem respondeu só que atrasado.
+  | "entregue_com_atraso";
 
 // Critérios do edital (item 6.1): cada um recebe uma nota de 1 a 5 (item
 // 6.2); notaAvaliador guarda a SOMA dos cinco (5 a 25), usada pra ranquear
@@ -116,6 +128,11 @@ export type Trabalho = {
   // receberam o momento em que o documento foi criado.
   enviadoEm?: unknown;
   atualizadoEm?: unknown;
+  // Gravado pelo cron de lembrete (2026-11-04, ver /api/cron/
+  // lembrete-prazo-avaliacao) assim que manda o aviso de "prazo termina
+  // amanhã" pra quem tem esse trabalho em "revisao" — garante que não manda
+  // duas vezes. Só escrito pelo servidor, nunca lido pelo client.
+  lembretePrazoEnviadoEm?: unknown;
 };
 
 /** Lê trabalhos do Firestore, escopado por papel: admin vê tudo; organizacao só

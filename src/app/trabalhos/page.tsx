@@ -61,7 +61,12 @@ const ETAPAS: { key: Etapa; label: string }[] = [
 const STATUS_POR_ETAPA: Record<Etapa, TrabalhoStatus[]> = {
   submissao: ["submissao"],
   avaliacao: ["aguardando_avaliacao"],
-  revisao: ["revisao"],
+  // "entregue_com_atraso" (2026-11-04) fica aqui também — aluno corrigiu um
+  // "revisao" depois do prazo de avaliação encerrar; o avaliador ganha uma
+  // exceção e ainda consegue avaliar esse trabalho específico (ver
+  // firestore.rules), mas continua listado aqui pra registrar, no fim do
+  // evento, quem respondeu atrasado versus quem nunca respondeu.
+  revisao: ["revisao", "entregue_com_atraso"],
   resultado: ["avaliado"],
   apresentacao: ["aguardando_apresentacao"],
   resultado_final: ["apresentado", "aceito", "nao_aceito"],

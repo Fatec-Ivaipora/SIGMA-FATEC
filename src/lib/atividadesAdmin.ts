@@ -17,6 +17,18 @@ export type TipoAtividade =
   // separado de "nao_aceito" (resultado final pós-apresentação), ver
   // /api/mail/trabalho-status.
   | "rejeitado"
+  // Aluno corrigiu um trabalho em revisão depois do prazo de avaliação já
+  // ter encerrado (2026-11-04) — confirmação pro aluno, ver TrabalhoStatus
+  // "entregue_com_atraso" em src/lib/data/trabalhos.ts.
+  | "entregue_fora_prazo"
+  // Mesmo evento acima, mas o aviso que vai pro AVALIADOR (feed dele, não
+  // do aluno) — "fulano devolveu fora do prazo, você ainda pode avaliar".
+  | "aviso_entrega_atrasada"
+  // Aviso automático 1 dia antes do prazo de avaliação terminar, pra quem
+  // tem trabalho em "revisao" (2026-11-04) — ver
+  // /api/cron/lembrete-prazo-avaliacao, única rota disparada por data
+  // (Vercel Cron) em vez de ação do usuário.
+  | "lembrete_prazo_avaliacao"
   | "convite_aceito"
   | "pagamento"
   | "atribuicao"

@@ -8,10 +8,15 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
+import {
+  useEventosPublicos,
+  useIndicadorEventos,
+  dentroDoPrazoAvaliacao,
+  type Evento,
+} from "@/lib/data/eventos";
 import { useTrabalhos, atualizarTrabalho, type Trabalho } from "@/lib/data/trabalhos";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
-import { notificarConviteColega } from "@/lib/notificarEmail";
+import { notificarConviteColega, notificarStatusTrabalho } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Prazo de edição (2026-09-04): 23:55 do dia de fim das inscrições, gravado
@@ -51,6 +56,19 @@ export default function AlunoTrabalhosPage() {
         ...novosConvites,
       ]),
     );
+    // Corrigir depois que o prazo de avaliação já encerrou (2026-11-04,
+    // pedido explícito do usuário — "ele vai ficar entregue, pro avaliador
+    // vai chegar uma mensagem... e ele pode avaliar"). O aluno consegue
+    // devolver normalmente; o trabalho vai pra "entregue_com_atraso" em vez
+    // de "aguardando_avaliacao" só pra ficar registrado na aba Revisão do
+    // admin — o avaliador ganha uma exceção em firestore.rules e continua
+    // conseguindo avaliar esse trabalho específico mesmo com o prazo geral
+    // vencido (ver dentroDoPrazoAvaliacao || status == "entregue_com_atraso"
+    // nas regras).
+    const evento = eventos.find((e) => e.id === trabalho.eventoId);
+    const entregueComAtraso =
+      trabalho.status === "revisao" && !dentroDoPrazoAvaliacao(evento);
+
     await atualizarTrabalho(trabalho.id, {
       ...dados,
       convitesPendentes,
@@ -58,12 +76,24 @@ export default function AlunoTrabalhosPage() {
       // igual o antigo fluxo de correção — fora disso (submissao,
       // aguardando_avaliacao, etc.) a edição não mexe no status.
       ...(trabalho.status === "revisao"
-        ? { status: "aguardando_avaliacao" as const, comentarioRevisao: null }
+        ? {
+            status: entregueComAtraso
+              ? ("entregue_com_atraso" as const)
+              : ("aguardando_avaliacao" as const),
+            comentarioRevisao: null,
+          }
         : {}),
       atualizadoEm: serverTimestamp(),
     });
     if (user) {
       novosConvites.forEach((colegaUid) => notificarConviteColega(user, trabalho.id, colegaUid));
+      if (entregueComAtraso) {
+        // Duas notificações separadas (2026-11-04): confirma pro aluno que
+        // a entrega foi registrada, e avisa o avaliador que esse trabalho
+        // específico ainda pode ser avaliado mesmo fora do prazo geral.
+        notificarStatusTrabalho(user, trabalho.id, "entregue_fora_prazo");
+        notificarStatusTrabalho(user, trabalho.id, "aviso_entrega_atrasada");
+      }
     }
     setEditando(null);
   }

@@ -171,8 +171,13 @@ service cloud.firestore {
       allow update: if logado() && (
         souAdmin() ||
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        // Exceção (2026-11-04, pedido explícito do usuário): trabalho
+        // devolvido pelo aluno DEPOIS do prazo geral ("entregue_com_atraso",
+        // ver TrabalhoStatus) continua liberado pro avaliador escrever,
+        // mesmo com dentroDoPrazoAvaliacao já false — é o próprio status que
+        // vira a autorização nesse caso específico.
         ((souAvaliacao("avaliador") || souAvaliacao("orientador")) && resource.data.avaliadorUid == request.auth.uid &&
-          dentroDoPrazoAvaliacao(resource.data.eventoId)) ||
+          (dentroDoPrazoAvaliacao(resource.data.eventoId) || resource.data.status == "entregue_com_atraso")) ||
         // Moderador só mexe nos campos da própria nota de apresentação —
         // nunca em status de avaliação, resumo, etc (papel novo, mais
         // restrito que o avaliador de propósito).

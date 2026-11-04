@@ -52,6 +52,12 @@ const STATUS_META: Record<
     text: "text-rose-700",
     bg: "bg-rose-50",
   },
+  entregue_com_atraso: {
+    label: "Entregue com atraso",
+    dot: "bg-amber-600",
+    text: "text-amber-700",
+    bg: "bg-amber-50",
+  },
 };
 
 export function StatusBadge({ status }: { status: TrabalhoStatus }) {

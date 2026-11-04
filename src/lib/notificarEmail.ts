@@ -34,7 +34,12 @@ export type TipoStatusTrabalho =
   | "avaliado"
   | "aceito"
   | "nao_aceito"
-  | "rejeitado";
+  | "rejeitado"
+  // Aluno devolveu um "revisao" depois do prazo de avaliação (2026-11-04) —
+  // confirmação pro próprio aluno. Ver "aviso_entrega_atrasada" logo abaixo
+  // pro aviso equivalente que vai pro avaliador.
+  | "entregue_fora_prazo"
+  | "aviso_entrega_atrasada";
 
 export function notificarStatusTrabalho(user: User, trabalhoId: string, tipo: TipoStatusTrabalho) {
   void chamar(user, "/api/mail/trabalho-status", { trabalhoId, tipo });

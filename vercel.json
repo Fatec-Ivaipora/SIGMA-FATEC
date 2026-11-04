@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/lembrete-prazo-avaliacao",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}

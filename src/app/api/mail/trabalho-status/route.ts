@@ -4,7 +4,15 @@ import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
-type Tipo = "submetido" | "revisao" | "avaliado" | "aceito" | "nao_aceito" | "rejeitado";
+type Tipo =
+  | "submetido"
+  | "revisao"
+  | "avaliado"
+  | "aceito"
+  | "nao_aceito"
+  | "rejeitado"
+  | "entregue_fora_prazo"
+  | "aviso_entrega_atrasada";
 
 // Texto do feed da tela inicial do aluno (2026-09-09) — frase pronta por
 // tipo, mesma ideia do CONTEUDO abaixo (mas pro feed, não pro e-mail).
@@ -46,6 +54,20 @@ const TEXTO_ATIVIDADE: Record<
     texto: `Seu resumo "${tituloExibicao(t.titulo)}" não foi aprovado na avaliação.`,
     negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
+  // Aluno corrigiu um trabalho em revisão depois do prazo de avaliação já
+  // ter encerrado (2026-11-04) — confirmação pro aluno. Ver comentário em
+  // `autorizado` abaixo.
+  entregue_fora_prazo: (t) => ({
+    texto: `Você devolveu o trabalho "${tituloExibicao(t.titulo)}" fora do prazo de avaliação, mas ele foi entregue — o avaliador ainda pode avaliar.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
+  }),
+  // Mesmo evento acima, aviso que vai pro avaliador — sem nome do aluno
+  // (avaliação às cegas, ver 2026-11-03 nesse mesmo arquivo de histórico),
+  // só o título do trabalho.
+  aviso_entrega_atrasada: (t) => ({
+    texto: `O trabalho "${tituloExibicao(t.titulo)}" foi devolvido fora do prazo de avaliação — você ainda pode avaliá-lo.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
+  }),
 };
 
 // Assunto não depende do destinatário (só de tipo+título) — separado do
@@ -63,6 +85,8 @@ const ASSUNTO: Record<
   // Assunto exato pedido pelo usuário (2026-11-03), só trocando "X MAC 2026"
   // pelo nome de verdade do evento, pra não ficar errado em edições futuras.
   rejeitado: (_t, eventoNome) => `${eventoNome} – Esclarecimentos sobre resumo rejeitado.`,
+  entregue_fora_prazo: (t) => `Trabalho entregue fora do prazo — ${tituloExibicao(t.titulo)}`,
+  aviso_entrega_atrasada: (t) => `Trabalho devolvido fora do prazo — você ainda pode avaliar — ${tituloExibicao(t.titulo)}`,
 };
 
 const CONTEUDO: Record<
@@ -133,6 +157,24 @@ const CONTEUDO: Record<
       <p>A rejeição decorre da avaliação técnico-científica realizada conforme as normas estabelecidas no edital.</p>
       <p>Em caso de dúvidas ou necessidade de esclarecimentos, o(a) acadêmico(a) deverá entrar em contato diretamente com a Comissão Científica e Organizadora do evento, pelo e-mail <a href="mailto:pesq.extensao@fatecivaipora.com.br">pesq.extensao@fatecivaipora.com.br</a>.</p>
     `),
+  // 2026-11-04, pedido explícito do usuário — avisa o aluno na hora que ele
+  // mesmo devolve, confirmando que a entrega foi recebida mesmo fora do
+  // prazo (sem isso, ficaria em silêncio sobre o que acontece a seguir).
+  entregue_fora_prazo: (t, nome) =>
+    modeloEmail(
+      `<p>Recebemos a correção do seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong>. O prazo de avaliação já tinha encerrado, mas sua entrega foi registrada — o avaliador ainda pode avaliar o trabalho normalmente.</p>`,
+      { texto: "Ver trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
+    ),
+  // Aviso pro avaliador (2026-11-04) — sem nome do aluno (avaliação às
+  // cegas), link direto pra tela de avaliação.
+  aviso_entrega_atrasada: (_t, nome) =>
+    modeloEmail(
+      `<p>Um trabalho que estava em revisão foi devolvido fora do prazo de avaliação.</p>
+       <p>Excepcionalmente, você ainda pode dar nota, pedir revisão ou rejeitar esse trabalho específico.</p>`,
+      { texto: "Avaliar agora", href: `${URL_SISTEMA}/avaliador/trabalhos` },
+      nome,
+    ),
 };
 
 /** E-mail + atividade da tela inicial de mudança de status do trabalho — um
@@ -168,7 +210,16 @@ export async function POST(request: Request) {
   }
 
   let autorizado = false;
-  if (tipo === "submetido") {
+  if (
+    tipo === "submetido" ||
+    tipo === "entregue_fora_prazo" ||
+    tipo === "aviso_entrega_atrasada"
+  ) {
+    // Aluno dispara essas três sozinho, sobre o próprio trabalho —
+    // "submetido" na submissão, "entregue_fora_prazo"/"aviso_entrega_
+    // atrasada" juntas ao corrigir um "revisao" depois do prazo de
+    // avaliação (uma pro aluno, outra pro avaliador — ver salvarEdicao em
+    // aluno/trabalhos/page.tsx e `destinatariosUids` mais abaixo).
     autorizado = trabalho.alunoUid === chamadorUid;
   } else if (tipo === "revisao" || tipo === "avaliado") {
     autorizado = trabalho.avaliadorUid === chamadorUid;
@@ -199,12 +250,17 @@ export async function POST(request: Request) {
   // "submetido", onde eles já recebem um e-mail próprio de convite na hora
   // que são adicionados (notificarConviteColega); mandar de novo aqui seria
   // duplicar aviso no mesmo instante.
+  // "aviso_entrega_atrasada" foge do padrão acima: quem dispara é o aluno
+  // (dono do trabalho), mas quem recebe é o AVALIADOR (2026-11-04) — nunca
+  // o aluno/colegas, por isso o caso próprio aqui.
   const destinatariosUids =
     tipo === "submetido"
       ? [trabalho.alunoUid as string]
-      : Array.from(
-          new Set([trabalho.alunoUid as string, ...((trabalho.participantesUids as string[] | undefined) ?? [])]),
-        );
+      : tipo === "aviso_entrega_atrasada"
+        ? [trabalho.avaliadorUid as string].filter(Boolean)
+        : Array.from(
+            new Set([trabalho.alunoUid as string, ...((trabalho.participantesUids as string[] | undefined) ?? [])]),
+          );
 
   const eventoSnap = await db.doc(`eventos/${trabalho.eventoId}`).get();
   const eventoNome = (eventoSnap.data()?.nome as string | undefined) ?? "seu evento";

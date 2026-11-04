@@ -8,6 +8,7 @@ import {
   BadgeCheck,
   ArrowRight,
   Send,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
@@ -25,6 +26,14 @@ const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 // genérico cobre qualquer tipo futuro sem quebrar a tela.
 const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: string; fundo: string }>> = {
   atribuicao: { icone: Send, cor: "bg-fatec-sky-100 text-fatec-sky-600", fundo: "bg-fatec-sky-50" },
+  // Aluno devolveu um trabalho fora do prazo de avaliação (2026-11-04) —
+  // destaque em âmbar porque é uma exceção que precisa de atenção: esse
+  // trabalho específico ainda pode (e deve) ser avaliado.
+  aviso_entrega_atrasada: {
+    icone: AlertTriangle,
+    cor: "bg-amber-100 text-amber-700",
+    fundo: "bg-amber-50",
+  },
 };
 
 function formatarQuando(criadoEm: { toDate: () => Date } | undefined): string {

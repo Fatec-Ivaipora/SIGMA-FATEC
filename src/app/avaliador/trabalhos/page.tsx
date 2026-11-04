@@ -299,9 +299,17 @@ function PainelTrabalhos({
       )}
 
       {trabalhosFiltrados.map((t) => {
+        // "entregue_com_atraso" (2026-11-04) é uma exceção ao prazo geral —
+        // esse trabalho específico continua avaliável mesmo depois do
+        // prazo, então nunca mostra "Prazo de avaliação encerrado" nele
+        // (ver firestore.rules, mesma exceção do lado do servidor).
+        const ganhouExcecaoDePrazo = t.status === "entregue_com_atraso";
         const prazoEncerrado =
           respeitaPrazoAvaliacao &&
+          !ganhouExcecaoDePrazo &&
           !dentroDoPrazoAvaliacao(eventos.find((e) => e.id === t.eventoId));
+        const mostraAvaliar =
+          t.status === statusPendente || (respeitaPrazoAvaliacao && ganhouExcecaoDePrazo);
         return (
           <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -313,7 +321,7 @@ function PainelTrabalhos({
               </div>
               <div className="flex items-center gap-3">
                 <StatusBadge status={t.status} />
-                {t.status === statusPendente &&
+                {mostraAvaliar &&
                   (prazoEncerrado ? (
                     <span className="text-xs font-medium text-fatec-muted">
                       Prazo de avaliação encerrado
