@@ -357,7 +357,7 @@ function PaginaApresentacao({
           <Text style={estiloApresentacao.rotulo}>
             {premiado ? "Certificamos que" : "Declaramos que"}
           </Text>
-          <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes)}</Text>
+          <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes.map((n) => n.toUpperCase()))}</Text>
           <Text style={estiloApresentacao.corpo}>
             {plural ? "participaram" : "participou"} da{" "}
             <Text style={estiloApresentacao.negrito}>{eventoNome}</Text>, promovida
@@ -607,7 +607,7 @@ export function DeclaracaoPDF({
 
         <Text style={estiloDeclaracao.corpo}>
           Declaramos para os devidos fins que{" "}
-          <Text style={estiloDeclaracao.negrito}>{nome}</Text>, participou na
+          <Text style={estiloDeclaracao.negrito}>{nome.toUpperCase()}</Text>, participou na
           qualidade de{" "}
           <Text style={estiloDeclaracao.negrito}>{PAPEL_TEXTO[papel]}</Text>{" "}
           na <Text style={estiloDeclaracao.negrito}>{eventoNome}</Text>, da
