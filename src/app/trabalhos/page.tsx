@@ -772,14 +772,17 @@ export default function TrabalhosAdminPage() {
 
   // Certificados pra imprimir no papel timbrado (2026-11-04, pedido explícito
   // do usuário — "liberar pra secretaria gerar"): organização do evento também
-  // gera, não só o admin. Precisa de um evento escolhido no filtro.
+  // gera, não só o admin. Precisa de um evento escolhido no filtro. A
+  // secretaria imprime ANTES do evento: entram todos os trabalhos que já
+  // foram pra avaliação (só fica de fora a Submissão), e o botão aparece em
+  // todas as abas. Com trabalhos marcados na tabela, imprime só esses.
   const [gerandoImpressao, setGerandoImpressao] = useState(false);
   const [erroImpressao, setErroImpressao] = useState<string | null>(null);
   async function imprimirCertificados() {
     if (!user || eventoId === "todos") return;
     setErroImpressao(null);
     setGerandoImpressao(true);
-    const r = await baixarCertificadosImpressao(user, eventoId);
+    const r = await baixarCertificadosImpressao(user, eventoId, [...selecionados]);
     if (!r.ok) setErroImpressao(r.erro);
     setGerandoImpressao(false);
   }
@@ -1323,15 +1326,14 @@ export default function TrabalhosAdminPage() {
                 )
               )}
 
-              {etapa === "resultado_final" && (
-                <button
+              <button
                   type="button"
                   onClick={imprimirCertificados}
                   disabled={eventoId === "todos" || gerandoImpressao}
                   title={
                     eventoId === "todos"
                       ? "Escolha o evento no filtro para imprimir os certificados"
-                      : "PDF com os certificados liberados, sem o fundo, para imprimir no papel timbrado"
+                      : "PDF com os certificados de apresentação (sem o fundo) para imprimir no papel timbrado — só os marcados, se houver"
                   }
                   className="flex flex-none items-center justify-center gap-1.5 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
                 >
@@ -1341,9 +1343,9 @@ export default function TrabalhosAdminPage() {
                     <Printer className="h-4 w-4 flex-none" strokeWidth={1.75} />
                   )}
                   Imprimir certificados (papel timbrado)
-                </button>
-              )}
-              {etapa === "resultado_final" && erroImpressao && (
+                  {selecionados.size > 0 && ` (${selecionados.size})`}
+              </button>
+              {erroImpressao && (
                 <span className="text-xs font-medium text-rose-700">{erroImpressao}</span>
               )}
 

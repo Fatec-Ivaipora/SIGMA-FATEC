@@ -22,10 +22,16 @@ function slug(texto: string): string {
  * pedido explícito do usuário — "liberar pra secretaria gerar"): um PDF com
  * uma página por trabalho, sem o fundo (o papel já vem impresso), mesmo texto
  * e mesma numeração do certificado digital (GET /api/certificados?papel=aluno).
- * Só admin/organização do evento. Entram os trabalhos aceitos e com o
- * certificado já liberado (Resultado Final); `trabalhoId` limita a um só.
+ * Só admin/organização do evento. A secretaria imprime ANTES do evento e
+ * entrega no dia (2026-11-04, pedido explícito do usuário — "só conseguia
+ * imprimir depois de apresentado"), então entram TODOS os trabalhos que já
+ * foram pra avaliação — "não é pra deixar nenhum de fora, todos que foram pra
+ * avaliação vão apresentar". Só fica de fora o que ainda está em submissão.
+ * `ids` (separados por vírgula) limita aos trabalhos marcados na tabela.
  * Quem ainda não tinha número recebe agora, na ordem do título — mesma
- * sequência da Ata (obterNumeroRegistro). */
+ * sequência da Ata (obterNumeroRegistro) e mesmo número que o aluno vê depois
+ * no certificado digital. */
+const FORA_DA_IMPRESSAO = ["submissao"];
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -38,7 +44,7 @@ export async function GET(request: Request) {
     const db = getAdminDb();
     const url = new URL(request.url);
     const eventoId = url.searchParams.get("eventoId");
-    const trabalhoId = url.searchParams.get("trabalhoId");
+    const ids = (url.searchParams.get("ids") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     if (!eventoId) {
       return NextResponse.json({ erro: "Escolha o evento." }, { status: 400 });
     }
@@ -70,17 +76,17 @@ export async function GET(request: Request) {
     }
 
     const trabalhos = (
-      trabalhoId
-        ? [await db.doc(`trabalhos/${trabalhoId}`).get()]
+      ids.length
+        ? await db.getAll(...ids.map((id) => db.doc(`trabalhos/${id}`)))
         : (await db.collection("trabalhos").where("eventoId", "==", eventoId).get()).docs
     )
       .filter((d) => d.exists)
       .map((d): FirebaseFirestore.DocumentData & { id: string } => ({ id: d.id, ...d.data() }))
-      .filter((t) => t.eventoId === eventoId && t.status === "aceito" && t.certificadoLiberado === true)
+      .filter((t) => t.eventoId === eventoId && !FORA_DA_IMPRESSAO.includes(t.status as string))
       .sort((a, b) => String(a.titulo).localeCompare(String(b.titulo), "pt-BR"));
     if (trabalhos.length === 0) {
       return NextResponse.json(
-        { erro: "Nenhum trabalho aceito com o certificado já liberado nesse evento (libere em Resultado Final)." },
+        { erro: "Nenhum trabalho enviado para avaliação nesse evento ainda (os que estão em Submissão não entram)." },
         { status: 404 },
       );
     }
@@ -108,7 +114,7 @@ export async function GET(request: Request) {
     }
 
     const buffer = await renderToBuffer(CertificadosApresentacaoImpressaoPDF({ certificados }));
-    const nomeArquivo = trabalhoId
+    const nomeArquivo = trabalhos.length === 1
       ? `impressao-certificado-${slug(String(trabalhos[0].alunoNome))}.pdf`
       : `impressao-certificados-${slug(evento.nome as string)}.pdf`;
     return new NextResponse(new Uint8Array(buffer), {
