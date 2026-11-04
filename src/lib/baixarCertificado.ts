@@ -185,9 +185,11 @@ export async function baixarRelatorioTurmas(
 export async function baixarCertificadosImpressao(
   user: User,
   eventoId: string,
+  ids: string[] = [],
 ): Promise<{ ok: true } | { ok: false; erro: string }> {
   const idToken = await user.getIdToken();
-  const res = await fetch(`/api/certificados/impressao?eventoId=${encodeURIComponent(eventoId)}`, {
+  const query = new URLSearchParams({ eventoId, ...(ids.length ? { ids: ids.join(",") } : {}) });
+  const res = await fetch(`/api/certificados/impressao?${query.toString()}`, {
     headers: { Authorization: `Bearer ${idToken}` },
   });
   if (!res.ok) {
