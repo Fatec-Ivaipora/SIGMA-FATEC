@@ -200,6 +200,18 @@ export type Evento = {
   // aqui. Ausente/vazio = nenhuma sala escolhida ainda, "Gerar grade" fica
   // desabilitado (mesmo espírito de apresentacaoInicio acima).
   salasIds?: string[];
+  // Moderador responsável por cada sala no dia do evento (2026-11-04,
+  // pedido explícito do usuário) — salaId -> quem modera ali. Guardado no
+  // evento (não na sessão/grade) de propósito: "Gerar grade" apaga e recria
+  // as sessões toda vez (ver substituirGradeDoEvento), então se isso
+  // morasse lá, regenerar a grade perderia a distribuição de moderadores
+  // junto. Como o evento é um bloco só de apresentação (sem múltiplos
+  // horários por sala), 1 moderador cobre a sala inteira — não precisa de
+  // granularidade por sessão/horário. Usado por "Liberar trabalhos para
+  // moderadores" (aba Resultado de /trabalhos): trabalho empatado ->
+  // sessaoId -> sessao.salaId -> moderadoresPorSala[salaId] -> quem recebe
+  // o trabalho pra avaliar.
+  moderadoresPorSala?: Record<string, { uid: string; nome: string }>;
   // Modelo do evento (2026-09-22, pedido da comissão — nem todo evento tem
   // trabalho acadêmico, ex. palestra/curso/workshop). Ausente = modelo de
   // hoje (trabalho, avaliação, ensalamento — todos os campos acima). Nesse

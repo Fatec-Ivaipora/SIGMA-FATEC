@@ -477,6 +477,55 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-04** — **Moderador ligado à sala no ensalamento — liga o
+  ensalamento com o desempate** (pedido explícito do usuário, conversa
+  longa pra alinhar o modelo antes de mexer em código — "quero poder gerar
+  a grade de horários sem precisar esperar o resultado das avaliações...
+  cada sala tem que ter seu moderador... isso evita que a gente tenha que
+  enviar pros moderadores os trabalhos empatados"). Três mudanças
+  conectadas:
+  1. **Ensalamento não espera mais a nota** — `STATUS_ELEGIVEIS` em
+     `/ensalamento` passou de uma lista estreita (só quem já tinha quase
+     terminado o pipeline) pra "todo mundo, menos quem ainda não foi
+     mandado pra avaliação ('submissao') ou foi recusado ('nao_aceito')".
+     A grade pode ser gerada a qualquer momento do processo.
+  2. **Moderador por sala** — campo novo `evento.moderadoresPorSala`
+     (salaId -> {uid, nome}), guardado no evento (não na sessão — "Gerar
+     grade" apaga/recria as sessões toda vez, isso sobrevive). Modal
+     "Distribuir moderadores" em `/ensalamento`: botão "Distribuir
+     aleatório" sorteia respeitando conflito de interesse (mesma trava já
+     usada pra avaliador/moderador — `conflitoDeInteresse`, orientador/
+     coorientador não cai na sala do próprio trabalho), ou clique manual
+     por pessoa pra escolher a sala.
+  3. **Botão "Liberar trabalhos para moderadores"** (aba Resultado de
+     `/trabalhos`, dropdown "Ações do resultado") — pra cada trabalho
+     empatado: acha a sala (via `sessaoId`), acha o moderador daquela
+     sala, grava `moderadorUid`/`status: aguardando_apresentacao`, manda o
+     mesmo e-mail que já existe pra "você recebeu N trabalhos"
+     (`notificarAtribuicao`). Quem não dá pra resolver sozinho (sem sala
+     ainda, sala sem moderador, ou moderador da sala em conflito com
+     aquele trabalho específico) aparece num modal de resultado, com botão
+     "Selecionar pendentes" que já marca esses trabalhos pra usar o
+     "Enviar para desempate" manual que já existia, só pra esses casos.
+  **Testado**: a extensão do Chrome ficou instável durante essa sessão
+  (localhost parava de carregar no navegador real, formulário de login
+  caindo pra GET nativo em vez do handler do React mesmo numa origem que
+  carregava) — não consegui clicar pela tela real. Em vez disso, validei a
+  lógica inteira rodando contra dados de teste descartáveis no Firestore
+  de verdade: elegibilidade do ensalamento (confirmado trabalho em
+  "aguardando_avaliacao"/"revisao" entrando, "nao_aceito" ficando de
+  fora), geração de grade (função `montarGradeAutomatica` de verdade,
+  copiada porque o módulo original não importa fora do Next), sorteio de
+  moderador por sala, e "liberar trabalhos" (identificou certinho os 2
+  empatados numa área com notas 25/20/15/15, achou a sala e o moderador,
+  gravou `moderadorUid` só neles — os 2 não-empatados ficaram intocados).
+  Testei também o caso de conflito separadamente (`conflitoDeInteresse`
+  bloqueando orientador = moderador da sala, confirmado `nivel: "certo"`).
+  Tudo apagado depois. **Pendente**: nunca cliquei pela tela de verdade —
+  vale uma conferência visual rápida (abrir `/ensalamento`, abrir o modal
+  "Distribuir moderadores", testar "Liberar trabalhos para moderadores"
+  em `/trabalhos`) assim que a extensão estiver estável de novo.
+
 - **2026-11-04** — **Lembrete de prazo + trabalho "entregue com atraso"**
   (pedido explícito do usuário, duas partes do mesmo problema: "os alunos
   têm que devolver esse trabalho... seria interessante que um dia antes do

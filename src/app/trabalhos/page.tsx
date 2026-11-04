@@ -26,7 +26,8 @@ import { Modal } from "@/components/Modal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DetalheTrabalhoModal } from "@/components/DetalheTrabalhoModal";
 import { AvisoConflitos } from "@/components/AvisoConflitos";
-import { planejarDistribuicao } from "@/lib/conflitoInteresse";
+import { planejarDistribuicao, conflitoDeInteresse } from "@/lib/conflitoInteresse";
+import { useSessoesDoEvento } from "@/lib/data/sessoes";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
@@ -974,6 +975,19 @@ export default function TrabalhosAdminPage() {
     return { premiados, aceitos };
   }, [analiseResultadoPorArea, eventoId, podeAceitarSemEmpate, idsAindaAvaliado]);
 
+  // Contagem só pro rótulo/disabled do botão "Liberar trabalhos para
+  // moderadores" (2026-11-04) — empatados desse evento que ainda estão
+  // "avaliado" de verdade, mesmo cálculo de liberarTrabalhosParaModeradores.
+  const qtdEmpatadosParaLiberar = useMemo(() => {
+    if (!podeAceitarSemEmpate) return 0;
+    let total = 0;
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (!chave.startsWith(`${eventoId}::`)) continue;
+      total += analise.empatados.filter((id) => idsAindaAvaliado.has(id)).length;
+    }
+    return total;
+  }, [analiseResultadoPorArea, eventoId, podeAceitarSemEmpate, idsAindaAvaliado]);
+
   async function aceitarSemEmpate() {
     if (eventoId === "todos") return;
     const batch = writeBatch(db);
@@ -1002,6 +1016,100 @@ export default function TrabalhosAdminPage() {
     if (idsNotificar.length === 0) return;
     await batch.commit();
     if (user) idsNotificar.forEach((id) => notificarStatusTrabalho(user, id, "aceito"));
+  }
+
+  // Sessões do evento selecionado (2026-11-04) — só pra achar a sala de
+  // cada trabalho empatado na hora de "Liberar trabalhos para moderadores"
+  // (sessaoId -> salaId -> evento.moderadoresPorSala, ver /ensalamento).
+  const { sessoes: sessoesDoEvento } = useSessoesDoEvento(
+    eventoId !== "todos" ? eventoId : undefined,
+  );
+
+  // Resultado de "Liberar trabalhos para moderadores" — trabalhos que não
+  // deu pra resolver sozinho (sala sem moderador, ou moderador da sala em
+  // conflito com aquele trabalho específico) ficam aqui pra quem administra
+  // resolver na mão, reaproveitando o "Enviar para desempate" manual.
+  const [pendentesLiberacao, setPendentesLiberacao] = useState<
+    { trabalho: Trabalho; motivo: string }[] | null
+  >(null);
+
+  // Liga o ensalamento (sala + moderador da sala) com o desempate
+  // (2026-11-04, pedido explícito do usuário — "evita que a gente tenha
+  // que enviar pros moderadores os trabalhos empatados"). Pra cada trabalho
+  // empatado ainda não liberado (status "avaliado" de verdade, não só
+  // reaparecendo no cálculo): acha a sessão pelo sessaoId, a sala pela
+  // sessão, o moderador da sala em evento.moderadoresPorSala — se tudo
+  // bater e não houver conflito de interesse, grava moderadorUid/Nome +
+  // status "aguardando_apresentacao", igual o "Enviar para desempate"
+  // manual já fazia. Quem não bateu (sem sala ainda, sala sem moderador, ou
+  // moderador em conflito) fica em pendentesLiberacao pra resolver na mão.
+  async function liberarTrabalhosParaModeradores() {
+    if (eventoId === "todos") return;
+    const eventoAtual = eventos.find((e) => e.id === eventoId);
+    const moderadoresPorSala = eventoAtual?.moderadoresPorSala ?? {};
+    const sessaoPorId = new Map(sessoesDoEvento.map((s) => [s.id, s]));
+
+    const idsDoEvento = new Set<string>();
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (!chave.startsWith(`${eventoId}::`)) continue;
+      analise.empatados.forEach((id) => idsDoEvento.add(id));
+    }
+    const trabalhosEmpatados = trabalhos.filter(
+      (t) => idsDoEvento.has(t.id) && idsAindaAvaliado.has(t.id),
+    );
+
+    const batch = writeBatch(db);
+    const porModerador = new Map<string, { uid: string; nome: string; quantidade: number }>();
+    const pendentes: { trabalho: Trabalho; motivo: string }[] = [];
+
+    for (const t of trabalhosEmpatados) {
+      const sessao = t.sessaoId ? sessaoPorId.get(t.sessaoId) : undefined;
+      if (!sessao) {
+        pendentes.push({ trabalho: t, motivo: "Ainda não foi ensalado (sem sala)." });
+        continue;
+      }
+      const moderador = moderadoresPorSala[sessao.salaId];
+      if (!moderador) {
+        pendentes.push({ trabalho: t, motivo: "A sala onde está não tem moderador atribuído." });
+        continue;
+      }
+      if (conflitoDeInteresse(moderador, t)?.nivel === "certo") {
+        pendentes.push({
+          trabalho: t,
+          motivo: "O moderador da sala tem conflito de interesse com esse trabalho.",
+        });
+        continue;
+      }
+      batch.update(doc(db, "trabalhos", t.id), {
+        status: "aguardando_apresentacao",
+        moderadorUid: moderador.uid,
+        moderadorNome: moderador.nome,
+        atualizadoEm: serverTimestamp(),
+      });
+      const atual = porModerador.get(moderador.uid) ?? {
+        uid: moderador.uid,
+        nome: moderador.nome,
+        quantidade: 0,
+      };
+      atual.quantidade++;
+      porModerador.set(moderador.uid, atual);
+    }
+
+    if (porModerador.size > 0) {
+      await batch.commit();
+      if (user) {
+        notificarAtribuicao(
+          user,
+          Array.from(porModerador.values()).map((m) => ({
+            uid: m.uid,
+            papel: "moderador" as const,
+            quantidade: m.quantidade,
+          })),
+          eventoId,
+        );
+      }
+    }
+    setPendentesLiberacao(pendentes);
   }
 
   // Aceita em lote os selecionados que estão "apresentado" (2026-08-31,
@@ -1309,6 +1417,20 @@ export default function TrabalhosAdminPage() {
                           <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
                           Enviar para desempate
                           {selecionados.size > 0 && ` (${selecionados.size})`}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={qtdEmpatadosParaLiberar === 0}
+                          onClick={() => {
+                            liberarTrabalhosParaModeradores();
+                            setMenuResultadoAberto(false);
+                          }}
+                          title="Pra cada empatado, acha a sala onde já está (ensalamento) e o moderador designado pra ela — libera direto pro SIGMA dele, sem precisar escolher na mão."
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Users className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Liberar trabalhos para moderadores
+                          {qtdEmpatadosParaLiberar > 0 && ` (${qtdEmpatadosParaLiberar})`}
                         </button>
                       </div>
                     </>
@@ -1958,6 +2080,65 @@ export default function TrabalhosAdminPage() {
           onSubmit={(dados) => salvarEdicaoAdmin(trabalhoEditando, dados)}
         />
       )}
+
+      <Modal
+        open={!!pendentesLiberacao}
+        onClose={() => setPendentesLiberacao(null)}
+        title="Liberar trabalhos para moderadores"
+      >
+        {pendentesLiberacao && (
+          <>
+            {pendentesLiberacao.length === 0 ? (
+              <p className="text-sm text-fatec-ink">
+                Todos os trabalhos empatados foram liberados pros moderadores
+                das salas onde já estão. E-mail enviado pra cada um.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-fatec-ink">
+                  {pendentesLiberacao.length} trabalho(s) não deu pra resolver
+                  sozinho — precisam de decisão manual (use &quot;Enviar para
+                  desempate&quot; só pra esses).
+                </p>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {pendentesLiberacao.map(({ trabalho, motivo }) => (
+                    <li
+                      key={trabalho.id}
+                      className="rounded-xl border border-fatec-orange-200 bg-fatec-orange-50 px-4 py-2.5 text-sm"
+                    >
+                      <p className="font-medium text-fatec-navy-900">
+                        {tituloExibicao(trabalho.titulo)}
+                      </p>
+                      <p className="mt-0.5 text-fatec-orange-700">{motivo}</p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <div className="mt-6 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPendentesLiberacao(null)}
+                className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+              >
+                Fechar
+              </button>
+              {pendentesLiberacao.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelecionados(new Set(pendentesLiberacao!.map((p) => p.trabalho.id)));
+                    setPendentesLiberacao(null);
+                  }}
+                  className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                >
+                  Selecionar pendentes
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
     </main>
   );
 }

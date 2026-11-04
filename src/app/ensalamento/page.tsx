@@ -12,6 +12,7 @@ import {
   Plus,
   QrCode,
   Search,
+  Shuffle,
   Trash2,
   Wand2,
 } from "lucide-react";
@@ -27,6 +28,8 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useAuth } from "@/lib/auth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho, type TrabalhoStatus } from "@/lib/data/trabalhos";
+import { useUsuarios } from "@/lib/data/usuarios";
+import { conflitoDeInteresse } from "@/lib/conflitoInteresse";
 import { useSalasCatalogo, criarSala, removerSala, type SalaEnsalamento } from "@/lib/data/salas";
 import {
   useInscritosDoEvento,
@@ -44,15 +47,24 @@ import {
 } from "@/lib/data/sessoes";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
-// Universo do ensalamento (2026-09-17, confirmado com o usuário): todo
-// trabalho que já saiu de "avaliado" pra Desempate ou Resultado Final —
-// TODOS apresentam fisicamente no evento, não só quem ganhou. Trabalho ainda
-// em "avaliado" (Resultado, não triado) não entra.
+// Universo do ensalamento (2026-11-04, reescrito — pedido explícito do
+// usuário: "quero poder gerar a grade de horários sem precisar esperar o
+// resultado das avaliações... todo mundo apresenta, o que importa na
+// apresentação é só desempatar os empatados, mas os alunos não sabem
+// disso"). TODO trabalho apresenta fisicamente no evento, não importa a
+// nota — só dois casos ficam de fora: "submissao" (nem foi mandado pro
+// avaliador ainda, admin não processou o lote — confirmado explicitamente
+// que não entra) e "nao_aceito" (recusado — seja direto pelo avaliador no
+// resumo, seja pelo admin no Resultado Final; quem foi recusado nunca
+// apresenta).
 const STATUS_ELEGIVEIS: TrabalhoStatus[] = [
+  "aguardando_avaliacao",
+  "revisao",
+  "avaliado",
+  "entregue_com_atraso",
   "aguardando_apresentacao",
   "apresentado",
   "aceito",
-  "nao_aceito",
 ];
 
 const LABEL_MODALIDADE: Record<"oral" | "roda_conversa", string> = {
@@ -813,6 +825,99 @@ function EnsalamentoAdminView() {
     [trabalhos, eventoId],
   );
 
+  // Moderador por sala (2026-11-04, pedido explícito do usuário — "cada
+  // sala tem que ter seu moderador... o moderador vai receber o trabalho
+  // no SIGMA dele sem o admin precisar enviar na mão"). Guardado no
+  // próprio evento (não na sessão — ver comentário em
+  // Evento.moderadoresPorSala), então sobrevive a "Gerar grade" de novo.
+  const { usuarios } = useUsuarios();
+  const moderadoresDoEvento = useMemo(
+    () =>
+      usuarios.filter(
+        (u) =>
+          (u.papel === "moderador" || u.papeisAvaliacao?.includes("moderador")) &&
+          (u.atribuicoesEventos ?? []).some((at) => at.eventoId === eventoId),
+      ),
+    [usuarios, eventoId],
+  );
+  // Trabalhos já alocados em cada sala (via sessões geradas) — usado só
+  // pra checar conflito de interesse na hora de sortear/atribuir
+  // moderador, não precisa ficar em sincronia fina com a grade.
+  const trabalhosPorSala = useMemo(() => {
+    const mapa = new Map<string, Trabalho[]>();
+    for (const s of sessoes) {
+      const lista = mapa.get(s.salaId) ?? [];
+      for (const id of s.trabalhoIds) {
+        const t = trabalhosDoEvento.find((tr) => tr.id === id);
+        if (t) lista.push(t);
+      }
+      mapa.set(s.salaId, lista);
+    }
+    return mapa;
+  }, [sessoes, trabalhosDoEvento]);
+  const moderadoresPorSala = evento?.moderadoresPorSala ?? {};
+  const [modalModeradores, setModalModeradores] = useState(false);
+  const [salvandoModeradores, setSalvandoModeradores] = useState(false);
+
+  function embaralhar<T>(lista: T[]): T[] {
+    const copia = [...lista];
+    for (let i = copia.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copia[i], copia[j]] = [copia[j], copia[i]];
+    }
+    return copia;
+  }
+
+  // Sorteio respeitando conflito de interesse (2026-11-04, pedido
+  // explícito do usuário — "mantém o mesmo esquema de conflito, orientador
+  // ou coorientador não pode ser o moderador do próprio trabalho"). Pra
+  // cada sala (ordem embaralhada), pega o primeiro moderador ainda livre
+  // sem conflito "certo" com nenhum trabalho alocado ali — sala sem
+  // ninguém livre sem conflito fica sem moderador, pra quem administra
+  // resolver na mão (ver atribuirModeradorManual).
+  async function distribuirModeradoresAleatorio() {
+    if (!eventoId) return;
+    setSalvandoModeradores(true);
+    try {
+      const salasEmbaralhadas = embaralhar(salas);
+      let restantes = embaralhar(moderadoresDoEvento);
+      const novoMapa: Record<string, { uid: string; nome: string }> = {};
+      for (const sala of salasEmbaralhadas) {
+        const trabalhosDaSala = trabalhosPorSala.get(sala.id) ?? [];
+        const idx = restantes.findIndex(
+          (m) =>
+            !trabalhosDaSala.some(
+              (t) => conflitoDeInteresse({ uid: m.uid, nome: m.nome }, t)?.nivel === "certo",
+            ),
+        );
+        if (idx === -1) continue;
+        novoMapa[sala.id] = { uid: restantes[idx].uid, nome: restantes[idx].nome };
+        restantes = restantes.filter((_, i) => i !== idx);
+      }
+      await updateDoc(doc(db, "eventos", eventoId), { moderadoresPorSala: novoMapa });
+    } finally {
+      setSalvandoModeradores(false);
+    }
+  }
+
+  // Atribuição manual de 1 moderador a 1 sala (2026-11-04) — tira ele de
+  // qualquer outra sala que já estivesse (nunca 2 salas ao mesmo tempo, é
+  // gente de verdade presente fisicamente). salaId vazio = "Sem sala".
+  async function atribuirModeradorManual(moderador: { uid: string; nome: string }, salaId: string) {
+    if (!eventoId) return;
+    setSalvandoModeradores(true);
+    try {
+      const novoMapa = { ...moderadoresPorSala };
+      for (const key of Object.keys(novoMapa)) {
+        if (novoMapa[key].uid === moderador.uid) delete novoMapa[key];
+      }
+      if (salaId) novoMapa[salaId] = moderador;
+      await updateDoc(doc(db, "eventos", eventoId), { moderadoresPorSala: novoMapa });
+    } finally {
+      setSalvandoModeradores(false);
+    }
+  }
+
   const grupos = useMemo(() => {
     const mapa = new Map<string, Grupo>();
     for (const t of trabalhosDoEvento) {
@@ -1228,9 +1333,8 @@ function EnsalamentoAdminView() {
                       Trabalhos por área × modalidade
                     </h2>
                     <p className="mt-1 text-sm text-fatec-muted">
-                      Todo trabalho que já passou de “avaliado” (Desempate ou
-                      Resultado Final) — é esse universo que apresenta no
-                      evento.
+                      Todo trabalho do evento apresenta, menos quem ainda não
+                      foi enviado pra avaliação ou foi recusado.
                     </p>
 
                     <div className="mt-4 flex flex-col gap-2">
@@ -1247,8 +1351,8 @@ function EnsalamentoAdminView() {
                       ))}
                       {grupos.length === 0 && (
                         <p className="text-sm text-fatec-muted">
-                          Nenhum trabalho chegou em Desempate/Resultado Final
-                          ainda pra esse evento.
+                          Nenhum trabalho enviado pra avaliação ainda nesse
+                          evento.
                         </p>
                       )}
                     </div>
@@ -1296,7 +1400,17 @@ function EnsalamentoAdminView() {
 
                   {/* Grade montada */}
                   <section className="rounded-2xl border border-fatec-line bg-white p-5">
-                    <h2 className="font-semibold text-fatec-navy-900">Grade montada</h2>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="font-semibold text-fatec-navy-900">Grade montada</h2>
+                      <button
+                        type="button"
+                        onClick={() => setModalModeradores(true)}
+                        className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                      >
+                        <Shuffle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Distribuir moderadores
+                      </button>
+                    </div>
                     {erroMover && (
                       <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
                         {erroMover}
@@ -1307,6 +1421,7 @@ function EnsalamentoAdminView() {
                         <thead>
                           <tr className="border-b border-fatec-line text-xs uppercase tracking-[-0.01em] text-fatec-muted">
                             <th className="px-3 py-2 font-semibold">Sala</th>
+                            <th className="px-3 py-2 font-semibold">Moderador</th>
                             <th className="px-3 py-2 font-semibold">Horário</th>
                             <th className="px-3 py-2 font-semibold">Modalidade</th>
                             <th className="px-3 py-2 font-semibold">Área</th>
@@ -1327,6 +1442,11 @@ function EnsalamentoAdminView() {
                               <tr key={s.id} className="border-b border-fatec-line last:border-0">
                                 <td className="px-3 py-2.5 align-top font-medium text-fatec-navy-900">
                                   {salaNome}
+                                </td>
+                                <td className="px-3 py-2.5 align-top text-fatec-ink">
+                                  {moderadoresPorSala[s.salaId]?.nome ?? (
+                                    <span className="text-fatec-muted">Sem moderador</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
                                   {formatarHorario(s.horarioInicio.toDate())} –{" "}
@@ -1482,6 +1602,70 @@ function EnsalamentoAdminView() {
             {removendoSala ? "Removendo..." : "Remover do catálogo"}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={modalModeradores}
+        onClose={() => setModalModeradores(false)}
+        title="Distribuir moderadores"
+        size="lg"
+      >
+        <p className="text-sm text-fatec-ink">
+          Cada sala tem o próprio moderador — quando os trabalhos empatados
+          forem liberados (aba Resultado de Trabalhos), vão direto pro
+          moderador da sala onde o trabalho está, sem precisar enviar na
+          mão. Orientador/coorientador nunca cai na sala do próprio
+          trabalho.
+        </p>
+
+        <button
+          type="button"
+          onClick={distribuirModeradoresAleatorio}
+          disabled={salvandoModeradores || moderadoresDoEvento.length === 0 || salas.length === 0}
+          className="mt-4 flex items-center gap-1.5 rounded-xl bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+        >
+          <Shuffle className="h-4 w-4" strokeWidth={1.75} />
+          {salvandoModeradores ? "Distribuindo..." : "Distribuir aleatório"}
+        </button>
+
+        {moderadoresDoEvento.length === 0 ? (
+          <p className="mt-4 text-sm text-fatec-muted">
+            Nenhum moderador cadastrado pra esse evento ainda (tela
+            Usuários).
+          </p>
+        ) : (
+          <div className="mt-4 flex flex-col gap-2">
+            {moderadoresDoEvento.map((m) => {
+              const salaAtualId =
+                Object.entries(moderadoresPorSala).find(([, v]) => v.uid === m.uid)?.[0] ?? "";
+              return (
+                <div
+                  key={m.uid}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-2.5"
+                >
+                  <span className="truncate text-sm font-medium text-fatec-navy-900">
+                    {m.nome}
+                  </span>
+                  <select
+                    value={salaAtualId}
+                    onChange={(e) =>
+                      atribuirModeradorManual({ uid: m.uid, nome: m.nome }, e.target.value)
+                    }
+                    disabled={salvandoModeradores}
+                    className="flex-none rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
+                  >
+                    <option value="">Sem sala</option>
+                    {salas.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Modal>
     </main>
   );
