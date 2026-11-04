@@ -62,6 +62,17 @@ const FUNDO_APRESENTACAO = {
   format: "png" as const,
 };
 
+// Versão pra imprimir no PAPEL TIMBRADO (2026-11-04, pedido explícito do
+// usuário — o papel já vem impresso com a faixa azul, o logo da FATEC e os
+// pontinhos; imprimir o fundo de novo saía tudo duplicado/desencontrado). Sai
+// só o texto/assinaturas + o logo da MAC, que o papel não tem, na MESMA
+// posição em que ele aparece no fundo digital (medida no próprio
+// fundo-apresentacao.png: x 3229–3808 / y 424–691 de 4000×2828 px).
+const LOGO_MAC = {
+  data: fs.readFileSync(path.join(process.cwd(), "public", "certificados", "logo-mac.png")),
+  format: "png" as const,
+};
+
 // Assinaturas digitalizadas (2026-09-11) — só o rabisco, recortado da foto
 // original (que também tinha linha + nome + cargo impressos junto) pra
 // sobrepor a própria linha/nome/cargo que a gente já desenha embaixo, sem
@@ -183,6 +194,12 @@ const estiloApresentacao = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  logoMacImpressao: {
+    position: "absolute",
+    left: 679.6,
+    top: 89.2,
+    width: 121.9,
+  },
   // Fluxo normal (não position:absolute) — evita um bug do React-PDF onde um
   // bloco absoluto dentro da Page é medido errado e o texto inteiro
   // transborda pra uma segunda página em branco, deixando o fundo sozinho
@@ -274,15 +291,7 @@ const estiloApresentacao = StyleSheet.create({
   },
 });
 
-export function CertificadoApresentacaoPDF({
-  nomes,
-  eventoNome,
-  dataRealizacao,
-  tituloTrabalho,
-  registroNumero,
-  assinantes,
-  premiado,
-}: {
+export type DadosCertificadoApresentacao = {
   nomes: string[];
   eventoNome: string;
   dataRealizacao: string;
@@ -298,12 +307,52 @@ export function CertificadoApresentacaoPDF({
   // PDF/estrutura pros dois, só muda essa palavra. Ver trabalho.premiado em
   // src/lib/data/trabalhos.ts.
   premiado: boolean;
-}) {
-  const plural = nomes.length > 1;
+};
+
+export function CertificadoApresentacaoPDF(
+  props: DadosCertificadoApresentacao & { paraImpressao?: boolean },
+) {
   return (
     <Document>
+      <PaginaApresentacao {...props} />
+    </Document>
+  );
+}
+
+/** Vários certificados num PDF só, uma página cada, pra imprimir no papel
+ * timbrado (2026-11-04) — ver /api/certificados/impressao. */
+export function CertificadosApresentacaoImpressaoPDF({
+  certificados,
+}: {
+  certificados: DadosCertificadoApresentacao[];
+}) {
+  return (
+    <Document>
+      {certificados.map((c, i) => (
+        <PaginaApresentacao key={i} {...c} paraImpressao />
+      ))}
+    </Document>
+  );
+}
+
+function PaginaApresentacao({
+  nomes,
+  eventoNome,
+  dataRealizacao,
+  tituloTrabalho,
+  registroNumero,
+  assinantes,
+  premiado,
+  paraImpressao,
+}: DadosCertificadoApresentacao & { paraImpressao?: boolean }) {
+  const plural = nomes.length > 1;
+  return (
       <Page size="A4" orientation="landscape" style={estiloApresentacao.page}>
-        <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
+        {paraImpressao ? (
+          <Image fixed src={LOGO_MAC} style={estiloApresentacao.logoMacImpressao} />
+        ) : (
+          <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
+        )}
         <View style={estiloApresentacao.conteudo}>
           <Text style={estiloApresentacao.rotulo}>
             {premiado ? "Certificamos que" : "Declaramos que"}
@@ -336,7 +385,6 @@ export function CertificadoApresentacaoPDF({
           REGISTRO SOB O N° {registroNumero}, LIVRO N° 01
         </Text>
       </Page>
-    </Document>
   );
 }
 
