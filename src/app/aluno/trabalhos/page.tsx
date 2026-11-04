@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
-import { Download, FileStack, Pencil, Eye } from "lucide-react";
+import { Check, Download, FileStack, Pencil, Eye, X } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventosPublicos, useIndicadorEventos, type Evento } from "@/lib/data/eventos";
-import { useTrabalhos, atualizarTrabalho, type Trabalho } from "@/lib/data/trabalhos";
+import { useTrabalhos, atualizarTrabalho, responderConvite, type Trabalho } from "@/lib/data/trabalhos";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
-import { notificarConviteColega } from "@/lib/notificarEmail";
+import { notificarConviteAceito, notificarConviteColega } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // Prazo de edição (2026-09-04): 23:55 do dia de fim das inscrições, gravado
@@ -68,6 +68,13 @@ export default function AlunoTrabalhosPage() {
     setEditando(null);
   }
 
+  // Mesma ação do painel inicial (aluno/page.tsx): aceitar avisa o dono.
+  function responder(trabalho: Trabalho, aceitar: boolean) {
+    if (!user) return;
+    responderConvite(trabalho, user.uid, aceitar);
+    if (aceitar) notificarConviteAceito(user, trabalho.id);
+  }
+
   if (carregando || !perfil) return null;
 
   return (
@@ -112,6 +119,7 @@ export default function AlunoTrabalhosPage() {
                 // se o prazo de edição já tivesse passado, travando o aluno
                 // sem como corrigir o que o avaliador pediu).
                 const podeEditar = souDono && (t.status === "revisao" || dentroDoPrazoEdicao(evento));
+                const convitePendente = !souDono && !!user && !!t.convitesPendentes?.includes(user.uid);
                 return (
                   <div
                     key={t.id}
@@ -214,6 +222,30 @@ export default function AlunoTrabalhosPage() {
                         </a>
                       )}
                       <StatusBadge status={t.status} />
+                      {/* Aceitar/Recusar aqui também (2026-11-04, pedido explícito do
+                          usuário — achado real: o aluno via o próprio nome como
+                          "Convite pendente" nesta tela e não achava onde aceitar;
+                          os botões só existiam no painel inicial). Mesma ação de lá. */}
+                      {convitePendente && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => responder(t, false)}
+                            className="flex items-center gap-1.5 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                          >
+                            <X className="h-3.5 w-3.5" strokeWidth={2} />
+                            Recusar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => responder(t, true)}
+                            className="flex items-center gap-1.5 rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                          >
+                            <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                            Aceitar
+                          </button>
+                        </>
+                      )}
                       {podeEditar ? (
                         <button
                           type="button"
