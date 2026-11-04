@@ -61,3 +61,52 @@ export async function numeroRegistroExistente(chave: string): Promise<number | n
   const snap = await getAdminDb().doc(`registrosCertificados/${chave}`).get();
   return (snap.data()?.numero as number | undefined) ?? null;
 }
+
+/** Mesma regra de `obterNumeroRegistro`, mas pra muitos de uma vez (2026-11-04,
+ * achado real: a impressão dos 299 certificados da X MAC fazia 299 transações
+ * seguidas e estourava o tempo da função — o PDF nunca voltava). Lê todos os
+ * registros numa leitura só; quem já tem número mantém; os que faltam recebem
+ * números em sequência, na ordem da lista, em transações de até 200 por vez
+ * (limite de escrita da transação do Firestore). Devolve chave -> número. */
+export async function obterNumerosRegistroEmLote(
+  itens: { chave: string; nome: string }[],
+  eventoId: string,
+  numeroInicial: number,
+): Promise<Map<string, number>> {
+  const db = getAdminDb();
+  const resultado = new Map<string, number>();
+  if (itens.length === 0) return resultado;
+  const existentes = await db.getAll(...itens.map((i) => db.doc(`registrosCertificados/${i.chave}`)));
+  existentes.forEach((s, idx) => {
+    const n = s.data()?.numero as number | undefined;
+    if (n) resultado.set(itens[idx].chave, n);
+  });
+  const faltam = itens.filter((i) => !resultado.has(i.chave));
+  const contadorRef = db.doc(`contadores/certificados_${eventoId}`);
+  for (let ini = 0; ini < faltam.length; ini += 200) {
+    const lote = faltam.slice(ini, ini + 200);
+    await db.runTransaction(async (tx) => {
+      const refs = lote.map((i) => db.doc(`registrosCertificados/${i.chave}`));
+      const [contadorSnap, ...snaps] = await tx.getAll(contadorRef, ...refs);
+      let proximo = (contadorSnap.data()?.proximo as number | undefined) ?? numeroInicial;
+      snaps.forEach((s, idx) => {
+        const ja = s.data()?.numero as number | undefined;
+        if (ja) {
+          resultado.set(lote[idx].chave, ja);
+          return;
+        }
+        resultado.set(lote[idx].chave, proximo);
+        tx.set(refs[idx], {
+          numero: proximo,
+          livro: "01",
+          eventoId,
+          nome: lote[idx].nome,
+          criadoEm: FieldValue.serverTimestamp(),
+        });
+        proximo++;
+      });
+      tx.set(contadorRef, { proximo }, { merge: true });
+    });
+  }
+  return resultado;
+}

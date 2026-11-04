@@ -6,8 +6,11 @@ import {
   type DadosCertificadoApresentacao,
 } from "@/lib/certificadosPdf";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
-import { obterNumeroRegistro } from "@/lib/registroCertificados";
+import { obterNumerosRegistroEmLote } from "@/lib/registroCertificados";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+
+// Centenas de certificados num PDF só: dá folga além do padrão da Vercel.
+export const maxDuration = 60;
 
 function slug(texto: string): string {
   return texto
@@ -91,14 +94,15 @@ export async function GET(request: Request) {
       );
     }
 
+    // Números em lote (uma leitura + poucas transações), não um por um.
+    const numeros = await obterNumerosRegistroEmLote(
+      trabalhos.map((t) => ({ chave: `${t.id}_aluno`, nome: t.alunoNome as string })),
+      eventoId,
+      (evento.numeroRegistroInicial as number | undefined) ?? 1,
+    );
     const certificados: DadosCertificadoApresentacao[] = [];
     for (const t of trabalhos) {
-      const numero = await obterNumeroRegistro(
-        `${t.id}_aluno`,
-        eventoId,
-        (evento.numeroRegistroInicial as number | undefined) ?? 1,
-        t.alunoNome as string,
-      );
+      const numero = numeros.get(`${t.id}_aluno`)!;
       const nomes = [t.alunoNome as string, ...((t.participantesNomes ?? []) as string[])];
       if (t.nomeOrientador) nomes.push(t.nomeOrientador as string);
       nomes.push(...((t.nomesCoorientadores ?? []) as string[]));
