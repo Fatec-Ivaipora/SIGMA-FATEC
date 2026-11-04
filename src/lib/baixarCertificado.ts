@@ -179,3 +179,46 @@ export async function baixarRelatorioTurmas(
   dispararDownload(blob, nomeArquivo);
   return { ok: true };
 }
+
+/** Certificados de apresentação pra imprimir no papel timbrado (sem fundo),
+ * um por página — ver /api/certificados/impressao. */
+export async function baixarCertificadosImpressao(
+  user: User,
+  eventoId: string,
+  ids: string[] = [],
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams({ eventoId, ...(ids.length ? { ids: ids.join(",") } : {}) });
+  const res = await fetch(`/api/certificados/impressao?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar os certificados para impressão." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "certificados-impressao.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
+/** Etiquetas das pastas (folha Carta, 20 por folha) — ver /api/trabalhos/etiquetas. */
+export async function baixarEtiquetasPastas(
+  user: User,
+  eventoId: string,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`/api/trabalhos/etiquetas?eventoId=${encodeURIComponent(eventoId)}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar as etiquetas." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "etiquetas-pastas.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}

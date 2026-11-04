@@ -27,6 +27,7 @@ import { separarGrupoSubArea } from "@/lib/areasTematicas";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 import { RelatorioParticipantesCurso } from "@/components/RelatorioParticipantesCurso";
 import { RelatorioTurmasEdubox } from "@/components/RelatorioTurmasEdubox";
+import { EtiquetasPastas } from "@/components/EtiquetasPastas";
 
 const LIMITE_RANKING = 10;
 
@@ -276,7 +277,7 @@ function RelatoriosContent() {
   // pedagógica (nota média, melhores trabalhos — só faz sentido depois que
   // os trabalhos já têm nota). Evento simples não usa essas abas, tem as
   // próprias seções fixas mais abaixo.
-  const [abaRelatorioCompleto, setAbaRelatorioCompleto] = useState<"perfil" | "avaliacao" | "cursos">(
+  const [abaRelatorioCompleto, setAbaRelatorioCompleto] = useState<"perfil" | "avaliacao" | "cursos" | "etiquetas">(
     "perfil",
   );
 
@@ -544,7 +545,9 @@ function RelatoriosContent() {
                 { key: "avaliacao", label: "Avaliação dos trabalhos" },
                 // 2026-10-28 — relatório pra entregar aos coordenadores.
                 { key: "cursos", label: "Participantes por curso" },
-              ] as { key: "perfil" | "avaliacao" | "cursos"; label: string }[]
+                // 2026-11-04 — etiquetas das pastas pra secretaria.
+                { key: "etiquetas", label: "Etiquetas das pastas" },
+              ] as { key: "perfil" | "avaliacao" | "cursos" | "etiquetas"; label: string }[]
             ).map((aba) => (
               <button
                 key={aba.key}
@@ -578,6 +581,22 @@ function RelatoriosContent() {
               ) : (
                 <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
                   Escolha um evento no topo para ver os participantes por curso.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!ehSimples && abaRelatorioCompleto === "etiquetas" && (
+            <div className="mt-6">
+              {eventoSelecionado ? (
+                <EtiquetasPastas
+                  user={user}
+                  eventoId={eventoSelecionado.id}
+                  quantidade={trabalhosDoEvento.filter((t) => t.status !== "submissao").length}
+                />
+              ) : (
+                <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+                  Escolha um evento no topo para baixar as etiquetas das pastas.
                 </p>
               )}
             </div>
