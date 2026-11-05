@@ -70,7 +70,10 @@ const STATUS_POR_ETAPA: Record<Etapa, TrabalhoStatus[]> = {
   // exceção e ainda consegue avaliar esse trabalho específico (ver
   // firestore.rules), mas continua listado aqui pra registrar, no fim do
   // evento, quem respondeu atrasado versus quem nunca respondeu.
-  revisao: ["revisao", "entregue_com_atraso"],
+  // "revisao_realizada" (2026-11-05) também — trabalho legado que ganhou
+  // nota tarde fica travado aqui pra sempre, nunca passa pra "Resultado"
+  // (ver comentário em TrabalhoStatus).
+  revisao: ["revisao", "entregue_com_atraso", "revisao_realizada"],
   resultado: ["avaliado"],
   apresentacao: ["aguardando_apresentacao"],
   resultado_final: ["apresentado", "aceito", "nao_aceito"],
@@ -86,7 +89,10 @@ const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> =
 
 // Status que significam "já passou pela avaliação" — usado pro pódio por
 // área considerar todo mundo que já tem nota, mesmo quem já saiu de
-// "avaliado" (ver analiseResultadoPorArea).
+// "avaliado" (ver analiseResultadoPorArea). "revisao_realizada" (2026-11-05)
+// FICA DE FORA de propósito, mesmo tendo notaAvaliador — pedido explícito do
+// usuário: esses trabalhos legados apresentam normalmente, mas não
+// concorrem a pódio/prêmio nem entram no cálculo de empate.
 const STATUS_JA_AVALIADO: TrabalhoStatus[] = [
   "avaliado",
   "aguardando_apresentacao",

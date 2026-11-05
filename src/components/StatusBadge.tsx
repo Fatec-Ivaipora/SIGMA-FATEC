@@ -58,6 +58,16 @@ const STATUS_META: Record<
     text: "text-amber-700",
     bg: "bg-amber-50",
   },
+  // Trabalho legado que ganhou nota depois de corrigido (2026-11-05, ver
+  // comentário em TrabalhoStatus) — tem nota mas fica fora do pódio/
+  // desempate, por isso cor própria, nem laranja (ainda em revisão) nem
+  // verde (avaliado "de verdade").
+  revisao_realizada: {
+    label: "Revisão concluída",
+    dot: "bg-cyan-600",
+    text: "text-cyan-700",
+    bg: "bg-cyan-50",
+  },
 };
 
 export function StatusBadge({ status }: { status: TrabalhoStatus }) {

@@ -154,7 +154,15 @@ function PainelTrabalhos({
   // prazo próprio ainda. Ver dentroDoPrazoAvaliacao em src/lib/data/eventos.
   respeitaPrazoAvaliacao?: boolean;
   onEnviarNota: (id: string, soma: number, notas: Record<string, number>) => void;
-  onSolicitarRevisao?: (id: string, comentario: string) => void;
+  // soma/notas também aqui (2026-11-05, pedido explícito do usuário — "antes
+  // de mandar para revisão o professor precisa atribuir uma nota", pra não
+  // dar uma segunda chance de melhorar a nota depois que o aluno corrige).
+  onSolicitarRevisao?: (
+    id: string,
+    comentario: string,
+    soma: number,
+    notas: Record<string, number>,
+  ) => void;
   onRejeitar?: (id: string) => void;
 }) {
   const [busca, setBusca] = useState("");
@@ -205,8 +213,10 @@ function PainelTrabalhos({
 
   function enviarRevisao(id: string) {
     if (!comentarioRevisao.trim() || !onSolicitarRevisao) return;
-    onSolicitarRevisao(id, comentarioRevisao.trim());
+    if (exigeNotaAntesDeRevisao && !notasCompletas) return;
+    onSolicitarRevisao(id, comentarioRevisao.trim(), somaNotas, notas);
     setAvaliando(null);
+    setNotas({});
     setModoAcao("notas");
     setComentarioRevisao("");
   }
@@ -236,6 +246,9 @@ function PainelTrabalhos({
   // (não em `trabalhosFiltrados`) de propósito: se a busca/filtro mudar
   // com o modal aberto, ele continua mostrando o mesmo trabalho.
   const trabalhoAvaliando = trabalhos.find((t) => t.id === avaliando);
+  // Nota obrigatória antes de revisão NÃO vale pros trabalhos legados —
+  // ver comentário em enviarRevisao.
+  const exigeNotaAntesDeRevisao = !trabalhoAvaliando?.revisaoLegado;
   const eventoDoTrabalhoAvaliando = eventos.find(
     (e) => e.id === trabalhoAvaliando?.eventoId,
   );
@@ -303,7 +316,13 @@ function PainelTrabalhos({
         // esse trabalho específico continua avaliável mesmo depois do
         // prazo, então nunca mostra "Prazo de avaliação encerrado" nele
         // (ver firestore.rules, mesma exceção do lado do servidor).
-        const ganhouExcecaoDePrazo = t.status === "entregue_com_atraso";
+        // `revisaoLegado` (2026-11-05, pedido explícito do usuário — "pra
+        // isso eles não tem prazo, podem fazer isso até o fechamento do
+        // evento") entra na mesma exceção: os 49 trabalhos que já estavam em
+        // revisão sem nota continuam avaliáveis sem limite de prazo, mesmo
+        // que o aluno tenha corrigido ANTES do prazo (ficando em
+        // "aguardando_avaliacao" comum em vez de "entregue_com_atraso").
+        const ganhouExcecaoDePrazo = t.status === "entregue_com_atraso" || t.revisaoLegado === true;
         const prazoEncerrado =
           respeitaPrazoAvaliacao &&
           !ganhouExcecaoDePrazo &&
@@ -410,6 +429,21 @@ function PainelTrabalhos({
                   </p>
                 </div>
 
+                {/* Nota obrigatória ANTES de revisão (2026-11-05, pedido
+                  * explícito do usuário) — "Solicitar revisão" também exige
+                  * notasCompletas agora, não só "Enviar nota". Sem isso, dava
+                  * pra mandar pra revisão sem nota nenhuma, o aluno corrigia,
+                  * e só aí o avaliador dava nota já vendo a versão corrigida
+                  * — uma segunda chance de melhorar a nota, o que não era a
+                  * intenção. NÃO vale pros ~49 trabalhos legados
+                  * (exigeNotaAntesDeRevisao) — ver comentário em
+                  * ganhouExcecaoDePrazo mais acima. */}
+                {permiteRevisao && exigeNotaAntesDeRevisao && !notasCompletas && (
+                  <p className="text-xs text-fatec-muted">
+                    Preencha todos os critérios antes de enviar a nota ou pedir revisão — a nota fica travada mesmo se o trabalho for pra revisão.
+                  </p>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -423,7 +457,8 @@ function PainelTrabalhos({
                     <button
                       type="button"
                       onClick={() => setModoAcao("revisao")}
-                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                      disabled={exigeNotaAntesDeRevisao && !notasCompletas}
+                      className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:border-fatec-navy-100 disabled:text-fatec-muted"
                     >
                       Solicitar revisão
                     </button>
@@ -441,7 +476,20 @@ function PainelTrabalhos({
               </>
             ) : modoAcao === "revisao" ? (
               <>
-                <label className="flex flex-col gap-1.5 border-t border-fatec-line pt-5">
+                {notasCompletas ? (
+                  <p className="border-t border-fatec-line pt-5 text-sm text-fatec-muted">
+                    Nota já registrada:{" "}
+                    <span className="font-semibold text-fatec-navy-900">
+                      {somaNotas}/{criterios.length * 5}
+                    </span>{" "}
+                    — essa é a nota final, não muda depois mesmo que o aluno corrija.
+                  </p>
+                ) : (
+                  <p className="border-t border-fatec-line pt-5 text-sm text-fatec-muted">
+                    Trabalho antigo, de antes da nota ficar obrigatória pra revisão — segue sem nota por enquanto, igual sempre foi.
+                  </p>
+                )}
+                <label className="flex flex-col gap-1.5">
                   <span className="text-sm font-medium text-fatec-navy-900">
                     O que o aluno precisa revisar?
                   </span>
@@ -458,7 +506,7 @@ function PainelTrabalhos({
                   <button
                     type="button"
                     onClick={() => enviarRevisao(trabalhoAvaliando.id)}
-                    disabled={!comentarioRevisao.trim()}
+                    disabled={!comentarioRevisao.trim() || (exigeNotaAntesDeRevisao && !notasCompletas)}
                     className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
                   >
                     Enviar solicitação
@@ -595,18 +643,40 @@ export default function AvaliadorTrabalhosPage() {
               permiteRejeitar={REJEICAO_HABILITADA}
               respeitaPrazoAvaliacao
               onEnviarNota={async (id, soma, notas) => {
+                // Trabalho legado que já estava em "revisao" sem nota ANTES
+                // do fix de 2026-11-05 (ver `revisaoLegado` em
+                // src/lib/data/trabalhos.ts) — essa é a primeira nota dele,
+                // mas não vira "avaliado" normal: fica em "revisao_realizada"
+                // (não concorre a pódio, ver STATUS_JA_AVALIADO em
+                // src/app/trabalhos/page.tsx).
+                const origemLegado = trabalhosAvaliacao.find((t) => t.id === id)?.revisaoLegado === true;
                 await atualizarTrabalho(id, {
-                  status: "avaliado",
+                  status: origemLegado ? "revisao_realizada" : "avaliado",
                   notasCriterios: notas as unknown as NotasCriterios,
                   notaAvaliador: soma,
                   atualizadoEm: serverTimestamp(),
                 });
                 if (user) notificarStatusTrabalho(user, id, "avaliado");
               }}
-              onSolicitarRevisao={async (id, comentario) => {
+              onSolicitarRevisao={async (id, comentario, soma, notas) => {
+                // Trabalho legado nunca grava nota aqui (2026-11-05, pedido
+                // explícito do usuário — "esses 49 só vão devolver uma única
+                // vez"), mas por segurança: se um dia voltar pra revisão de
+                // novo, não pode gravar nota no meio do caminho, senão o
+                // próximo reenvio do aluno seria tratado como fluxo novo
+                // (fecharia direto em "avaliado" em vez de
+                // "revisao_realizada" — ver salvarEdicao em
+                // aluno/trabalhos/page.tsx).
+                const legado = trabalhosAvaliacao.find((t) => t.id === id)?.revisaoLegado === true;
                 await atualizarTrabalho(id, {
                   status: "revisao",
                   comentarioRevisao: comentario,
+                  ...(legado
+                    ? {}
+                    : {
+                        notasCriterios: notas as unknown as NotasCriterios,
+                        notaAvaliador: soma,
+                      }),
                   atualizadoEm: serverTimestamp(),
                 });
                 if (user) notificarStatusTrabalho(user, id, "revisao");

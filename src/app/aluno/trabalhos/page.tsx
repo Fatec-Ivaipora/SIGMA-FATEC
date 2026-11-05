@@ -65,6 +65,19 @@ export default function AlunoTrabalhosPage() {
         ...novosConvites,
       ]),
     );
+    const evento = eventos.find((e) => e.id === trabalho.eventoId);
+    // Nota já travada ANTES de mandar pra revisão (2026-11-05, pedido
+    // explícito do usuário — corrige o fluxo que dava "segunda chance" de
+    // melhorar a nota: antes o avaliador podia mandar pra revisão sem nota
+    // nenhuma, só dar nota depois de ver a versão já corrigida). Se a nota
+    // já existe, o reenvio fecha sozinho em "avaliado" — reaproveita a nota
+    // travada, sem reabrir avaliação pro avaliador mexer de novo (por isso
+    // nem olha prazo aqui: não tem mais nenhuma ação humana pendente depois
+    // disso). Só os trabalhos que já estavam em "revisao" sem nota ANTES
+    // desse fix (`revisaoLegado`, ver src/lib/data/trabalhos.ts) continuam
+    // no fluxo antigo abaixo.
+    const notaJaTravada =
+      trabalho.status === "revisao" && typeof trabalho.notaAvaliador === "number";
     // Corrigir depois que o prazo de avaliação já encerrou (2026-11-04,
     // pedido explícito do usuário — "ele vai ficar entregue, pro avaliador
     // vai chegar uma mensagem... e ele pode avaliar"). O aluno consegue
@@ -74,29 +87,33 @@ export default function AlunoTrabalhosPage() {
     // conseguindo avaliar esse trabalho específico mesmo com o prazo geral
     // vencido (ver dentroDoPrazoAvaliacao || status == "entregue_com_atraso"
     // nas regras).
-    const evento = eventos.find((e) => e.id === trabalho.eventoId);
     const entregueComAtraso =
-      trabalho.status === "revisao" && !dentroDoPrazoAvaliacao(evento);
+      trabalho.status === "revisao" && !notaJaTravada && !dentroDoPrazoAvaliacao(evento);
 
     await atualizarTrabalho(trabalho.id, {
       ...dados,
       convitesPendentes,
-      // Editar durante "revisao" reenvia pra avaliação automaticamente,
-      // igual o antigo fluxo de correção — fora disso (submissao,
-      // aguardando_avaliacao, etc.) a edição não mexe no status.
+      // Editar durante "revisao" reenvia automaticamente — pra avaliação de
+      // novo (fluxo legado, sem nota) ou direto pra "avaliado" (nota já
+      // travada). Fora de "revisao" (submissao, aguardando_avaliacao, etc.)
+      // a edição não mexe no status.
       ...(trabalho.status === "revisao"
-        ? {
-            status: entregueComAtraso
-              ? ("entregue_com_atraso" as const)
-              : ("aguardando_avaliacao" as const),
-            comentarioRevisao: null,
-          }
+        ? notaJaTravada
+          ? { status: "avaliado" as const, comentarioRevisao: null }
+          : {
+              status: entregueComAtraso
+                ? ("entregue_com_atraso" as const)
+                : ("aguardando_avaliacao" as const),
+              comentarioRevisao: null,
+            }
         : {}),
       atualizadoEm: serverTimestamp(),
     });
     if (user) {
       novosConvites.forEach((colegaUid) => notificarConviteColega(user, trabalho.id, colegaUid));
-      if (entregueComAtraso) {
+      if (notaJaTravada) {
+        notificarStatusTrabalho(user, trabalho.id, "avaliado");
+      } else if (entregueComAtraso) {
         // Duas notificações separadas (2026-11-04): confirma pro aluno que
         // a entrega foi registrada, e avisa o avaliador que esse trabalho
         // específico ainda pode ser avaliado mesmo fora do prazo geral.

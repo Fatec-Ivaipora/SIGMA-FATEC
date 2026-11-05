@@ -65,6 +65,9 @@ const STATUS_ELEGIVEIS: TrabalhoStatus[] = [
   "aguardando_apresentacao",
   "apresentado",
   "aceito",
+  // Trabalho legado que ganhou nota tarde, fora do pódio (2026-11-05, ver
+  // comentário em TrabalhoStatus) — continua apresentando normalmente.
+  "revisao_realizada",
 ];
 
 const LABEL_MODALIDADE: Record<"oral" | "roda_conversa", string> = {

@@ -477,6 +477,32 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **Nota trava ANTES de mandar pra revisão** (pedido
+  explícito do usuário — achado um fluxo injusto: o avaliador podia mandar
+  um trabalho pra revisão sem dar nota nenhuma, o aluno corrigia, e só aí
+  o avaliador dava nota já vendo a versão corrigida — uma segunda chance
+  de melhorar a nota que não era a intenção do edital).
+  1. **"Solicitar revisão" agora exige todos os critérios preenchidos**,
+     igual "Enviar nota" já exigia — a nota preenchida é salva junto com
+     o pedido de revisão (trava ali, "essa é a nota final, não muda
+     depois mesmo que o aluno corrija").
+  2. **Reenvio do aluno fecha sozinho em "Avaliado"** reaproveitando essa
+     nota travada — avaliador não reabre avaliação pra mexer de novo.
+  3. **Os 49 trabalhos que já estavam em "revisao" sem nota** (de antes
+     desse fix) seguem um caminho à parte, marcados `revisaoLegado` por
+     migração única: aluno devolve 1 vez (sem prazo, até o fechamento do
+     evento — exceção também sem prazo pro avaliador avaliar, estendida
+     em `firestore.rules`), avaliador dá a primeira nota, e o trabalho
+     vai pra **"Revisão concluída"** (status novo) — fica na aba Revisão
+     pra sempre, apresenta e entra no ensalamento normalmente, mas **não
+     concorre a pódio/prêmio nem entra no cálculo de empate**
+     (`STATUS_JA_AVALIADO` em `src/app/trabalhos/page.tsx`, de propósito
+     não inclui esse status).
+  **Testado**: migração rodada contra o banco real (49 trabalhos
+  confirmados, 0 com nota já atribuída, 0 sobrando sem a flag depois).
+  `tsc` limpo em todo o projeto (checagem de exaustividade do status
+  novo); `eslint` limpo nos 7 arquivos tocados.
+
 - **2026-11-05** — **Remover usuário de um evento também tira ela da sala
   que modera** (pedido explícito do usuário — moderadora não ia mais
   participar da MAC, ele removeu o evento dela na tela Usuários mas ela

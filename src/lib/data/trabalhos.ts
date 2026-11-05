@@ -33,7 +33,19 @@ export type TrabalhoStatus =
   // Revisão do admin (ver STATUS_POR_ETAPA em src/app/trabalhos/page.tsx) —
   // serve de registro, no final do evento, de quem foi mandado pra revisão
   // e nunca respondeu versus quem respondeu só que atrasado.
-  | "entregue_com_atraso";
+  | "entregue_com_atraso"
+  // Destino EXCLUSIVO dos trabalhos que já estavam em "revisao" sem nota
+  // nenhuma ANTES do fix de 2026-11-05 (ver `revisaoLegado` abaixo) — nunca
+  // usado por trabalhos novos daqui pra frente (esses fecham direto em
+  // "avaliado" quando o aluno reenvia corrigido, porque a nota já foi
+  // travada antes de ir pra revisão — ver salvarEdicao em
+  // aluno/trabalhos/page.tsx). Pedido explícito do usuário: o avaliador
+  // finalmente dá a nota (primeira vez, já vendo a versão corrigida), mas o
+  // trabalho continua na aba Revisão (não "Resultado"), apresenta e entra
+  // no ensalamento normalmente, só NÃO concorre a pódio/prêmio nem entra no
+  // cálculo de empate (ver STATUS_JA_AVALIADO em src/app/trabalhos/page.tsx
+  // — de propósito NÃO inclui esse status).
+  | "revisao_realizada";
 
 // Critérios do edital (item 6.1): cada um recebe uma nota de 1 a 5 (item
 // 6.2); notaAvaliador guarda a SOMA dos cinco (5 a 25), usada pra ranquear
@@ -101,6 +113,13 @@ export type Trabalho = {
   notaAvaliador?: number | null;
   notasCriterios?: NotasCriterios | null;
   comentarioRevisao?: string | null;
+  // Marca os trabalhos que já estavam em "revisao" ANTES do fix de
+  // 2026-11-05 (nota só depois de corrigido, não antes) — gravado uma vez
+  // só, por script, nos ~50 trabalhos afetados da X MAC. Usado só por
+  // onEnviarNota (avaliador/trabalhos/page.tsx) pra mandar esses pra
+  // "revisao_realizada" em vez de "avaliado" quando finalmente ganham
+  // nota. Nunca gravado em trabalhos novos.
+  revisaoLegado?: boolean;
   // Etapa Apresentação (2026-08-26) — moderador designado e sua nota, mesmo
   // padrão de avaliadorUid/notaAvaliador acima.
   moderadorUid?: string | null;
