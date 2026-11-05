@@ -856,6 +856,17 @@ function EnsalamentoAdminView() {
     return mapa;
   }, [sessoes, trabalhosDoEvento]);
   const moderadoresPorSala = evento?.moderadoresPorSala ?? {};
+
+  // Trabalhos da sala que o moderador orienta/coorienta/é autor (conflito
+  // "certo") — 2026-11-05, pedido explícito do usuário: "no ensalamento ele
+  // não pode avaliar trabalhos dele". O sorteio já evitava; isto cobre a
+  // atribuição MANUAL (troca no dia) e a grade gerada de novo depois de já
+  // ter moderador na sala (os trabalhos mudam de sala, o moderador não).
+  function trabalhosEmConflito(moderador: { uid: string; nome: string }, salaId: string): Trabalho[] {
+    return (trabalhosPorSala.get(salaId) ?? []).filter(
+      (t) => conflitoDeInteresse(moderador, t)?.nivel === "certo",
+    );
+  }
   const [modalModeradores, setModalModeradores] = useState(false);
   const [salvandoModeradores, setSalvandoModeradores] = useState(false);
 
@@ -905,6 +916,9 @@ function EnsalamentoAdminView() {
   // gente de verdade presente fisicamente). salaId vazio = "Sem sala".
   async function atribuirModeradorManual(moderador: { uid: string; nome: string }, salaId: string) {
     if (!eventoId) return;
+    // Trava de verdade (a opção já vem desabilitada no select): nunca na sala
+    // de um trabalho que ele orienta/coorienta/é autor.
+    if (salaId && trabalhosEmConflito(moderador, salaId).length > 0) return;
     setSalvandoModeradores(true);
     try {
       const novoMapa = { ...moderadoresPorSala };
@@ -1447,6 +1461,16 @@ function EnsalamentoAdminView() {
                                   {moderadoresPorSala[s.salaId]?.nome ?? (
                                     <span className="text-fatec-muted">Sem moderador</span>
                                   )}
+                                  {moderadoresPorSala[s.salaId] &&
+                                    (() => {
+                                      const emConflito = trabalhosEmConflito(moderadoresPorSala[s.salaId], s.salaId);
+                                      return emConflito.length > 0 ? (
+                                        <span className="mt-1 block text-xs font-semibold text-rose-700">
+                                          ⚠ Orienta/coorienta trabalho desta sala — troque o moderador:{" "}
+                                          {emConflito.map((t) => t.titulo).join("; ")}
+                                        </span>
+                                      ) : null;
+                                    })()}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
                                   {formatarHorario(s.horarioInicio.toDate())} –{" "}
@@ -1655,11 +1679,15 @@ function EnsalamentoAdminView() {
                     className="flex-none rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
                   >
                     <option value="">Sem sala</option>
-                    {salas.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.nome}
-                      </option>
-                    ))}
+                    {salas.map((s) => {
+                      const conflito = trabalhosEmConflito({ uid: m.uid, nome: m.nome }, s.id).length > 0;
+                      return (
+                        <option key={s.id} value={s.id} disabled={conflito}>
+                          {s.nome}
+                          {conflito ? " (orienta trabalho desta sala)" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               );
