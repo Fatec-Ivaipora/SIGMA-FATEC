@@ -477,6 +477,27 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **Apresentação (moderador): escala 1-3 e modal mais
+  enxuto** (pedido explícito do usuário).
+  1. **Escala de nota só da Apresentação virou 1 a 3** ("Pontuação: cada
+     critério será avaliado de 1 a 3 pontos... 1 – Regular, 2 – Bom, 3 –
+     Excelente") — soma por trabalho passa de 7-35 pra 7-21. Avaliação do
+     resumo (avaliador) continua 1 a 5, sem mudança — cada painel tem sua
+     própria escala agora (`NOTAS_AVALIACAO`/`NOTAS_APRESENTACAO`).
+  2. **Modal do moderador sem a descrição de cada critério** ("está muito
+     carregado com muita informação") — só o nome do critério; a legenda
+     dos rótulos (Regular/Bom/Excelente) aparece 1 vez só, no topo, em vez
+     de repetida nos 7 critérios. Avaliação mantém a descrição.
+  3. **Sem resumo nem palavras-chave pro moderador** ("não precisa
+     mostrar o resumo, só o título e o nome dos autores") — mostra
+     autor(es) em vez disso (Apresentação não é mais às cegas feito a
+     Avaliação). Avaliador continua sem ver nome de aluno, com resumo
+     completo.
+  Depois de testar o layout bem mais largo/centralizado, o usuário pediu
+  pra voltar exatamente ao padrão visual da Avaliação (mesmo tamanho de
+  modal, mesmo tamanho de botão) — só a descrição/resumo/autor mudam
+  entre os dois painéis, nada de layout.
+
 - **2026-11-05** — **Usuários: legenda de total por categoria + avaliador/
   moderador combinados aparecem nos dois filtros** (pedido explícito do
   usuário — "não quero ficar contando, coloque uma legenda" / "usuários

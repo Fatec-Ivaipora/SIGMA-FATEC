@@ -60,8 +60,10 @@ export type NotasCriterios = {
 
 // Critérios da etapa de Apresentação, pontuados pelo moderador — item 6.4 do
 // edital X MAC (conferido 2026-09-08 contra o PDF real, substituindo os 5
-// placeholder que existiam antes). 7 critérios, 1 a 5 cada, soma 7-35 — ver
-// CRITERIOS_APRESENTACAO em src/app/avaliador/trabalhos/page.tsx.
+// placeholder que existiam antes). 7 critérios, 1 a 3 cada (2026-11-05,
+// pedido explícito do usuário — "1 – Regular, 2 – Bom, 3 – Excelente"), soma
+// 7-21 — ver CRITERIOS_APRESENTACAO/NOTAS_APRESENTACAO em
+// src/app/avaliador/trabalhos/page.tsx.
 export type NotasCriteriosApresentacao = {
   pontualidade: number;
   numeroApresentadores: number;

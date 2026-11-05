@@ -23,7 +23,21 @@ import { notificarStatusTrabalho } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
-const NOTAS = [1, 2, 3, 4, 5];
+
+// Escala de nota por critério — cada painel (Avaliação/Apresentação) tem a
+// sua, não necessariamente igual (2026-11-05, pedido explícito do usuário:
+// Apresentação virou 1 a 3 com rótulo, Avaliação continua 1 a 5 sem rótulo).
+type NotaOpcao = { valor: number; label?: string };
+const NOTAS_AVALIACAO: NotaOpcao[] = [1, 2, 3, 4, 5].map((valor) => ({ valor }));
+// "Pontuação: cada critério será avaliado de 1 a 3 pontos, conforme os
+// níveis: 1 – Regular, 2 – Bom, 3 – Excelente" (texto exato pedido pelo
+// usuário) — soma por trabalho vai de 7 a 21 agora (7 critérios), não mais
+// 7 a 35.
+const NOTAS_APRESENTACAO: NotaOpcao[] = [
+  { valor: 1, label: "Regular" },
+  { valor: 2, label: "Bom" },
+  { valor: 3, label: "Excelente" },
+];
 
 // Liga/desliga o botão "Rejeitar trabalho" (2026-11-03, pedido explícito do
 // usuário — "oculte o botão... por hora não vamos usar nesse evento mas
@@ -76,8 +90,10 @@ const CRITERIOS_AVALIACAO: CriterioDef[] = [
 
 // Critérios da etapa de Apresentação (item 6.4 do edital X MAC, conferido
 // 2026-09-08 contra o PDF real — substituem os 5 placeholder de antes, que
-// nunca bateram com o edital de verdade). 7 critérios, 1 a 5 cada, soma
-// 7-35 — ver NotasCriteriosApresentacao. `descricao` ver comentário acima.
+// nunca bateram com o edital de verdade). 7 critérios, 1 a 3 cada (2026-11-05,
+// pedido explícito do usuário — "1 – Regular, 2 – Bom, 3 – Excelente"), soma
+// 7-21 — ver NotasCriteriosApresentacao e NOTAS_APRESENTACAO acima.
+// `descricao` ver comentário acima.
 const CRITERIOS_APRESENTACAO: CriterioDef[] = [
   {
     key: "pontualidade",
@@ -120,14 +136,19 @@ const CRITERIOS_APRESENTACAO: CriterioDef[] = [
   },
 ];
 
-/** Lista + formulário de nota (5 critérios, 1 a 5 cada) reaproveitado tanto
- * pela aba Avaliação (avaliador) quanto pela aba Apresentação (moderador,
- * 2026-08-26) — só muda a lista de trabalhos, os critérios e o que
- * acontece ao enviar/pedir revisão. */
+/** Lista + formulário de nota reaproveitado tanto pela aba Avaliação
+ * (avaliador) quanto pela aba Apresentação (moderador, 2026-08-26) — muda a
+ * lista de trabalhos, os critérios, a ESCALA de nota (`escalaNotas`,
+ * 2026-11-05 — cada painel pode ter a sua, ver NOTAS_AVALIACAO/
+ * NOTAS_APRESENTACAO) e o que acontece ao enviar/pedir revisão. */
 function PainelTrabalhos({
   trabalhos,
   eventos,
   criterios,
+  escalaNotas,
+  mostrarDescricaoCriterio = true,
+  mostrarResumo = true,
+  mostrarAutores = false,
   statusPendente,
   mensagemVazia,
   permiteRevisao,
@@ -140,6 +161,20 @@ function PainelTrabalhos({
   trabalhos: Trabalho[];
   eventos: Evento[];
   criterios: CriterioDef[];
+  escalaNotas: NotaOpcao[];
+  // Esconde a descrição de cada critério (2026-11-05, pedido explícito do
+  // usuário — só na Apresentação/moderador, "muito carregado"; a Avaliação
+  // do resumo mantém, as descrições lá são mais substanciais). Default true
+  // (mostra), igual sempre foi.
+  mostrarDescricaoCriterio?: boolean;
+  // Apresentação (moderador, 2026-11-05, pedido explícito do usuário — "não
+  // precisa mostrar o resumo, só o título e o nome dos autores") não é mais
+  // às cegas feito a Avaliação (RF-14): o moderador já sabe quem apresenta,
+  // não precisa do resumo completo pra pontuar os 7 critérios da
+  // apresentação. Default mostrarResumo=true/mostrarAutores=false mantém o
+  // comportamento de sempre na Avaliação.
+  mostrarResumo?: boolean;
+  mostrarAutores?: boolean;
   statusPendente: TrabalhoStatus;
   mensagemVazia: string;
   permiteRevisao: boolean;
@@ -177,6 +212,8 @@ function PainelTrabalhos({
 
   const somaNotas = criterios.reduce((acc, c) => acc + (notas[c.key] ?? 0), 0);
   const notasCompletas = criterios.every((c) => notas[c.key]);
+  const notaMinima = Math.min(...escalaNotas.map((n) => n.valor));
+  const notaMaxima = Math.max(...escalaNotas.map((n) => n.valor));
 
   // Busca só por título (2026-11-03, pedido explícito do usuário — "vamos
   // remover o nome dos alunos" da tela do avaliador, avaliação não deve
@@ -375,15 +412,23 @@ function PainelTrabalhos({
               <p className="mt-1 text-sm text-fatec-muted">
                 {eventoDoTrabalhoAvaliando?.nome ?? trabalhoAvaliando.eventoId}
               </p>
+              {mostrarAutores && (
+                <p className="mt-1 text-sm text-fatec-ink">
+                  <span className="font-medium text-fatec-navy-900">Autor(es): </span>
+                  {[trabalhoAvaliando.alunoNome, ...(trabalhoAvaliando.participantesNomes ?? [])].join(
+                    ", ",
+                  )}
+                </p>
+              )}
             </div>
 
-            {trabalhoAvaliando.palavrasChave?.trim() && (
+            {mostrarResumo && trabalhoAvaliando.palavrasChave?.trim() && (
               <p className="text-sm text-fatec-ink">
                 <span className="font-medium text-fatec-navy-900">Palavras-chave: </span>
                 {trabalhoAvaliando.palavrasChave}
               </p>
             )}
-            {trabalhoAvaliando.resumo && (
+            {mostrarResumo && trabalhoAvaliando.resumo && (
               <div className="text-sm leading-relaxed text-fatec-ink">
                 {renderResumoFormatado(trabalhoAvaliando.resumo)}
               </div>
@@ -392,9 +437,23 @@ function PainelTrabalhos({
             {modoAcao === "notas" ? (
               <>
                 <div className="flex flex-col gap-3 border-t border-fatec-line pt-5">
-                  <span className="text-sm font-medium text-fatec-navy-900">
-                    Critérios (1 a 5 cada — a nota final é a soma)
-                  </span>
+                  <div>
+                    <span className="text-sm font-medium text-fatec-navy-900">
+                      Critérios ({notaMinima} a {notaMaxima} cada — a nota final é a soma)
+                    </span>
+                    {/* Legenda dos rótulos 1 vez só (2026-11-05, pedido
+                      * explícito do usuário) — cada botão mostra só o
+                      * número, igual o padrão da Avaliação. */}
+                    {escalaNotas.some((n) => n.label) && (
+                      <p className="mt-0.5 text-xs text-fatec-muted">
+                        {escalaNotas.map((n) => `${n.valor} ${n.label}`).join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                  {/* Padrão idêntico ao da Avaliação (2026-11-05, pedido
+                    * explícito do usuário — "volte ao padrão do avaliador
+                    * sem a descrição só") — única diferença é
+                    * mostrarDescricaoCriterio, escondido na Apresentação. */}
                   {criterios.map((c) => (
                     <div
                       key={c.key}
@@ -402,21 +461,24 @@ function PainelTrabalhos({
                     >
                       <div className="min-w-0 sm:max-w-sm">
                         <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
-                        <p className="text-xs text-fatec-muted">{c.descricao}</p>
+                        {mostrarDescricaoCriterio && (
+                          <p className="text-xs text-fatec-muted">{c.descricao}</p>
+                        )}
                       </div>
                       <div className="flex flex-none gap-2">
-                        {NOTAS.map((n) => (
+                        {escalaNotas.map((n) => (
                           <button
-                            key={n}
+                            key={n.valor}
                             type="button"
-                            onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n }))}
+                            onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n.valor }))}
+                            title={n.label}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors ${
-                              notas[c.key] === n
+                              notas[c.key] === n.valor
                                 ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
                                 : "border-fatec-line text-fatec-navy-900 hover:border-fatec-orange-500/60"
                             }`}
                           >
-                            {n}
+                            {n.valor}
                           </button>
                         ))}
                       </div>
@@ -425,7 +487,7 @@ function PainelTrabalhos({
                   <p className="text-sm text-fatec-muted">
                     Total:{" "}
                     <span className="font-semibold text-fatec-navy-900">{somaNotas}</span> /{" "}
-                    {criterios.length * 5}
+                    {criterios.length * notaMaxima}
                   </p>
                 </div>
 
@@ -480,7 +542,7 @@ function PainelTrabalhos({
                   <p className="border-t border-fatec-line pt-5 text-sm text-fatec-muted">
                     Nota já registrada:{" "}
                     <span className="font-semibold text-fatec-navy-900">
-                      {somaNotas}/{criterios.length * 5}
+                      {somaNotas}/{criterios.length * notaMaxima}
                     </span>{" "}
                     — essa é a nota final, não muda depois mesmo que o aluno corrija.
                   </p>
@@ -637,6 +699,7 @@ export default function AvaliadorTrabalhosPage() {
               trabalhos={trabalhosAvaliacao}
               eventos={eventos}
               criterios={CRITERIOS_AVALIACAO}
+              escalaNotas={NOTAS_AVALIACAO}
               statusPendente="aguardando_avaliacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao
@@ -700,6 +763,10 @@ export default function AvaliadorTrabalhosPage() {
               trabalhos={trabalhosApresentacao}
               eventos={eventos}
               criterios={CRITERIOS_APRESENTACAO}
+              escalaNotas={NOTAS_APRESENTACAO}
+              mostrarDescricaoCriterio={false}
+              mostrarResumo={false}
+              mostrarAutores
               statusPendente="aguardando_apresentacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao={false}
