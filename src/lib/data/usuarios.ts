@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   collection,
   doc,
+  getCountFromServer,
   getDocs,
   limit,
   onSnapshot,
@@ -141,6 +142,45 @@ export function useUsuariosPaginado(papel: Papel | "todos") {
   return { usuarios, setUsuarios, carregando, pagina, setPagina, temProximaPagina, erro };
 }
 
+/** Total de usuários na categoria selecionada (2026-11-05, pedido explícito
+ * do usuário — "não quero ficar contando, coloque uma legenda pra eu poder
+ * ver o total"). `getCountFromServer` é uma agregação (1 leitura cobrada,
+ * não lê os documentos) — só usado aqui pros papéis SIMPLES (todos/aluno
+ * sem refinar/organizacao/admin), que são os únicos que ainda passam por
+ * useUsuariosPaginado; os combináveis (avaliador/orientador/moderador) e o
+ * aluno refinado por curso/vínculo já têm a lista inteira carregada em
+ * memória nessas situações (ver useUsuariosPorPapelCombinavel/
+ * useAlunosCompletos) — a tela usa `.length` direto nesses casos, mais
+ * simples e sem essa leitura extra. */
+export function useContagemUsuarios(papel: Papel | "todos", ativo: boolean) {
+  const [total, setTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!ativo) return;
+    let cancelado = false;
+    setTotal(null);
+
+    const q =
+      papel === "todos"
+        ? collection(db, "usuarios")
+        : query(collection(db, "usuarios"), where("papel", "==", papel));
+
+    getCountFromServer(q)
+      .then((snap) => {
+        if (!cancelado) setTotal(snap.data().count);
+      })
+      .catch(() => {
+        if (!cancelado) setTotal(null);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [papel, ativo]);
+
+  return total;
+}
+
 /** Lista TODOS os alunos de uma vez, sem paginação (2026-10-09, achado real
  * do usuário: filtrar "Aluno" por curso/vínculo em cima da paginação de 20
  * em 20 mostrava 0 pra quase todo curso — o filtro só olhava os 20 já
@@ -186,6 +226,57 @@ export function useAlunosCompletos(ativo: boolean) {
   }, [ativo]);
 
   return { alunos, carregando, erro };
+}
+
+// Papéis que se combinam num usuário só (ver atualizarPapeisAvaliacaoUsuario
+// abaixo) — avaliador/orientador/moderador, nunca aluno/organizacao/admin.
+export const PAPEIS_COMBINAVEIS: Papel[] = ["avaliador", "orientador", "moderador"];
+
+/** Avaliador/orientador/moderador combinados (2026-11-05, achado real do
+ * usuário — "usuários que são avaliadores e moderadores aparecem só nos
+ * avaliadores"): useUsuariosPaginado filtra por `papel` direto no
+ * Firestore (where("papel","==",...)), então quem tem o papel SECUNDÁRIO
+ * em `papeisAvaliacao` (não o primário) nunca aparecia filtrando pela
+ * categoria secundária. Lê a coleção inteira (sem where nenhum, igual
+ * useUsuarios() — zero risco de índice faltando) e filtra em memória por
+ * `papel === alvo || papeisAvaliacao?.includes(alvo)`. Só ativa nesses 3
+ * papéis (população pequena, bem diferente de "Aluno" — motivo original da
+ * paginação, ver useUsuariosPaginado) e só quando `ativo`. */
+export function useUsuariosPorPapelCombinavel(papel: PapelAvaliacao, ativo: boolean) {
+  const [usuarios, setUsuarios] = useState<UsuarioRegistro[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ativo) return;
+    let cancelado = false;
+    setCarregando(true);
+
+    getDocs(collection(db, "usuarios"))
+      .then((snap) => {
+        if (cancelado) return;
+        const todos = snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as UsuarioRegistro);
+        const filtrados = todos
+          .filter((u) => u.papel === papel || u.papeisAvaliacao?.includes(papel))
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+        setUsuarios(filtrados);
+        setErro(null);
+      })
+      .catch(() => {
+        if (cancelado) return;
+        setUsuarios([]);
+        setErro("Não foi possível carregar os usuários agora.");
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [ativo, papel]);
+
+  return { usuarios, setUsuarios, carregando, erro };
 }
 
 /** Busca por nome ou e-mail (2026-10-05) — dispara direto no Firestore em

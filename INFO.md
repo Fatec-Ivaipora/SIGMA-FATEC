@@ -477,6 +477,43 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **Usuários: legenda de total por categoria + avaliador/
+  moderador combinados aparecem nos dois filtros** (pedido explícito do
+  usuário — "não quero ficar contando, coloque uma legenda" / "usuários
+  que são avaliadores e moderadores aparecem só nos avaliadores").
+  1. **Total da categoria selecionada** aparece acima da lista (ex.: "37
+     usuários em Moderador"). Pros papéis simples (Todos/Aluno sem
+     refinar/Organização/Admin), usa `getCountFromServer` (agregação, 1
+     leitura, não lê os documentos); pra Avaliador/Orientador/Moderador e
+     Aluno refinado por curso/vínculo, usa `.length` da lista já
+     carregada inteira (ver item 2).
+  2. **Bug real**: `useUsuariosPaginado` filtra `where("papel","==",...)`
+     direto no Firestore — só olha o papel PRIMÁRIO. Quem tem
+     avaliador/orientador/moderador combinados (`papeisAvaliacao`) só
+     aparecia filtrando pela categoria do papel primário (ex.: Fábio é
+     avaliador com moderador combinado — só aparecia em "Avaliador").
+     Novo `useUsuariosPorPapelCombinavel` (`src/lib/data/usuarios.ts`) lê
+     a coleção inteira sem `where` (zero risco de índice faltando, igual
+     `useUsuarios()`) e filtra em memória por
+     `papel === alvo || papeisAvaliacao?.includes(alvo)`, só ativo nesses
+     3 papéis (população pequena, não é o caso do Aluno que motivou a
+     paginação original).
+  3. **Filtro por evento** dentro de Avaliador/Orientador/Moderador
+     (pedido explícito — "quero poder selecionar moderadores e selecionar
+     os eventos ativos pra ver quem é moderador só naquele evento") — novo
+     select com os eventos não encerrados, filtra por
+     `atribuicoesEventos`.
+  4. **Legenda redesenhada** (pedido explícito — "ficou muito feio ali
+     apagadinho, coloque ele na direita azul bonito") — virou um badge
+     azul (`fatec-sky`) alinhado à direita, ao lado do filtro de evento,
+     em vez de texto cinza apagado embaixo.
+  **Testado**: contra o banco real — "Moderador" tinha 32 pelo filtro
+  antigo, 37 pela lógica nova (5 pessoas que são avaliador+moderador
+  ficavam escondidas, incluindo o Fábio que o usuário reportou). `tsc`
+  limpo; `eslint` só com o padrão `set-state-in-effect` já aceito nesse
+  arquivo (4 ocorrências pré-existentes, meus 2 hooks novos seguem o
+  mesmo estilo).
+
 - **2026-11-05** — **Nota trava ANTES de mandar pra revisão** (pedido
   explícito do usuário — achado um fluxo injusto: o avaliador podia mandar
   um trabalho pra revisão sem dar nota nenhuma, o aluno corrigia, e só aí

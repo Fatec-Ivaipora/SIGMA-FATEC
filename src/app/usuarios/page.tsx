@@ -28,6 +28,9 @@ import {
   useUsuariosPaginado,
   useBuscaUsuarios,
   useAlunosCompletos,
+  useUsuariosPorPapelCombinavel,
+  useContagemUsuarios,
+  PAPEIS_COMBINAVEIS,
   atualizarAtribuicoesUsuario,
   atualizarPapeisAvaliacaoUsuario,
   type UsuarioRegistro,
@@ -115,6 +118,11 @@ export default function UsuariosPage() {
   // dos dois campos.
   const [filtroVinculo, setFiltroVinculo] = useState<"todos" | "fatec" | "externo">("todos");
   const [filtroCurso, setFiltroCurso] = useState("");
+  // Filtro por evento, só dentro de Avaliador/Orientador/Moderador
+  // (2026-11-05, pedido explícito do usuário — "quero poder selecionar
+  // moderadores e selecionar os eventos ativos pra ver quem é moderador só
+  // naquele evento"). "" = todos os eventos.
+  const [filtroEvento, setFiltroEvento] = useState("");
 
   const souAdmin = perfil?.papel === "admin";
   // Organização ganha permissão de criar avaliador/orientador/moderador
@@ -142,14 +150,24 @@ export default function UsuariosPage() {
   const temBusca = busca.trim().length > 0;
   const refinandoAluno =
     !temBusca && filtro === "aluno" && (filtroVinculo !== "todos" || !!filtroCurso);
+  // Avaliador/orientador/moderador se combinam num usuário só
+  // (papeisAvaliacao) — a paginação normal filtra só pelo papel PRIMÁRIO no
+  // Firestore, então quem tem um desses como papel secundário nunca
+  // aparecia filtrando pela categoria secundária (2026-11-05, achado real
+  // do usuário). Troca pra useUsuariosPorPapelCombinavel nesses 3 papéis —
+  // ver comentário lá.
+  const refinandoCombinavel = !temBusca && PAPEIS_COMBINAVEIS.includes(filtro as Papel);
   const paginado = useUsuariosPaginado(filtro);
   const busca1 = useBuscaUsuarios(busca);
   const alunosCompletos = useAlunosCompletos(refinandoAluno);
+  const combinaveis = useUsuariosPorPapelCombinavel(filtro as PapelAvaliacao, refinandoCombinavel);
   const usuarios = temBusca
     ? busca1.resultado
     : refinandoAluno
       ? alunosCompletos.alunos
-      : paginado.usuarios;
+      : refinandoCombinavel
+        ? combinaveis.usuarios
+        : paginado.usuarios;
 
   // Reflete uma alteração (papéis, hoje) direto na lista já carregada na tela
   // (2026-10-07 — achado real do usuário: a gravação no Firestore funcionava,
@@ -163,13 +181,22 @@ export default function UsuariosPage() {
       lista.map((u) => (u.uid === uid ? { ...u, ...patch } : u));
     paginado.setUsuarios(aplicar);
     busca1.setResultado(aplicar);
+    combinaveis.setUsuarios(aplicar);
   }
   const carregandoLista = temBusca
     ? busca1.carregando
     : refinandoAluno
       ? alunosCompletos.carregando
-      : paginado.carregando;
-  const erroLista = temBusca ? busca1.erro : refinandoAluno ? alunosCompletos.erro : paginado.erro;
+      : refinandoCombinavel
+        ? combinaveis.carregando
+        : paginado.carregando;
+  const erroLista = temBusca
+    ? busca1.erro
+    : refinandoAluno
+      ? alunosCompletos.erro
+      : refinandoCombinavel
+        ? combinaveis.erro
+        : paginado.erro;
 
   const usuariosFiltrados = useMemo(() => {
     return usuarios.filter((u) => {
@@ -180,9 +207,30 @@ export default function UsuariosPage() {
         (filtroVinculo === "externo" ? u.vinculoFatec === false : u.vinculoFatec !== false);
       const bateCurso =
         filtro !== "aluno" || !filtroCurso || u.curso === filtroCurso;
-      return bateFiltro && bateVinculo && bateCurso;
+      const bateEvento =
+        !PAPEIS_COMBINAVEIS.includes(filtro as Papel) ||
+        !filtroEvento ||
+        (u.atribuicoesEventos ?? []).some((a) => a.eventoId === filtroEvento);
+      return bateFiltro && bateVinculo && bateCurso && bateEvento;
     });
-  }, [usuarios, temBusca, filtro, filtroVinculo, filtroCurso]);
+  }, [usuarios, temBusca, filtro, filtroVinculo, filtroCurso, filtroEvento]);
+
+  // Total na categoria selecionada (2026-11-05, pedido explícito do usuário
+  // — "não quero ficar contando, coloque uma legenda"). refinandoAluno e
+  // refinandoCombinavel já carregam a lista inteira filtrada em memória
+  // (`.length` direto); os demais (paginados, 20 por vez) usam uma
+  // agregação separada (useContagemUsuarios) pra não precisar ler tudo só
+  // pra contar. Durante busca não mostra total — a busca não é "a
+  // categoria", é um resultado à parte.
+  const contagemServidor = useContagemUsuarios(
+    filtro,
+    !temBusca && !refinandoAluno && !refinandoCombinavel,
+  );
+  const totalCategoria = temBusca
+    ? null
+    : refinandoAluno || refinandoCombinavel
+      ? usuariosFiltrados.length
+      : contagemServidor;
 
   function areasDoEvento(eventoId: string): string[] {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
@@ -495,6 +543,37 @@ export default function UsuariosPage() {
             </div>
           </div>
 
+          {!temBusca && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              {/* Filtro por evento, só dentro de Avaliador/Orientador/
+                * Moderador (2026-11-05, pedido explícito do usuário — "quero
+                * poder selecionar moderadores e selecionar os eventos ativos
+                * pra ver quem é moderador só naquele evento"). */}
+              {PAPEIS_COMBINAVEIS.includes(filtro as Papel) ? (
+                <select
+                  value={filtroEvento}
+                  onChange={(e) => setFiltroEvento(e.target.value)}
+                  className="rounded-xl border border-fatec-line bg-white px-4 py-2 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+                >
+                  <option value="">Todos os eventos ativos</option>
+                  {eventosParaNovaAtribuicao.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.nome}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span />
+              )}
+
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-sky-100 px-3.5 py-1.5 text-sm font-semibold text-fatec-sky-700">
+                {totalCategoria === null
+                  ? "Contando..."
+                  : `${totalCategoria} usuário${totalCategoria === 1 ? "" : "s"}`}
+              </span>
+            </div>
+          )}
+
           {filtro === "aluno" && (
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
@@ -627,9 +706,10 @@ export default function UsuariosPage() {
           {/* Paginação (2026-10-05) — só faz sentido na listagem normal; a
               busca já devolve um resultado pronto (até 20 por nome + 20 por
               e-mail), sem próxima/anterior; curso/vínculo filtrados
-              (2026-10-09) também mostram a lista completa de uma vez, ver
-              refinandoAluno. */}
-          {!temBusca && !refinandoAluno && (
+              (2026-10-09) e avaliador/orientador/moderador (2026-11-05,
+              refinandoCombinavel) também mostram a lista completa de uma
+              vez. */}
+          {!temBusca && !refinandoAluno && !refinandoCombinavel && (
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-fatec-muted">
                 Página {paginado.pagina + 1}
