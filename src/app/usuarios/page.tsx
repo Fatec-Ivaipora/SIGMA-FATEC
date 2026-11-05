@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Search,
   UserPlus,
+  Users,
   KeyRound,
   Pencil,
   IdCard,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
+import { CadastroLoteModal } from "@/components/CadastroLoteModal";
 import { PapelBadge } from "@/components/PapelBadge";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
@@ -70,6 +72,8 @@ export default function UsuariosPage() {
   const [filtro, setFiltro] = useState<Papel | "todos">("todos");
 
   const [modalCriar, setModalCriar] = useState(false);
+  // Cadastro em lote (2026-11-05) — só Admin, ver CadastroLoteModal.
+  const [modalLote, setModalLote] = useState(false);
   const [criarNome, setCriarNome] = useState("");
   const [criarEmail, setCriarEmail] = useState("");
   const [criarPapel, setCriarPapel] = useState<Papel>("aluno");
@@ -426,6 +430,17 @@ export default function UsuariosPage() {
             </p>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+          {souAdmin && (
+            <button
+              type="button"
+              onClick={() => setModalLote(true)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+            >
+              <Users className="h-4 w-4" strokeWidth={1.75} />
+              Cadastro em lote
+            </button>
+          )}
           {possoCriarUsuario && (
             <button
               type="button"
@@ -441,6 +456,7 @@ export default function UsuariosPage() {
               Criar usuário
             </button>
           )}
+          </div>
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
@@ -638,6 +654,15 @@ export default function UsuariosPage() {
       </div>
 
       {/* Criar usuário */}
+      {souAdmin && (
+        <CadastroLoteModal
+          open={modalLote}
+          onClose={() => setModalLote(false)}
+          user={user}
+          eventos={eventosParaNovaAtribuicao.map((e) => ({ id: e.id, nome: e.nome }))}
+        />
+      )}
+
       <Modal open={modalCriar} onClose={fecharCriar} title="Criar usuário">
         {senhaGerada ? (
           <div className="flex flex-col gap-3">
