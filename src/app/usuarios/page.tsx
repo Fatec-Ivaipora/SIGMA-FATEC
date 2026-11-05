@@ -23,7 +23,7 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import type { AtribuicaoEvento, Papel, PapelAvaliacao } from "@/lib/auth";
 import { PAPEIS_AVALIACAO } from "@/lib/auth";
 import { PAPEL_META } from "@/components/PapelBadge";
-import { useEventos } from "@/lib/data/eventos";
+import { useEventos, removerModeradorDoEvento } from "@/lib/data/eventos";
 import {
   useUsuariosPaginado,
   useBuscaUsuarios,
@@ -398,12 +398,18 @@ export default function UsuariosPage() {
     setNovasAreas([]);
   }
 
+  // 2026-11-05, achado real do usuário — remover a atribuição de alguém a
+  // um evento aqui não tirava ela de `evento.moderadoresPorSala` (campo
+  // separado, só usado pelo ensalamento), então continuava aparecendo como
+  // moderadora da sala mesmo depois de removida do evento. Cascata também
+  // pro evento, não só pro usuário.
   function removerAtribuicao(eventoId: string) {
     if (!editando) return;
     const novaLista = (editando.atribuicoesEventos ?? []).filter(
       (a) => a.eventoId !== eventoId,
     );
     atualizarAtribuicoesUsuario(editando.uid, novaLista);
+    removerModeradorDoEvento(eventoId, editando.uid).catch(() => {});
     setEditando({ ...editando, atribuicoesEventos: novaLista });
   }
 

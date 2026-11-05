@@ -477,6 +477,18 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **Remover usuário de um evento também tira ela da sala
+  que modera** (pedido explícito do usuário — moderadora não ia mais
+  participar da MAC, ele removeu o evento dela na tela Usuários mas ela
+  continuou aparecendo como moderadora da sala no ensalamento). Causa:
+  `evento.moderadoresPorSala` é um campo separado, só no evento (pra
+  sobreviver a "Gerar grade" de novo — ver comentário no tipo `Evento`),
+  e `atualizarAtribuicoesUsuario` nunca tocava nele. Agora
+  `removerAtribuicao` (Usuários → lápis → X no evento) também chama o
+  novo `removerModeradorDoEvento` (`src/lib/data/eventos.ts`), que tira o
+  uid de `moderadoresPorSala` se ele estiver em alguma sala — sem-op
+  senão. `tsc`/`eslint` limpos.
+
 - **2026-11-05** — **Algoritmo da grade corrigido (best-fit) + UI do
   ensalamento** (pedido explícito do usuário, achado real gerando a grade
   de verdade da X MAC — "tem sala com 1 apresentação, outra com 3, 2, 5...

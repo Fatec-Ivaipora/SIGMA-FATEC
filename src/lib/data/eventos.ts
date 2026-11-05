@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, documentId, onSnapshot, query, where, type Timestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
+  type Timestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { PerfilUsuario } from "@/lib/auth";
 import { useMinhasInscricoes } from "@/lib/data/inscricoes";
@@ -320,4 +330,29 @@ export function useEventosPublicos() {
   }, []);
 
   return { eventos, carregando };
+}
+
+/** Tira uma pessoa de `moderadoresPorSala` de um evento, se ela estiver lá
+ * (2026-11-05, achado real do usuário — "removi ela do evento da MAC na
+ * tela Usuários mas ela continua como moderadora"). `moderadoresPorSala` é
+ * um campo separado, só no evento (ver comentário no tipo acima), que
+ * `atualizarAtribuicoesUsuario` nunca tocava — remover a atribuição no
+ * usuário não tirava ela da sala no ensalamento. Sem-op se ela não estiver
+ * em nenhuma sala desse evento. */
+export async function removerModeradorDoEvento(eventoId: string, uid: string) {
+  const ref = doc(db, "eventos", eventoId);
+  const snap = await getDoc(ref);
+  const moderadoresPorSala = (snap.data()?.moderadoresPorSala ?? {}) as Record<
+    string,
+    { uid: string; nome: string }
+  >;
+  const novoMapa = { ...moderadoresPorSala };
+  let mudou = false;
+  for (const salaId of Object.keys(novoMapa)) {
+    if (novoMapa[salaId].uid === uid) {
+      delete novoMapa[salaId];
+      mudou = true;
+    }
+  }
+  if (mudou) await updateDoc(ref, { moderadoresPorSala: novoMapa });
 }
