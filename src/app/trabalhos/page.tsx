@@ -1375,19 +1375,28 @@ export default function TrabalhosAdminPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {podeAceitarSemEmpate ? (
+              {/* "Ações do resultado" sempre aparece na aba Resultado, mesmo
+                * sem evento específico selecionado — antes virava o botão
+                * antigo "Enviar para desempate" sozinho nesse caso, sem
+                * acesso a "Liberar trabalhos para moderadores" nenhuma, e o
+                * usuário achou que o botão novo "não existia" (2026-11-05,
+                * achado real). Agora fica cinza/desabilitado com um aviso,
+                * mesmo padrão sempre, nunca troca de botão. */}
+              {etapa === "resultado" ? (
                 <div className="relative flex-none">
                   <button
                     type="button"
-                    onClick={() => setMenuResultadoAberto((v) => !v)}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600"
+                    onClick={() => podeAceitarSemEmpate && setMenuResultadoAberto((v) => !v)}
+                    disabled={!podeAceitarSemEmpate}
+                    title={!podeAceitarSemEmpate ? "Selecione um evento específico pra usar essas ações" : undefined}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
                   >
                     <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
                     Ações do resultado
                     <ChevronDown className="h-4 w-4 flex-none" strokeWidth={1.75} />
                   </button>
 
-                  {menuResultadoAberto && (
+                  {menuResultadoAberto && podeAceitarSemEmpate && (
                     <>
                       <div
                         className="fixed inset-0 z-10"

@@ -81,7 +81,11 @@ export async function GET(request: Request) {
           .toLocaleUpperCase("pt-BR");
         return [
           d.id,
-          { titulo: tituloExibicao(t.titulo as string), autores, area: t.areaTematica as string },
+          {
+            titulo: tituloExibicao(t.titulo as string),
+            autores,
+            area: ((t.areaTematica as string) ?? "").toLocaleUpperCase("pt-BR"),
+          },
         ];
       }),
     );
@@ -126,7 +130,11 @@ export async function GET(request: Request) {
           });
         });
         return {
-          salaNome: nomeSala.get(salaId) ?? salaId,
+          // Caixa alta também no nome da sala (2026-11-05, achado real do
+          // usuário — "tem nomes em minúsculo ainda", salas com nome
+          // próprio tipo "Morfo Pétalas"/"Semiologia" tinham ficado de
+          // fora da passada anterior, que só cobriu autor/moderador).
+          salaNome: (nomeSala.get(salaId) ?? salaId).toLocaleUpperCase("pt-BR"),
           moderadorNome: moderadoresPorSala[salaId]?.nome,
           modalidade: primeira.modalidade as "oral" | "roda_conversa",
           horarioInicio: formatarHorario(primeira.horarioInicio.toDate()),
@@ -145,13 +153,23 @@ export async function GET(request: Request) {
       minute: "2-digit",
     });
     const buffer = await renderToBuffer(
-      GradeEnsalamentoPDF({ eventoNome: evento.nome as string, geradoEm, salas }),
+      GradeEnsalamentoPDF({
+        eventoNome: (evento.nome as string).toLocaleUpperCase("pt-BR"),
+        geradoEm,
+        salas,
+      }),
     );
     const nomeArquivo = `ensalamento-${slug(evento.nome as string)}.pdf`;
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${nomeArquivo}"`,
+        // Sem cache (2026-11-05, achado real do usuário — "tem nomes em
+        // minúsculo ainda", mesmo depois do fix já ter subido; suspeita de
+        // PDF antigo guardado em cache do navegador com o mesmo nome de
+        // arquivo). Esse PDF é sempre gerado na hora, nunca deve reaproveitar
+        // uma resposta anterior.
+        "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
   } catch (e) {

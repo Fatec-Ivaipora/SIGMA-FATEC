@@ -477,6 +477,22 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **"Ações do resultado" sempre visível, nunca troca de
+  botão** (achado real do usuário — "esse botão 'Liberar trabalhos para
+  moderadores' não existe não achei ele"). Causa: o botão só aparecia
+  quando um evento específico estava selecionado (não "Todos os
+  eventos"); sem isso, a tela caía de volta no botão antigo sozinho
+  "Enviar para desempate" — sem acesso nenhum ao automático. Pedido
+  explícito do usuário ("troque, se tiver selecionado todos os eventos o
+  botão fica cinza com o nome 'Ações do resultado', pra ficar um padrão
+  e não confundir"): agora, na aba Resultado, o botão "Ações do
+  resultado" aparece sempre com o mesmo nome/lugar — só fica
+  desabilitado/cinza (com aviso "Selecione um evento específico...")
+  quando não tem evento escolhido, nunca troca pra outro botão. O botão
+  manual "Enviar para desempate" continua existindo dentro do menu
+  (plano B pros casos que o automático não resolve sozinho — sala sem
+  moderador, ou moderador em conflito).
+
 - **2026-11-05** — **PDF do ensalamento, pra postar nos grupos** (pedido
   explícito do usuário — "preciso gerar para jogar nos grupos para os
   alunos saberem as salas deles", com a logo da Fatec e a da MAC em cima
@@ -514,6 +530,19 @@ commit que sobe pro git.
   fazia com o título); moderador também na tabela/modal da tela
   `/ensalamento` (CSS `uppercase`, mesmo padrão já usado nos cabeçalhos
   da própria tela).
+  Correção (2026-11-05, achado real do usuário — "tem nomes em minúsculo
+  ainda") — nome da SALA no PDF também virou caixa alta (salas com nome
+  próprio tipo "Morfo Pétalas"/"Semiologia" tinham ficado de fora da
+  passada anterior, que só cobriu autor/moderador).
+  "O documento todo tem que ser em caixa alta" (2026-11-05, pedido
+  explícito) — também área temática, nome do evento no cabeçalho, e "a
+  definir" → "A DEFINIR". Adicionado `Cache-Control: no-store` na
+  resposta — o usuário reportou nomes em minúsculo mesmo depois do fix
+  já ter subido; validei a transformação direto contra o trabalho real
+  do exemplo dele (buscado pelo título) e bateu 100% certo
+  (`GABRIELE SANTOS DE ALMEIDA, IASMIM GUIMARÃES BOSCARDIM, ...`), então
+  a suspeita é PDF antigo em cache do navegador, não bug — o cabeçalho
+  novo evita isso daqui pra frente.
   **Testado**: validei o agrupamento/ordenação/horário por item rodando
   contra os dados reais da X MAC (só leitura) — 38 salas, 299 trabalhos
   batendo com o total conhecido, banner mostrando várias áreas na mesma

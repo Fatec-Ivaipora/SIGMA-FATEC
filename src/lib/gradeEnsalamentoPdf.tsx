@@ -221,7 +221,7 @@ export function GradeEnsalamentoPDF({
             <View style={estilos.salaInfoFaixa}>
               <Text style={estilos.salaInfoItem}>
                 <Text style={estilos.salaInfoLabel}>Moderador: </Text>
-                {s.moderadorNome ?? "a definir"}
+                {s.moderadorNome ?? "A DEFINIR"}
               </Text>
               <Text style={estilos.salaInfoItem}>
                 <Text style={estilos.salaInfoLabel}>Horário: </Text>
