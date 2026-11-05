@@ -477,6 +477,58 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **PDF do ensalamento, pra postar nos grupos** (pedido
+  explícito do usuário — "preciso gerar para jogar nos grupos para os
+  alunos saberem as salas deles", com a logo da Fatec e a da MAC em cima
+  em todas as páginas, e o nome do moderador). Botão "Gerar PDF" na seção
+  "Grade montada" (`/ensalamento`) → novo `GET /api/ensalamento/pdf`
+  (`@react-pdf/renderer`, mesma biblioteca dos certificados/atas). 1
+  bloco por sala — nome, moderador, horário, modalidade — com a lista de
+  trabalhos daquela sala embaixo (horário por item quando é oral; roda de
+  conversa só o bloco, sem horário individual); logos (`logo-fatec-ivp` +
+  `logo-mac`, já usadas nos certificados) fixas no topo de toda página.
+  Mesmo agrupamento por sala da tela (`salasComSessoes`), só que sem
+  modal — expõe tudo de uma vez, pensado pra imprimir/compartilhar.
+  Página em **paisagem** (A4 horizontal, pedido explícito) e cada
+  trabalho mostra **autor(es) e categoria** embaixo do título (pedido
+  explícito). Moderador/horário/autores/categoria escurecidos pra `ink`
+  (eram `muted`, cinza claro demais) — "achei... muito apagado", pedido
+  explícito.
+  Redesenho visual (2026-11-05, pedido explícito — "deixe mais bonito,
+  profissional nível acadêmico"): cartão por sala com faixa escura
+  (nome da sala + selo colorido de modalidade — laranja Oral, azul Roda
+  de Conversa), faixa de informação (moderador/horário/total), tabela de
+  verdade com cabeçalho de colunas e linhas zebradas, rodapé com
+  data/hora de geração + número de página.
+  Correção (2026-11-05, achado real do usuário testando — "ficou muito
+  junto os autores com o nome do título, eles se misturam, e a quebra
+  automática do título tá horrível"): a tabela tinha 4 colunas lado a
+  lado (horário/título/autores/área), espremendo o título numa coluna
+  estreita que quebrava em várias linhas coladas no autor do lado. Virou
+  2 colunas — horário fixo, e título com a largura inteira da linha
+  (quebra limpo, sem vizinho ao lado) com autor(es)/área numa linha
+  separada EMBAIXO dele, com respiro, nunca de lado.
+  Caixa alta (2026-11-05, pedido explícito — "deixe todos os nomes do
+  autores e moderadores em caixa alta") — autor(es) e moderador no PDF
+  (`.toLocaleUpperCase("pt-BR")`, só exibição, igual `tituloExibicao` já
+  fazia com o título); moderador também na tabela/modal da tela
+  `/ensalamento` (CSS `uppercase`, mesmo padrão já usado nos cabeçalhos
+  da própria tela).
+  **Testado**: validei o agrupamento/ordenação/horário por item rodando
+  contra os dados reais da X MAC (só leitura) — 38 salas, 299 trabalhos
+  batendo com o total conhecido, banner mostrando várias áreas na mesma
+  sala sem horário individual (certo), oral com horário certo por item.
+  Rota sanity-checada via curl (401 sem token, como esperado). **Não
+  consegui gerar uma prévia visual do PDF renderizado** — rodar
+  `renderToBuffer` fora do Next (script solto) trava num pacote interno
+  do `@react-pdf/renderer` (`@react-pdf/hyphenate`, resolução de exports
+  ESM quebra fora do bundler do Next nesse ambiente Windows), e testar
+  via login real na tela foi bloqueado pelo modo automático (mexe com
+  identidade/token de autenticação). `tsc` limpo; `eslint` só com avisos
+  já aceitos em todo PDF desse projeto (`jsx-a11y/alt-text` no `Image` do
+  react-pdf, que não tem prop `alt` — mesmo padrão de
+  `certificadosPdf.tsx`) e o erro pré-existente de sempre no ensalamento.
+
 - **2026-11-05** — **Apresentação (moderador): escala 1-3 e modal mais
   enxuto** (pedido explícito do usuário).
   1. **Escala de nota só da Apresentação virou 1 a 3** ("Pontuação: cada

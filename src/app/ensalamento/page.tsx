@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  FileDown,
   Plus,
   QrCode,
   Search,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
+import { baixarGradeEnsalamentoPdf } from "@/lib/baixarCertificado";
 import {
   useSessoesDoEvento,
   montarGradeAutomatica,
@@ -1071,6 +1073,20 @@ function EnsalamentoAdminView() {
 
   const [erroMover, setErroMover] = useState<string | null>(null);
 
+  // PDF do ensalamento pra postar nos grupos (2026-11-05, pedido explícito
+  // do usuário — "preciso gerar para jogar nos grupos para os alunos
+  // saberem as salas deles") — ver /api/ensalamento/pdf.
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [erroPdf, setErroPdf] = useState<string | null>(null);
+  async function gerarPdfEnsalamento() {
+    if (!user || !eventoId) return;
+    setGerandoPdf(true);
+    setErroPdf(null);
+    const resultado = await baixarGradeEnsalamentoPdf(user, eventoId);
+    if (!resultado.ok) setErroPdf(resultado.erro);
+    setGerandoPdf(false);
+  }
+
   // Lista de trabalhos por SALA abre num modal (2026-11-04, corrigido —
   // achado real do usuário: "a grade tá muito feia, se clica ela expande,
   // confunde com a próxima, horrível". Antes expandia dentro da própria
@@ -1502,15 +1518,31 @@ function EnsalamentoAdminView() {
                   <section className="rounded-2xl border border-fatec-line bg-white p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h2 className="font-semibold text-fatec-navy-900">Grade montada</h2>
-                      <button
-                        type="button"
-                        onClick={() => setModalModeradores(true)}
-                        className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                      >
-                        <Shuffle className="h-3.5 w-3.5" strokeWidth={1.75} />
-                        Distribuir moderadores
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={gerarPdfEnsalamento}
+                          disabled={gerandoPdf}
+                          className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                        >
+                          <FileDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalModeradores(true)}
+                          className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                        >
+                          <Shuffle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Distribuir moderadores
+                        </button>
+                      </div>
                     </div>
+                    {erroPdf && (
+                      <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+                        {erroPdf}
+                      </p>
+                    )}
                     {erroMover && (
                       <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
                         {erroMover}
@@ -1542,7 +1574,13 @@ function EnsalamentoAdminView() {
                                   {grupo.nome}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {moderadoresPorSala[grupo.salaId]?.nome ?? (
+                                  {/* Caixa alta (2026-11-05, pedido explícito
+                                    * do usuário) — só exibição, CSS puro. */}
+                                  {moderadoresPorSala[grupo.salaId]?.nome ? (
+                                    <span className="uppercase">
+                                      {moderadoresPorSala[grupo.salaId].nome}
+                                    </span>
+                                  ) : (
                                     <span className="text-fatec-muted">Sem moderador</span>
                                   )}
                                   {moderadoresPorSala[grupo.salaId] &&
@@ -1760,7 +1798,9 @@ function EnsalamentoAdminView() {
                 <h3 className="text-2xl font-bold text-fatec-navy-900">{salaDetalhe.nome}</h3>
                 <p className="mt-1 text-sm text-fatec-ink">
                   Moderador:{" "}
-                  {moderadoresPorSala[salaDetalhe.salaId]?.nome ?? (
+                  {moderadoresPorSala[salaDetalhe.salaId]?.nome ? (
+                    <span className="uppercase">{moderadoresPorSala[salaDetalhe.salaId].nome}</span>
+                  ) : (
                     <span className="text-fatec-muted">Sem moderador</span>
                   )}
                 </p>
