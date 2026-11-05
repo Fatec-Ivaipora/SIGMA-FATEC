@@ -92,6 +92,14 @@ function formatarHorario(d: Date): string {
   });
 }
 
+function formatarDataLonga(d: Date): string {
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+}
+
+function formatarHoraCurta(d: Date): string {
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 /** Horas já garantidas pra essa pessoa com os dias confirmados até agora —
  * mesma conta de /api/certificados (arredonda só no final, trava no total).
  * null quando o evento nem tem carga horária configurada ainda. */
@@ -1002,6 +1010,18 @@ function EnsalamentoAdminView() {
     [trabalhosDoEvento, sessoes],
   );
 
+  // "Trabalhos por área × modalidade" recolhe sozinho quando a grade já
+  // cobre todo mundo (2026-11-04, pedido explícito do usuário — depois de
+  // gerada, essa lista vira redundante, só ocupa espaço), mas também dá pra
+  // recolher/expandir na mão a qualquer momento (2026-11-05, pedido
+  // explícito — "tem que ter um botão para recuar ela e ficar menor"), não
+  // só quando tudo já foi alocado. `overrideDetalheGrupos` é null enquanto
+  // ninguém mexeu (segue o automático); vira true/false assim que o botão é
+  // clicado, prevalecendo sobre o automático nos dois sentidos.
+  const tudoAlocado = sessoes.length > 0 && naoAlocados.length === 0;
+  const [overrideDetalheGrupos, setOverrideDetalheGrupos] = useState<boolean | null>(null);
+  const mostrarDetalheGrupos = overrideDetalheGrupos ?? !tudoAlocado;
+
   const sessoesOrdenadas = useMemo(
     () =>
       [...sessoes].sort(
@@ -1013,22 +1033,55 @@ function EnsalamentoAdminView() {
     [sessoes],
   );
 
+  // Grade agrupada por sala — 1 linha por sala na tabela (2026-11-05,
+  // corrigido: achado real do usuário — uma sala cheia (ex.: roda de
+  // conversa com 6+1+1+1+5 = 14/15) compartilhada por várias áreas
+  // temáticas aparecia como N linhas soltas espalhadas pela tabela (que era
+  // ordenada por área), parecendo N salas quase vazias em vez de 1 sala
+  // cheia. Pedido explícito depois de entender o motivo: "eu não quero essa
+  // divisão por área temática, quero saber quantos trabalhos tem em cada
+  // sala no total, não importa a área" — a área só aparece no modal de
+  // detalhe, ao lado de cada trabalho.
+  const salasComSessoesBase = useMemo(() => {
+    const porSala = new Map<string, typeof sessoes>();
+    for (const s of sessoes) {
+      const lista = porSala.get(s.salaId) ?? [];
+      lista.push(s);
+      porSala.set(s.salaId, lista);
+    }
+    return Array.from(porSala.entries()).map(([salaId, sessoesDaSala]) => ({
+      salaId,
+      sessoesDaSala: [...sessoesDaSala].sort(
+        (a, b) => a.horarioInicio.toMillis() - b.horarioInicio.toMillis(),
+      ),
+      total: sessoesDaSala.reduce((acc, s) => acc + s.trabalhoIds.length, 0),
+    }));
+  }, [sessoes]);
+  // Nome depende de `salas` (não memoizado — vem de um `.filter()` simples a
+  // cada render), então resolve/ordena fora do useMemo acima.
+  const salasComSessoes = [...salasComSessoesBase]
+    .map((grupo) => {
+      const nomeSala = salas.find((sa) => sa.id === grupo.salaId)?.nome;
+      return { ...grupo, nome: nomeSala ? `Sala - ${nomeSala}` : "—" };
+    })
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true }));
+
   const [erroMover, setErroMover] = useState<string | null>(null);
 
-  // Lista de trabalhos por sessão vem recolhida por padrão (2026-09-28) — com
-  // 200-300 trabalhos cada sessão tem 15-17 itens, e deixar tudo sempre
-  // expandido vira parede de texto (cada linha da tabela ficava gigante,
-  // difícil até de comparar sala/horário entre sessões diferentes).
-  const [sessoesExpandidas, setSessoesExpandidas] = useState<Set<string>>(new Set());
-
-  function toggleExpandirSessao(sessaoId: string) {
-    setSessoesExpandidas((prev) => {
-      const novo = new Set(prev);
-      if (novo.has(sessaoId)) novo.delete(sessaoId);
-      else novo.add(sessaoId);
-      return novo;
-    });
-  }
+  // Lista de trabalhos por SALA abre num modal (2026-11-04, corrigido —
+  // achado real do usuário: "a grade tá muito feia, se clica ela expande,
+  // confunde com a próxima, horrível". Antes expandia dentro da própria
+  // linha da tabela — com várias sessões expandidas ao mesmo tempo, ficava
+  // impossível ver onde uma linha terminava e a próxima começava.
+  // 2026-11-05: a tabela virou 1 linha por sala (antes tinha 1 linha por
+  // sessão/área, e o usuário achou que fosse fragmentação de novo quando na
+  // real era só a mesma sala cheia dividida entre áreas — "eu não quero
+  // essa divisão por área temática, quero saber quantos trabalhos tem em
+  // cada sala no total, não importa a área"). O modal segue o mesmo
+  // agrupamento: mostra TODOS os trabalhos daquela sala juntos, não só de
+  // uma sessão, com a área de cada um ao lado do título pra quem precisar
+  // saber.
+  const [salaDetalheId, setSalaDetalheId] = useState<string | null>(null);
 
   async function handleMover(trabalhoId: string, deSessaoId: string, paraSessaoId: string) {
     if (!paraSessaoId || paraSessaoId === deSessaoId) return;
@@ -1343,33 +1396,63 @@ function EnsalamentoAdminView() {
 
                   {/* Trabalhos por área x modalidade */}
                   <section className="rounded-2xl border border-fatec-line bg-white p-5">
-                    <h2 className="font-semibold text-fatec-navy-900">
-                      Trabalhos por área × modalidade
-                    </h2>
-                    <p className="mt-1 text-sm text-fatec-muted">
-                      Todo trabalho do evento apresenta, menos quem ainda não
-                      foi enviado pra avaliação ou foi recusado.
-                    </p>
-
-                    <div className="mt-4 flex flex-col gap-2">
-                      {grupos.map((g) => (
-                        <div
-                          key={`${g.area}::${g.modalidade}`}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-3"
-                        >
-                          <span className="text-sm font-medium text-fatec-navy-900">{g.area}</span>
-                          <span className="text-xs text-fatec-muted">
-                            {LABEL_MODALIDADE[g.modalidade]} · {g.trabalhos.length} trabalho(s)
-                          </span>
-                        </div>
-                      ))}
-                      {grupos.length === 0 && (
-                        <p className="text-sm text-fatec-muted">
-                          Nenhum trabalho enviado pra avaliação ainda nesse
-                          evento.
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="font-semibold text-fatec-navy-900">
+                          Trabalhos por área × modalidade
+                        </h2>
+                        <p className="mt-1 text-sm text-fatec-muted">
+                          Todo trabalho do evento apresenta, menos quem ainda
+                          não foi enviado pra avaliação ou foi recusado.
                         </p>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setOverrideDetalheGrupos(!mostrarDetalheGrupos)}
+                        className="flex flex-none items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                      >
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${mostrarDetalheGrupos ? "" : "-rotate-90"}`}
+                          strokeWidth={2}
+                        />
+                        {mostrarDetalheGrupos ? "Recolher" : "Expandir"}
+                      </button>
                     </div>
+
+                    {!mostrarDetalheGrupos ? (
+                      tudoAlocado ? (
+                        <p className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                          <CheckCircle2 className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Nenhum trabalho pra alocar — a grade já cobre todo
+                          mundo.
+                        </p>
+                      ) : (
+                        <p className="mt-4 rounded-xl border border-fatec-line bg-fatec-navy-50 px-4 py-3 text-sm text-fatec-muted">
+                          Seção recolhida — {grupos.length} área(s)/modalidade(s)
+                          cadastrada(s).
+                        </p>
+                      )
+                    ) : (
+                      <div className="mt-4 flex flex-col gap-2">
+                        {grupos.map((g) => (
+                          <div
+                            key={`${g.area}::${g.modalidade}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-3"
+                          >
+                            <span className="text-sm font-medium text-fatec-navy-900">{g.area}</span>
+                            <span className="text-xs text-fatec-muted">
+                              {LABEL_MODALIDADE[g.modalidade]} · {g.trabalhos.length} trabalho(s)
+                            </span>
+                          </div>
+                        ))}
+                        {grupos.length === 0 && (
+                          <p className="text-sm text-fatec-muted">
+                            Nenhum trabalho enviado pra avaliação ainda nesse
+                            evento.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <button
                       type="button"
@@ -1431,39 +1514,40 @@ function EnsalamentoAdminView() {
                       </p>
                     )}
                     <div className="mt-4 overflow-x-auto">
-                      <table className="w-full min-w-[720px] text-left text-sm">
+                      <table className="w-full min-w-[640px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-fatec-line text-xs uppercase tracking-[-0.01em] text-fatec-muted">
                             <th className="px-3 py-2 font-semibold">Sala</th>
                             <th className="px-3 py-2 font-semibold">Moderador</th>
                             <th className="px-3 py-2 font-semibold">Horário</th>
                             <th className="px-3 py-2 font-semibold">Modalidade</th>
-                            <th className="px-3 py-2 font-semibold">Área</th>
                             <th className="px-3 py-2 font-semibold">Trabalhos</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {sessoesOrdenadas.map((s) => {
-                            const salaNome = salas.find((sa) => sa.id === s.salaId)?.nome ?? "—";
-                            const duracaoMin = evento?.duracaoApresentacaoMinutos ?? 0;
-                            // Só entre sessões da MESMA modalidade — oral e
-                            // roda de conversa ocupam sala de jeitos
-                            // incompatíveis (ver moverTrabalho).
-                            const outrasSessoes = sessoesOrdenadas.filter(
-                              (o) => o.id !== s.id && o.modalidade === s.modalidade,
-                            );
+                          {salasComSessoes.map((grupo) => {
+                            const modalidade = grupo.sessoesDaSala[0]?.modalidade;
+                            const inicio = grupo.sessoesDaSala[0]?.horarioInicio.toDate();
+                            const fim = grupo.sessoesDaSala.length
+                              ? new Date(
+                                  Math.max(...grupo.sessoesDaSala.map((s) => s.horarioFim.toMillis())),
+                                )
+                              : null;
                             return (
-                              <tr key={s.id} className="border-b border-fatec-line last:border-0">
+                              <tr key={grupo.salaId} className="border-b border-fatec-line last:border-0">
                                 <td className="px-3 py-2.5 align-top font-medium text-fatec-navy-900">
-                                  {salaNome}
+                                  {grupo.nome}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {moderadoresPorSala[s.salaId]?.nome ?? (
+                                  {moderadoresPorSala[grupo.salaId]?.nome ?? (
                                     <span className="text-fatec-muted">Sem moderador</span>
                                   )}
-                                  {moderadoresPorSala[s.salaId] &&
+                                  {moderadoresPorSala[grupo.salaId] &&
                                     (() => {
-                                      const emConflito = trabalhosEmConflito(moderadoresPorSala[s.salaId], s.salaId);
+                                      const emConflito = trabalhosEmConflito(
+                                        moderadoresPorSala[grupo.salaId],
+                                        grupo.salaId,
+                                      );
                                       return emConflito.length > 0 ? (
                                         <span className="mt-1 block text-xs font-semibold text-rose-700">
                                           ⚠ Orienta/coorienta trabalho desta sala — troque o moderador:{" "}
@@ -1473,85 +1557,35 @@ function EnsalamentoAdminView() {
                                     })()}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {formatarHorario(s.horarioInicio.toDate())} –{" "}
-                                  {formatarHorario(s.horarioFim.toDate())}
+                                  {inicio && fim ? (
+                                    <>
+                                      {formatarHorario(inicio)} – {formatarHorario(fim)}
+                                    </>
+                                  ) : (
+                                    <span className="text-fatec-muted">—</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {LABEL_MODALIDADE[s.modalidade]}
+                                  {modalidade ? LABEL_MODALIDADE[modalidade] : "—"}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {s.areaTematica}
-                                </td>
-                                <td className="px-3 py-2.5 align-top text-fatec-ink">
-                                  {s.trabalhoIds.length === 0 ? (
+                                  {grupo.total === 0 ? (
                                     <span className="text-fatec-muted">—</span>
                                   ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleExpandirSessao(s.id)}
-                                        className="flex items-center gap-1 text-xs font-semibold text-fatec-sky-600 transition-colors hover:text-fatec-sky-700"
-                                      >
-                                        <ChevronDown
-                                          className={`h-3.5 w-3.5 transition-transform ${
-                                            sessoesExpandidas.has(s.id) ? "rotate-180" : ""
-                                          }`}
-                                          strokeWidth={2}
-                                        />
-                                        {s.trabalhoIds.length} trabalho(s)
-                                        {sessoesExpandidas.has(s.id) ? " — recolher" : " — ver lista"}
-                                      </button>
-                                      {sessoesExpandidas.has(s.id) && (
-                                        <ul className="mt-2 flex flex-col gap-2">
-                                          {s.trabalhoIds.map((id, i) => {
-                                            const t = trabalhosDoEvento.find((tr) => tr.id === id);
-                                            // Roda de conversa não tem horário por trabalho — todos
-                                            // ficam expostos ao mesmo tempo, o bloco inteiro.
-                                            const horarioItem =
-                                              s.modalidade === "oral" && duracaoMin > 0
-                                                ? formatarHorario(
-                                                    new Date(
-                                                      s.horarioInicio.toDate().getTime() +
-                                                        i * duracaoMin * 60000,
-                                                    ),
-                                                  )
-                                                : null;
-                                            return (
-                                              <li key={id} className="flex items-center gap-2">
-                                                <span>
-                                                  {horarioItem && (
-                                                    <span className="text-fatec-muted">
-                                                      {horarioItem} —{" "}
-                                                    </span>
-                                                  )}
-                                                  {t ? tituloExibicao(t.titulo) : id}
-                                                </span>
-                                                <select
-                                                  value=""
-                                                  onChange={(e) => handleMover(id, s.id, e.target.value)}
-                                                  className="rounded-lg border border-fatec-line bg-white px-2 py-1 text-xs text-fatec-muted outline-none focus:border-fatec-sky-600"
-                                                >
-                                                  <option value="">Mover para...</option>
-                                                  {outrasSessoes.map((o) => (
-                                                    <option key={o.id} value={o.id}>
-                                                      {salas.find((sa) => sa.id === o.salaId)?.nome ?? "—"} ·{" "}
-                                                      {formatarHorario(o.horarioInicio.toDate())} ·{" "}
-                                                      {o.areaTematica}
-                                                    </option>
-                                                  ))}
-                                                </select>
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                      )}
-                                    </>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSalaDetalheId(grupo.salaId)}
+                                      className="flex items-center gap-1 text-xs font-semibold text-fatec-sky-600 transition-colors hover:text-fatec-sky-700"
+                                    >
+                                      <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                                      {grupo.total} trabalho(s) — ver lista
+                                    </button>
                                   )}
                                 </td>
                               </tr>
                             );
                           })}
-                          {sessoesOrdenadas.length === 0 && (
+                          {salasComSessoes.length === 0 && (
                             <tr>
                               <td colSpan={5} className="px-3 py-8 text-center text-fatec-muted">
                                 Nenhuma grade gerada ainda.
@@ -1695,6 +1729,112 @@ function EnsalamentoAdminView() {
           </div>
         )}
       </Modal>
+
+      {(() => {
+        const salaDetalhe = salasComSessoes.find((g) => g.salaId === salaDetalheId);
+        if (!salaDetalhe) return null;
+        const duracaoMin = evento?.duracaoApresentacaoMinutos ?? 0;
+        const modalidadeDaSala = salaDetalhe.sessoesDaSala[0]?.modalidade;
+        const inicio = salaDetalhe.sessoesDaSala[0]?.horarioInicio.toDate();
+        const fim = new Date(
+          Math.max(...salaDetalhe.sessoesDaSala.map((s) => s.horarioFim.toMillis())),
+        );
+        // Só entre sessões da MESMA modalidade — oral e roda de conversa
+        // ocupam sala de jeitos incompatíveis (ver moverTrabalho).
+        const outrasSessoes = sessoesOrdenadas.filter((o) => o.modalidade === modalidadeDaSala);
+        return (
+          <Modal
+            open={!!salaDetalheId}
+            onClose={() => setSalaDetalheId(null)}
+            title={salaDetalhe.nome}
+            size="lg"
+          >
+            {/* Cabeçalho maior (2026-11-05, pedido explícito — "no topo pode
+              * ter grande o nome da sala... moderador... a data e o
+              * horário"; a barra padrão do Modal é pequena demais pra isso). */}
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-fatec-line pb-5">
+              <div className="min-w-0">
+                <h3 className="text-2xl font-bold text-fatec-navy-900">{salaDetalhe.nome}</h3>
+                <p className="mt-1 text-sm text-fatec-ink">
+                  Moderador:{" "}
+                  {moderadoresPorSala[salaDetalhe.salaId]?.nome ?? (
+                    <span className="text-fatec-muted">Sem moderador</span>
+                  )}
+                </p>
+                {moderadoresPorSala[salaDetalhe.salaId] &&
+                  (() => {
+                    const emConflito = trabalhosEmConflito(
+                      moderadoresPorSala[salaDetalhe.salaId],
+                      salaDetalhe.salaId,
+                    );
+                    return emConflito.length > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-rose-700">
+                        ⚠ Orienta/coorienta trabalho desta sala — troque o moderador:{" "}
+                        {emConflito.map((t) => t.titulo).join("; ")}
+                      </p>
+                    ) : null;
+                  })()}
+              </div>
+              <div className="flex-none text-right">
+                <p className="text-sm font-semibold capitalize text-fatec-navy-900">
+                  {inicio && formatarDataLonga(inicio)}
+                </p>
+                <p className="mt-0.5 text-sm text-fatec-muted">
+                  {inicio && formatarHoraCurta(inicio)} – {formatarHoraCurta(fim)}
+                </p>
+                <p className="mt-1 text-xs text-fatec-muted">
+                  {modalidadeDaSala ? LABEL_MODALIDADE[modalidadeDaSala] : "—"} ·{" "}
+                  {salaDetalhe.total} trabalho(s)
+                </p>
+              </div>
+            </div>
+            <ul className="mt-4 flex flex-col gap-2">
+              {salaDetalhe.sessoesDaSala.flatMap((sessao) =>
+                sessao.trabalhoIds.map((id, i) => {
+                  const t = trabalhosDoEvento.find((tr) => tr.id === id);
+                  // Roda de conversa não tem horário por trabalho — todos
+                  // ficam expostos ao mesmo tempo, o bloco inteiro.
+                  const horarioItem =
+                    sessao.modalidade === "oral" && duracaoMin > 0
+                      ? formatarHorario(
+                          new Date(sessao.horarioInicio.toDate().getTime() + i * duracaoMin * 60000),
+                        )
+                      : null;
+                  return (
+                    <li
+                      key={id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-fatec-line px-4 py-2.5"
+                    >
+                      <span className="min-w-0 text-sm text-fatec-ink">
+                        {horarioItem && (
+                          <span className="font-semibold text-fatec-sky-600">{horarioItem} — </span>
+                        )}
+                        {t ? tituloExibicao(t.titulo) : id}
+                        <span className="text-fatec-muted"> · {sessao.areaTematica}</span>
+                      </span>
+                      <select
+                        value=""
+                        onChange={(e) => handleMover(id, sessao.id, e.target.value)}
+                        className="flex-none rounded-lg border border-fatec-line bg-white px-2 py-1 text-xs text-fatec-muted outline-none focus:border-fatec-sky-600"
+                      >
+                        <option value="">Mover para...</option>
+                        {outrasSessoes
+                          .filter((o) => o.id !== sessao.id)
+                          .map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {salas.find((sa) => sa.id === o.salaId)?.nome ?? "—"} ·{" "}
+                              {formatarHorario(o.horarioInicio.toDate())} · {o.areaTematica}
+                            </option>
+                          ))}
+                      </select>
+                    </li>
+                  );
+                }),
+              )}
+            </ul>
+          </Modal>
+        );
+      })()}
     </main>
   );
 }

@@ -73,11 +73,23 @@ export type SessaoGerada = {
 // Algoritmo determinístico "first-fit decreasing" (bin-packing, 2026-09-17)
 // — nada de IA/LLM, confirmado com o usuário. Cada sala é um "bin" com
 // capacidade em minutos; cada grupo (área x modalidade) é distribuído,
-// maior primeiro, sempre pra sala com mais espaço livre. Quando um grupo não
-// cabe inteiro numa sala, é fatiado em mais de uma sessão (mesma área+
-// modalidade, salas/horários diferentes). Trabalhos que não couberem em
-// nenhuma sala (capacidade total insuficiente) voltam em overflowTrabalhoIds
-// pra virar aviso na tela, sem travar o resto da geração.
+// maior primeiro. Trabalhos que não couberem em nenhuma sala (capacidade
+// total insuficiente) voltam em overflowTrabalhoIds pra virar aviso na
+// tela, sem travar o resto da geração.
+//
+// Estratégia "best-fit" (2026-11-04, corrigido — achado real do usuário:
+// "tem sala com 1 apresentação, outra com 3, 2, 5... se 7 é o limite,
+// coloque todos com 7"). Antes era "worst-fit" (sempre pulava pra sala com
+// MAIS espaço livre) — isso espalhava sobra por várias salas em vez de
+// terminar de encher uma antes de abrir outra: ex. sala A fica com 1 vaga
+// sobrando, mas o próximo grupo prefere uma sala totalmente livre (mais
+// espaço) em vez de completar essa vaga, e a sala A nunca mais é
+// revisitada enquanto sobrar sala livre — resultado: dezenas de salas
+// meio-vazias (1, 2, 3, 5 trabalhos) e sobra artificial de trabalho sem
+// sala (ex.: 33 na X MAC), mesmo com capacidade de sobra no total. Agora é
+// o oposto — sempre a sala com MENOS espaço livre que ainda caiba pelo
+// menos 1 apresentação — isso prioriza terminar de encher salas já em uso
+// antes de abrir uma nova, consolidando a sobra junto em vez de espalhada.
 //
 // Roda de conversa (banner/pôster, 2026-09-28) tem um jeito de ocupar sala
 // bem diferente de apresentação oral — confirmado pesquisando o formato
@@ -85,8 +97,13 @@ export type SessaoGerada = {
 // MESMO TEMPO, o bloco inteiro (não fatiado por minuto, um trabalho de cada
 // vez como na oral), e o apresentador fica parado do lado o tempo todo. Por
 // isso a sala vira uma "vaga simultânea" (capacidade = quantos banners
-// cabem, não quantos minutos sobram) e fica reservada pro bloco inteiro —
-// não dá pra dividir a mesma sala/horário com uma sessão oral.
+// cabem, não quantos minutos sobram) — não dá pra dividir a mesma sala/
+// horário com uma sessão oral, mas ÁREAS DIFERENTES de roda de conversa
+// PODEM dividir a mesma sala (2026-11-04, corrigido — achado real: 5 áreas
+// de banner pequenas pegavam 5 salas inteiras cada, a maioria quase vazia,
+// "eles podem ficar todos na mesma sala" — sala de banner agora só fica de
+// fora do best-fit da ORAL, mas continua recebendo banner de outra área
+// até lotar vagasBannerPorSala).
 export function montarGradeAutomatica(params: {
   grupos: GrupoParaGrade[];
   salas: SalaParaGrade[];
@@ -100,13 +117,26 @@ export function montarGradeAutomatica(params: {
   );
   const duracao = params.duracaoApresentacaoMinutos;
   const vagasBanner = Math.max(0, Math.floor(params.vagasBannerPorSala));
-  const cursores = new Map(params.salas.map((s) => [s.id, 0]));
+  const cursoresOral = new Map(params.salas.map((s) => [s.id, 0]));
+  const cursoresBanner = new Map(params.salas.map((s) => [s.id, 0]));
+  // Modalidade que "tomou" cada sala, pra nunca misturar oral com banner na
+  // mesma sala — a primeira modalidade a usar a sala reserva ela.
+  const modalidadeDaSala = new Map<string, "oral" | "roda_conversa">();
   const sessoesNovas: SessaoGerada[] = [];
   const overflowTrabalhoIds: string[] = [];
 
-  const gruposOrdenados = [...params.grupos].sort(
-    (a, b) => b.trabalhoIds.length - a.trabalhoIds.length,
-  );
+  // Roda de conversa inteira primeiro, depois oral (2026-11-04, corrigido
+  // — achado real validando com os 299 trabalhos da X MAC: ordenar só por
+  // tamanho, misturando as duas modalidades, deixava os grupos GRANDES de
+  // oral (91, 48, 37...) consumirem toda sala disponível antes de qualquer
+  // grupo de roda de conversa ter vez — mesmo pequenos (6, 5, 1, 1, 1), a
+  // soma dos maiores de oral sozinha já estourava a capacidade total, e
+  // banner ficava 100% de fora. Maior primeiro DENTRO de cada modalidade
+  // continua igual.
+  const gruposOrdenados = [...params.grupos].sort((a, b) => {
+    if (a.modalidade !== b.modalidade) return a.modalidade === "roda_conversa" ? -1 : 1;
+    return b.trabalhoIds.length - a.trabalhoIds.length;
+  });
 
   for (const grupo of gruposOrdenados) {
     let pendentes = [...grupo.trabalhoIds];
@@ -117,35 +147,51 @@ export function montarGradeAutomatica(params: {
           overflowTrabalhoIds.push(...pendentes);
           break;
         }
-        // Só sala 100% livre (cursor 0) — uma sala usada de banner fica
-        // reservada pro bloco inteiro, nunca dividida com apresentação oral.
-        const salaLivre = params.salas.find((s) => (cursores.get(s.id) ?? 0) === 0);
-        if (!salaLivre) {
+        // Best-fit: sala de banner (ou ainda sem modalidade) com MENOS
+        // vaga livre que ainda caiba pelo menos 1 — prioriza terminar de
+        // encher uma sala já com banner de outra área antes de abrir uma
+        // livre nova.
+        let melhorSalaId: string | null = null;
+        let melhorLivre = Infinity;
+        for (const sala of params.salas) {
+          if (modalidadeDaSala.get(sala.id) === "oral") continue;
+          const livre = vagasBanner - (cursoresBanner.get(sala.id) ?? 0);
+          if (livre > 0 && livre < melhorLivre) {
+            melhorLivre = livre;
+            melhorSalaId = sala.id;
+          }
+        }
+        if (!melhorSalaId) {
           overflowTrabalhoIds.push(...pendentes);
           break;
         }
-        const quantidade = Math.min(vagasBanner, pendentes.length);
+        const quantidade = Math.min(melhorLivre, pendentes.length);
         const fatia = pendentes.slice(0, quantidade);
         pendentes = pendentes.slice(quantidade);
         sessoesNovas.push({
-          salaId: salaLivre.id,
+          salaId: melhorSalaId,
           areaTematica: grupo.areaTematica,
           modalidade: grupo.modalidade,
           horarioInicio: params.apresentacaoInicio,
           horarioFim: params.apresentacaoFim,
           trabalhoIds: fatia,
         });
-        cursores.set(salaLivre.id, capacidadeTotalMin);
+        cursoresBanner.set(melhorSalaId, (cursoresBanner.get(melhorSalaId) ?? 0) + quantidade);
+        modalidadeDaSala.set(melhorSalaId, "roda_conversa");
       }
       continue;
     }
 
     while (pendentes.length > 0) {
+      // Best-fit: sala com MENOS espaço livre que ainda caiba pelo menos 1
+      // apresentação inteira — prioriza terminar de encher uma sala já em
+      // uso (de oral) antes de abrir uma nova, em vez de espalhar sobra.
       let melhorSalaId: string | null = null;
-      let melhorLivre = 0;
+      let melhorLivre = Infinity;
       for (const sala of params.salas) {
-        const livre = capacidadeTotalMin - (cursores.get(sala.id) ?? 0);
-        if (livre >= duracao && livre > melhorLivre) {
+        if (modalidadeDaSala.get(sala.id) === "roda_conversa") continue;
+        const livre = capacidadeTotalMin - (cursoresOral.get(sala.id) ?? 0);
+        if (livre >= duracao && livre < melhorLivre) {
           melhorLivre = livre;
           melhorSalaId = sala.id;
         }
@@ -154,7 +200,7 @@ export function montarGradeAutomatica(params: {
         overflowTrabalhoIds.push(...pendentes);
         break;
       }
-      const cursorAtual = cursores.get(melhorSalaId) ?? 0;
+      const cursorAtual = cursoresOral.get(melhorSalaId) ?? 0;
       const quantidade = Math.min(Math.floor(melhorLivre / duracao), pendentes.length);
       const fatia = pendentes.slice(0, quantidade);
       pendentes = pendentes.slice(quantidade);
@@ -168,7 +214,8 @@ export function montarGradeAutomatica(params: {
         horarioFim,
         trabalhoIds: fatia,
       });
-      cursores.set(melhorSalaId, cursorAtual + quantidade * duracao);
+      cursoresOral.set(melhorSalaId, cursorAtual + quantidade * duracao);
+      modalidadeDaSala.set(melhorSalaId, "oral");
     }
   }
 

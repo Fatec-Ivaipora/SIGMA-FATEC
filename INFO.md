@@ -477,6 +477,66 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-05** — **Algoritmo da grade corrigido (best-fit) + UI do
+  ensalamento** (pedido explícito do usuário, achado real gerando a grade
+  de verdade da X MAC — "tem sala com 1 apresentação, outra com 3, 2, 5...
+  se 7 é o limite, coloque todos com 7" / "os trabalhos de banner podem
+  ficar todos na mesma sala" / "a grade tá muito feia, se clica ela
+  expande, confunde com a próxima").
+  1. **`montarGradeAutomatica` trocou de "worst-fit" pra "best-fit"**
+     (`src/lib/data/sessoes.ts`) — antes, cada alocação pulava pra sala
+     com MAIS espaço livre (espalhava sobra por várias salas, cada uma
+     meio-vazia); agora pula pra sala com MENOS espaço livre que ainda
+     caiba, sempre terminando de encher uma sala antes de abrir outra.
+  2. **Roda de conversa processada inteira primeiro, antes da oral** —
+     corrigido um bug que o próprio fix acima introduziu: como os grupos
+     são ordenados só por tamanho (misturando as duas modalidades), os
+     grupos GRANDES de oral sozinhos já estouravam a capacidade total
+     antes de QUALQUER grupo de banner (mesmo pequenos) ter vez — banner
+     ficava 100% de fora. Agora toda roda de conversa é alocada primeiro
+     (consolidada em poucas salas, áreas diferentes podem dividir a mesma
+     sala de banner), só depois a oral usa o que sobrou.
+  3. **Lista de trabalhos da sala virou modal** (`/ensalamento`) — antes
+     expandia dentro da própria linha da tabela, e com várias linhas
+     expandidas ao mesmo tempo não dava pra ver onde uma terminava e a
+     próxima começava. Clicar agora abre um modal isolado com todos os
+     trabalhos daquela sala (mesmo "Mover para..." de antes, área de cada
+     trabalho exposta ao lado do título).
+  4. **Seção "Trabalhos por área × modalidade" recolhe sozinha** quando a
+     grade já foi gerada e cobre todo mundo (sem overflow) — mostra "Nenhum
+     trabalho pra alocar". Também ganhou um botão de Recolher/Expandir
+     sempre visível no cabeçalho da seção, independente de estar tudo
+     alocado ou não (pedido explícito — "tem que ter um botão para recuar
+     ela e ficar menor").
+  5. **Grade montada virou 1 linha por sala** (não mais 1 linha por
+     sessão/área) — o usuário gerou a grade real da X MAC e viu "sala 1"
+     aparecendo várias vezes (uma linha por área temática de roda de
+     conversa que divide aquela sala) e achou que fosse fragmentação de
+     novo; na real os números batiam (6+1+1+1+5 = 14/15 trabalhos na sala
+     "1", confirmado direto no Firestore) — só a tabela, ordenada e
+     dividida por área, escondia que era 1 sala só cheia. Testei primeiro
+     um meio-termo (agrupar por sala com rowSpan, mas mantendo 1 sub-linha
+     por área/sessão); o usuário foi direto: "eu não quero essa divisão por
+     área temática, quero saber quantos trabalhos tem em cada sala no
+     total, não importa a área" — então virou 1 linha só por sala
+     (horário = do início da 1ª sessão ao fim da última, modalidade da
+     sala, total de trabalhos), sem coluna Área nenhuma; a área de cada
+     trabalho só aparece dentro do modal de detalhe.
+  **Testado**: validei o algoritmo novo direto contra os 299 trabalhos
+  reais da X MAC (só leitura, sem gravar nada) — antes: 33 trabalhos de
+  fora, dezenas de salas parciais (1, 2, 3, 5...); depois do fix #1
+  sozinho: 33 ainda de fora (mesmo total!), mas zero sala parcial — só que
+  TODOS os 14 de banner foram pro overflow (bug do #2, achado nesse
+  mesmo teste); depois do fix #2: 26 de fora (esse número agora é de
+  verdade — falta sala/tempo mesmo, não desperdício), banners todos numa
+  sala só, oral com 37 salas cheias de 7, zero sala parcial. Essa última
+  parte o usuário confirmou gerando a grade real: a sala "1" ficou com 14
+  trabalhos de banner de 5 áreas diferentes, exatamente como validado no
+  script — o item 5 corrige só a leitura confusa dessa consolidação na
+  tabela. Não cheguei a clicar pela tela real pra conferir os itens 3-5
+  visualmente (extensão do Chrome instável nessa sessão). `tsc`/`eslint`
+  limpos.
+
 - **2026-11-04** — **Moderador ligado à sala no ensalamento — liga o
   ensalamento com o desempate** (pedido explícito do usuário, conversa
   longa pra alinhar o modelo antes de mexer em código — "quero poder gerar
