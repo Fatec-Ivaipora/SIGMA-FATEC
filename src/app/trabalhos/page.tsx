@@ -1625,7 +1625,10 @@ export default function TrabalhosAdminPage() {
                       <th className="px-3 py-2 font-semibold">Moderador</th>
                     )}
                     <th className="px-3 py-2 font-semibold">Status</th>
-                    {etapa === "resultado" && (
+                    {/* Revisão também mostra a nota do avaliador (2026-11-06, pedido
+                      * explícito do usuário — a comissão precisa ver se o
+                      * professor já tinha dado nota antes de dar a dela). */}
+                    {(etapa === "resultado" || etapa === "revisao") && (
                       <th className="px-3 py-2 text-center font-semibold">
                         <button
                           type="button"
@@ -1746,6 +1749,17 @@ export default function TrabalhosAdminPage() {
                       {etapa === "resultado" && (
                         <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
                           {t.notaAvaliador ?? "—"}
+                        </td>
+                      )}
+                      {etapa === "revisao" && (
+                        <td className="px-3 py-2.5 text-center align-top">
+                          {typeof t.notaAvaliador === "number" ? (
+                            <span className="font-semibold text-fatec-navy-900">{t.notaAvaliador}</span>
+                          ) : (
+                            <span className="whitespace-nowrap rounded-full bg-fatec-navy-50 px-2 py-0.5 text-xs font-medium text-fatec-muted">
+                              Sem nota
+                            </span>
+                          )}
                         </td>
                       )}
                       {etapa === "resultado_final" && (
