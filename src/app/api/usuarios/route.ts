@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { ROTA_POR_PAPEL } from "@/lib/rotaPorPapel";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 const LABEL_PAPEL: Record<string, string> = {
   avaliador: "avaliador(a)",
@@ -73,6 +74,10 @@ export async function POST(request: Request) {
         status: 400,
       });
     }
+    // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+    // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+    // gravação.
+    body.nome = caixaAltaNome(body.nome);
     // Nunca confia só na validação do cliente (princípio #1 do projeto) —
     // mesma trava de curso obrigatório que já existe no autocadastro.
     if (body.papel === "aluno" && !body.curso?.trim()) {
@@ -243,7 +248,10 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
-    const nomeLimpo = nome.trim();
+    // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+    // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+    // gravação.
+    const nomeLimpo = caixaAltaNome(nome);
     // Sempre minúsculo (2026-10-02) — mesmo critério usado na criação de
     // conta agora (cadastro/aluno e POST acima), pra nunca mais duas contas
     // diferirem só por maiúscula/minúscula.

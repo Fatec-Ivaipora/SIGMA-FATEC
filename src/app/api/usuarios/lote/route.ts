@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { ROTA_POR_PAPEL } from "@/lib/rotaPorPapel";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 // Centenas de linhas criam conta uma a uma no Auth: dá folga além do padrão.
 export const maxDuration = 60;
@@ -93,7 +94,10 @@ export async function POST(request: Request) {
     const vistos = new Set<string>();
     const resultados: ResultadoLinha[] = [];
     for (const [i, l] of linhas.entries()) {
-      const nome = String(l.nome ?? "").replace(/\s+/g, " ").trim();
+      // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+      // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+      // gravação.
+      const nome = caixaAltaNome(String(l.nome ?? ""));
       const email = String(l.email ?? "").trim().toLowerCase();
       const base = { linha: i + 1, nome, email };
       if (!email) { resultados.push({ ...base, situacao: "sem_email" }); continue; }

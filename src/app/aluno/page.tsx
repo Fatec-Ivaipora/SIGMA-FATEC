@@ -57,6 +57,7 @@ const ATIVIDADE_META: Partial<Record<TipoAtividade, { icone: LucideIcon; cor: st
     fundo: "bg-fatec-orange-50",
   },
   avaliado: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
+  reavaliado: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
   aceito: { icone: CheckCircle2, cor: "bg-emerald-50 text-emerald-700", fundo: "bg-emerald-50/60" },
   nao_aceito: { icone: XCircle, cor: "bg-rose-50 text-rose-600", fundo: "bg-rose-50/60" },
   rejeitado: { icone: XCircle, cor: "bg-rose-50 text-rose-600", fundo: "bg-rose-50/60" },

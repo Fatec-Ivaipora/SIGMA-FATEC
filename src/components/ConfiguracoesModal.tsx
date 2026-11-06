@@ -13,6 +13,7 @@ import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
 import { Modal } from "@/components/Modal";
 import { formatarCPF, validarCPF } from "@/lib/cpf";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 function mensagemErroSenha(erro: AuthError): string {
   switch (erro.code) {
@@ -124,7 +125,10 @@ function ConfiguracoesForm({
 
   async function salvarNome() {
     setErroNome(null);
-    const nome = novoNome.trim();
+    // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+    // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+    // gravação.
+    const nome = novoNome.trim() ? caixaAltaNome(novoNome) : "";
     if (!uid || !nome) return;
 
     setSalvandoNome(true);

@@ -12,7 +12,12 @@ type Tipo =
   | "nao_aceito"
   | "rejeitado"
   | "entregue_fora_prazo"
-  | "aviso_entrega_atrasada";
+  | "aviso_entrega_atrasada"
+  // Trabalho que tinha ido pra revisão (legado da X MAC) e a comissão/
+  // avaliador externo reavaliou e confirmou nota (2026-11-06, pedido
+  // explícito do usuário) — texto próprio, diferente do "avaliado" comum,
+  // porque esse aqui já veio de uma revisão pendente.
+  | "reavaliado";
 
 // Texto do feed da tela inicial do aluno (2026-09-09) — frase pronta por
 // tipo, mesma ideia do CONTEUDO abaixo (mas pro feed, não pro e-mail).
@@ -34,6 +39,10 @@ const TEXTO_ATIVIDADE: Record<
   }),
   avaliado: (t) => ({
     texto: `Seu trabalho "${tituloExibicao(t.titulo)}" foi avaliado.`,
+    negritos: [`"${tituloExibicao(t.titulo)}"`],
+  }),
+  reavaliado: (t) => ({
+    texto: `Seu trabalho "${tituloExibicao(t.titulo)}" foi reavaliado e está apto pra apresentação.`,
     negritos: [`"${tituloExibicao(t.titulo)}"`],
   }),
   aceito: (t) => ({
@@ -80,6 +89,7 @@ const ASSUNTO: Record<
   submetido: (t) => `Trabalho enviado — ${tituloExibicao(t.titulo)}`,
   revisao: (t) => `Revisão solicitada — ${tituloExibicao(t.titulo)}`,
   avaliado: (t) => `Trabalho avaliado — ${tituloExibicao(t.titulo)}`,
+  reavaliado: (t) => `Trabalho reavaliado — ${tituloExibicao(t.titulo)}`,
   aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
   nao_aceito: (t) => `Resultado final — ${tituloExibicao(t.titulo)}`,
   // Assunto exato pedido pelo usuário (2026-11-03), só trocando "X MAC 2026"
@@ -115,6 +125,15 @@ const CONTEUDO: Record<
   avaliado: (t, nome) =>
     modeloEmail(
       `<p>Seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> já foi avaliado.</p>
+       <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
+      { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      nome,
+    ),
+  // Texto pedido pelo usuário (2026-11-06): trabalho que tinha ido pra
+  // revisão (legado da X MAC) e agora foi reavaliado e confirmado.
+  reavaliado: (t, nome) =>
+    modeloEmail(
+      `<p>Depois que seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>
        <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
       { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,

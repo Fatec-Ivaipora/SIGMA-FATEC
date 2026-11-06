@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail } from "@/lib/mail";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 const NOME_MAX = 120;
 const AREA_MAX = 120;
@@ -46,7 +47,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const nome = body?.nome?.trim().slice(0, NOME_MAX);
+  // Caixa alta padrão do sistema (2026-11-06, pedido explícito do usuário)
+  // — nome de pessoa digitado livre sempre vira maiúsculo na gravação.
+  const nome = body?.nome?.trim() ? caixaAltaNome(body.nome.slice(0, NOME_MAX)) : undefined;
   const areaFormacao = body?.areaFormacao?.trim().slice(0, AREA_MAX);
   const telefone = telefoneLimpo(body?.telefone ?? "");
   const email = body?.email?.trim().toLowerCase();

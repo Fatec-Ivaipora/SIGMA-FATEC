@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { validarCPF } from "@/lib/cpf";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 const IDADE_MINIMA_ANOS = 12;
 
@@ -71,7 +72,9 @@ export async function POST(request: Request) {
     senha?: string;
   } | null;
 
-  const nome = body?.nome?.trim();
+  // Caixa alta padrão do sistema (2026-11-06, pedido explícito do usuário)
+  // — nome de pessoa digitado livre sempre vira maiúsculo na gravação.
+  const nome = body?.nome?.trim() ? caixaAltaNome(body.nome) : undefined;
   const cpf = body?.cpf?.replace(/\D/g, "");
   const dataNascimento = body?.dataNascimento ?? "";
   const vinculoFatec = body?.vinculoFatec !== false;

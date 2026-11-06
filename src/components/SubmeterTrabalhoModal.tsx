@@ -8,6 +8,7 @@ import { useAlunosParaBusca, type AlunoParaBusca } from "@/lib/data/usuarios";
 import { useInscritosUids } from "@/lib/data/inscricoes";
 import type { AreaTematicaComplexa } from "@/lib/data/eventos";
 import { renderResumoFormatado } from "@/lib/textoFormatado";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 const RESUMO_MAX = 2000;
 
@@ -469,10 +470,17 @@ export function SubmeterTrabalhoModal({
       ...(modalidadeApresentacao ? { modalidadeApresentacao } : {}),
       resumo: resumo.trim(),
       ...(resumoAcademico ? { palavrasChave: palavrasChave.trim() } : {}),
-      nomeOrientador: nomeOrientador.trim(),
+      // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+      // usuário) — nome de pessoa digitado livre (orientador/coorientador,
+      // texto livre em CampoNomeProfessor) sempre vira maiúsculo na
+      // gravação.
+      nomeOrientador: nomeOrientador.trim() ? caixaAltaNome(nomeOrientador) : "",
       // Campos deixados em branco são descartados (o aluno pode ter clicado
       // em "adicionar" e desistido).
-      nomesCoorientadores: coorientadores.map((n) => n.trim()).filter(Boolean),
+      nomesCoorientadores: coorientadores
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .map(caixaAltaNome),
       participantesUids: participantes.map((p) => p.uid),
       participantesNomes: participantes.map((p) => p.nome),
       });

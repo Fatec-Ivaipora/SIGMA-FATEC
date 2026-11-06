@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 // ⚠ EXCEÇÃO TEMPORÁRIA (2026-11-06, pedido explícito do usuário — "lembra
 // que isso é uma exceção, deixe registrado para nos próximos dias
@@ -56,7 +57,10 @@ export async function POST(request: Request) {
       nome?: string;
     };
     const email = (body.email ?? "").trim().toLowerCase();
-    const nome = (body.nome ?? "").trim();
+    // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+    // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+    // gravação.
+    const nome = (body.nome ?? "").trim() ? caixaAltaNome(body.nome ?? "") : "";
     const trabalhoIds = [...new Set(body.trabalhoIds ?? [])];
     const eventoId = body.eventoId;
 

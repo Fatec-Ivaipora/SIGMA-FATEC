@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { caixaAltaNome } from "@/lib/textoNome";
+import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { registrarAtividade } from "@/lib/atividadesAdmin";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 // ⚠ EXCEÇÃO TEMPORÁRIA — ver comentário em
 // src/app/api/revisao-externa/convidar/route.ts. Remover junto com o
@@ -44,7 +48,11 @@ export async function POST(
     };
     const trabalhoId = body.trabalhoId;
     const notas = body.notas ?? {};
-    const nomeAvaliador = (body.nome ?? convite.nome ?? "").trim();
+    // Caixa alta padrão do sistema (2026-11-06, pedido explícito do
+    // usuário) — nome de pessoa digitado livre sempre vira maiúsculo na
+    // gravação.
+    const nomeDigitado = (body.nome ?? convite.nome ?? "").trim();
+    const nomeAvaliador = nomeDigitado ? caixaAltaNome(nomeDigitado) : "";
 
     const trabalhoIdsDoConvite = (convite.trabalhoIds as string[]) ?? [];
     if (!trabalhoId || !trabalhoIdsDoConvite.includes(trabalhoId)) {
@@ -100,6 +108,52 @@ export async function POST(
       trabalhosAvaliados: FieldValue.arrayUnion(trabalhoId),
       nome: convite.nome ?? nomeAvaliador,
     });
+
+    // Avisa o aluno (2026-11-06, pedido explícito do usuário) — rota sem
+    // Firebase Auth nenhum, não dá pra chamar /api/mail/trabalho-status
+    // (exige token de quem está logado), então manda direto aqui mesmo,
+    // melhor esforço (nunca derruba a gravação da nota, que já aconteceu
+    // acima). Mesmo texto/destinatários de "reavaliado" em
+    // /api/mail/trabalho-status.
+    try {
+      const trabalho = trabalhoSnap.data()!;
+      const destinatariosUids = Array.from(
+        new Set([trabalho.alunoUid as string, ...((trabalho.participantesUids as string[] | undefined) ?? [])]),
+      );
+      const titulo = tituloExibicao(trabalho.titulo as string);
+      const texto = `Seu trabalho "${titulo}" foi reavaliado e está apto pra apresentação.`;
+      const subject = `Trabalho reavaliado — ${titulo}`;
+      const html = (nomeDestinatario: string | undefined) =>
+        modeloEmail(
+          `<p>Depois que seu trabalho <strong>"${titulo}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>
+           <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
+          { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+          nomeDestinatario,
+        );
+      await Promise.all(
+        destinatariosUids.map(async (uid) => {
+          const usuarioSnap = await db.doc(`usuarios/${uid}`).get();
+          const usuario = usuarioSnap.data();
+          if (!usuario) return;
+          try {
+            await registrarAtividade({
+              uid,
+              tipo: "reavaliado",
+              texto,
+              negritos: [`"${titulo}"`],
+              trabalhoId,
+              eventoId: trabalho.eventoId as string,
+            });
+          } catch {
+            // melhor esforço
+          }
+          if (!usuario.email) return;
+          await enviarEmail({ to: usuario.email as string, subject, html: html(usuario.nome as string) });
+        }),
+      );
+    } catch (e) {
+      console.error("Reavaliação externa: falha ao notificar o aluno (nota já foi gravada):", e);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -477,6 +477,38 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-06** — **Nome de pessoa sempre em caixa alta na gravação** +
+  **e-mail de "reavaliado" pro aluno**.
+  1. **Caixa alta** (pedido explícito do usuário — "todos os nomes...
+     sempre tem que ser o padrão do programa"). Escopo fechado com o
+     usuário: só nome de PESSOA (não título de trabalho/evento/sala/área),
+     só na GRAVAÇÃO daqui pra frente (não migra dado antigo, não mexe em
+     exibição). Novo `caixaAltaNome()` em `src/lib/textoNome.ts`
+     (`.toLocaleUpperCase("pt-BR")`, mesmo padrão do PDF do ensalamento),
+     aplicado nas fontes originais de nome digitado livre (nunca nas
+     cópias — `alunoNome`/`participantesNomes`/`avaliadorNome`/
+     `moderadorNome` já herdam automaticamente por serem cópia de
+     `usuarios.nome`):
+     - Cadastro de aluno (`api/cadastro/aluno`), criar/editar usuário
+       (`api/usuarios` POST/PATCH), cadastro em lote (`api/usuarios/lote`),
+       "Editar perfil" (`ConfiguracoesModal`), "Seja avaliador"
+       (`api/candidatos`).
+     - Convite de reavaliação externa — nome digitado pelo staff
+       (`api/revisao-externa/convidar`) e pelo próprio avaliador externo
+       anônimo (`[token]/avaliar`).
+     - Orientador/coorientadores da submissão de trabalho
+       (`SubmeterTrabalhoModal`, texto livre do `CampoNomeProfessor`).
+  2. **E-mail "seu trabalho foi reavaliado"** (pedido explícito do
+     usuário — achado real: nem "Dar nota" da comissão nem a reavaliação
+     externa avisavam o aluno, só o fluxo normal do avaliador avisa).
+     Novo tipo `reavaliado` em `/api/mail/trabalho-status` (texto: "a
+     Comissão Científica reavaliou e confirmou: você está apto(a) pra
+     apresentação. Parabéns!") disparado por `salvarNotaComissao`
+     (`src/app/trabalhos/page.tsx`). Reavaliação externa não tem login
+     pra chamar essa rota autenticada — manda o e-mail direto dentro de
+     `[token]/avaliar` mesmo (melhor esforço, nunca derruba a gravação da
+     nota se o e-mail falhar).
+
 - **2026-11-06** — **Reavaliação dos 46 legados: interna + externa sem
   login** (pedido explícito do usuário — "a comissão está sendo
   pressionada a reavaliar esses trabalhos por conta que muitas revisões

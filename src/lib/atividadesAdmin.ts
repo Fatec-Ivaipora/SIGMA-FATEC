@@ -32,6 +32,10 @@ export type TipoAtividade =
   | "convite_aceito"
   | "pagamento"
   | "atribuicao"
+  // Trabalho legado reavaliado (comissão ou avaliador externo convidado —
+  // 2026-11-06, ver /api/mail/trabalho-status e /api/revisao-externa/
+  // [token]/avaliar).
+  | "reavaliado"
   // Confirmação de presença por QR em evento "simples" (2026-10-07, achado
   // real: aluno confirmava a presença e não aparecia nada no feed — único
   // gatilho dessa lista que nunca tinha sido ligado). Ver

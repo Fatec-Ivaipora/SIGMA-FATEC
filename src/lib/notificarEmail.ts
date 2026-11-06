@@ -39,7 +39,10 @@ export type TipoStatusTrabalho =
   // confirmação pro próprio aluno. Ver "aviso_entrega_atrasada" logo abaixo
   // pro aviso equivalente que vai pro avaliador.
   | "entregue_fora_prazo"
-  | "aviso_entrega_atrasada";
+  | "aviso_entrega_atrasada"
+  // Trabalho legado reavaliado pela comissão ("Dar nota" na aba Revisão —
+  // 2026-11-06, pedido explícito do usuário).
+  | "reavaliado";
 
 export function notificarStatusTrabalho(user: User, trabalhoId: string, tipo: TipoStatusTrabalho) {
   void chamar(user, "/api/mail/trabalho-status", { trabalhoId, tipo });

@@ -1044,6 +1044,9 @@ export default function TrabalhosAdminPage() {
         comentarioRevisao: null,
         atualizadoEm: serverTimestamp(),
       });
+      // Avisa o aluno (2026-11-06, pedido explícito do usuário) — sem isso
+      // ele só saberia entrando no SIGMA pra conferir.
+      if (user) notificarStatusTrabalho(user, notaComissao.id, "reavaliado");
       setNotaComissao(null);
     } finally {
       setSalvandoNotaComissao(false);
