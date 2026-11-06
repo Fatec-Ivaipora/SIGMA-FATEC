@@ -38,6 +38,20 @@ function dentroDoPrazoEdicao(evento: Evento | undefined): boolean {
   return evento.prazoEdicaoTrabalho.toDate().getTime() > Date.now();
 }
 
+// Status a partir dos quais o trabalho já saiu das mãos do aluno (tem nota
+// ou decisão final) e por isso não edita mais, mesmo dentro do prazo de
+// edição (2026-11-06, relato real de trabalhos avaliados com botão Editar
+// ainda disponível).
+const STATUS_TRAVA_EDICAO = new Set<Trabalho["status"]>([
+  "revisao",
+  "avaliado",
+  "aguardando_apresentacao",
+  "apresentado",
+  "aceito",
+  "nao_aceito",
+  "revisao_realizada",
+]);
+
 export default function AlunoTrabalhosPage() {
   const { user, perfil, carregando } = useRequireAuth(["aluno"]);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
@@ -169,15 +183,17 @@ export default function AlunoTrabalhosPage() {
               {trabalhos.map((t) => {
                 const evento = eventos.find((e) => e.id === t.eventoId);
                 const souDono = t.alunoUid === user?.uid;
-                // Em "revisão" (avaliador pediu ajuste) edita mesmo fora do
-                // prazo (2026-11-04, corrigido — achado real: firestore.rules
-                // já permitia isso, mas o botão "Corrigir" ficava escondido
-                // se o prazo de edição já tivesse passado, travando o aluno
-                // sem como corrigir o que o avaliador pediu).
                 // Em revisão o aluno NÃO corrige mais (2026-11-06, pedido explícito
                 // do usuário): a comissão organizadora reavalia a versão que
-                // está lá e dá a nota. Só edita dentro do prazo de edição.
-                const podeEditar = souDono && t.status !== "revisao" && dentroDoPrazoEdicao(evento);
+                // está lá e dá a nota.
+                // A partir de "avaliado" (já tem nota) o trabalho também trava
+                // (2026-11-06, relato real de trabalhos avaliados com botão
+                // Editar ainda disponível — editar depois da nota dada
+                // invalidaria a avaliação em silêncio). Só fica editável antes
+                // da nota: submissao/aguardando_avaliacao/entregue_com_atraso,
+                // e mesmo assim só dentro do prazo de edição.
+                const podeEditar =
+                  souDono && !STATUS_TRAVA_EDICAO.has(t.status) && dentroDoPrazoEdicao(evento);
                 const convitePendente = !souDono && !!user && !!t.convitesPendentes?.includes(user.uid);
                 return (
                   <div

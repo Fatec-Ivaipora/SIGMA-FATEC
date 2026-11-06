@@ -124,7 +124,8 @@ export type Trabalho = {
   revisaoLegado?: boolean;
   // Nota dada pela comissão organizadora na aba Revisão (2026-11-06) — o
   // avaliador não pede mais revisão; os que estavam em revisão a comissão
-  // reavalia. Só registro, não muda nada no ranking.
+  // reavalia e dá a nota direto (botão "Dar nota", só admin/organização).
+  // Só registro, não muda nada no ranking.
   notaPelaComissao?: boolean;
   // Etapa Apresentação (2026-08-26) — moderador designado e sua nota, mesmo
   // padrão de avaliadorUid/notaAvaliador acima.

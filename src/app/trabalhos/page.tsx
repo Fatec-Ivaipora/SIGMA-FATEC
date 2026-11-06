@@ -89,8 +89,15 @@ const STATUS_POR_ETAPA: Record<Etapa, TrabalhoStatus[]> = {
 // Etapas em que a organização seleciona trabalhos e distribui entre pessoas
 // (avaliadores na Submissão, moderadores no Resultado) — mesma mecânica nos
 // dois casos, só troca o papel-alvo (2026-08-26).
+// "revisao" entrou em 2026-11-06 (pedido explícito do usuário — "a comissão
+// está sendo pressionada a reavaliar esses trabalhos... criar uma forma de
+// enviar aqueles que estão em revisão para pessoas específicas"): reaproveita
+// a MESMA distribuição manual de avaliador, só que a partir da aba Revisão —
+// ver trabalhosSelecionaveisRevisao (só os 46 legados aparecem com
+// checkbox) e o campo extra em camposEnvio que limpa revisaoLegado.
 const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> = {
   submissao: "avaliador",
+  revisao: "avaliador",
   resultado: "moderador",
 };
 
@@ -100,8 +107,20 @@ const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> =
 // FICA DE FORA de propósito, mesmo tendo notaAvaliador — pedido explícito do
 // usuário: esses trabalhos legados apresentam normalmente, mas não
 // concorrem a pódio/prêmio nem entram no cálculo de empate.
+//
+// "revisao" ENTRA (2026-11-06, pedido explícito do usuário) — desde que a
+// nota já tenha sido travada ANTES de mandar pra revisão (fluxo corrigido
+// em 2026-11-05: professor dá nota + pede ajuste de texto no mesmo passo).
+// A nota é definitiva, então o trabalho já concorre a pódio/empate na hora,
+// sem esperar o aluno corrigir o texto — "a revisão não deveria interferir
+// no evento, é só pra facilitar na hora de levar os resumos aceitos pra
+// revista depois". `analiseResultadoPorArea` abaixo já exige
+// `typeof t.notaAvaliador === "number"`, então isso NUNCA pega os
+// trabalhos legados sem nota (que continuam de fora até alguém os
+// reavaliar — ver tela Revisão, "Enviar para reavaliação").
 const STATUS_JA_AVALIADO: TrabalhoStatus[] = [
   "avaliado",
+  "revisao",
   "aguardando_apresentacao",
   "apresentado",
   "aceito",
@@ -359,8 +378,8 @@ export default function TrabalhosAdminPage() {
   // update liberado em firestore.rules, sem trava de prazo).
   const [trabalhoDetalhe, setTrabalhoDetalhe] = useState<Trabalho | null>(null);
   // Nota da comissão organizadora pros trabalhos da aba Revisão (2026-11-06,
-  // pedido explícito do usuário — avaliador não pede mais revisão; "os que
-  // estão em revisão a comissão organizadora vai reavaliar e dar as notas").
+  // pedido explícito do usuário — só admin/organização acessam essa tela,
+  // então o botão "Dar nota" já fica restrito a quem já tem acesso aqui).
   const [notaComissao, setNotaComissao] = useState<Trabalho | null>(null);
   const [notasComissao, setNotasComissao] = useState<Record<string, number>>({});
   const [salvandoNotaComissao, setSalvandoNotaComissao] = useState(false);
@@ -712,6 +731,50 @@ export default function TrabalhosAdminPage() {
     return lista.map((a, i) => ({ ...a, quantidade: base + (i < resto ? 1 : 0) }));
   }
 
+  // Reavaliação externa, sem login (2026-11-06, pedido explícito do usuário
+  // — "muitos dos professores que se prontificaram a ajudar nessa segunda
+  // revisão não são avaliadores e nem estão no SIGMA... uma tela de
+  // avaliação externa que não precisa de login"). ⚠ EXCEÇÃO TEMPORÁRIA — ver
+  // comentário em src/app/api/revisao-externa/convidar/route.ts, remover
+  // depois que os legados da X MAC forem reavaliados. Envia TODOS os
+  // selecionados pra UM e-mail só (admin repete a seleção+envio pra cada
+  // pessoa, uns 4-5 trabalhos por vez).
+  const [modalReavaliacaoExterna, setModalReavaliacaoExterna] = useState(false);
+  const [emailExterno, setEmailExterno] = useState("");
+  const [nomeExterno, setNomeExterno] = useState("");
+  const [enviandoExterno, setEnviandoExterno] = useState(false);
+  const [erroExterno, setErroExterno] = useState<string | null>(null);
+
+  async function enviarReavaliacaoExterna() {
+    if (!user || !eventoComumSelecionado) return;
+    setEnviandoExterno(true);
+    setErroExterno(null);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/revisao-externa/convidar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventoId: eventoComumSelecionado,
+          trabalhoIds: [...selecionados],
+          email: emailExterno,
+          nome: nomeExterno,
+        }),
+      });
+      const dados = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErroExterno(dados?.erro ?? "Não foi possível enviar o convite.");
+        return;
+      }
+      setModalReavaliacaoExterna(false);
+      setEmailExterno("");
+      setNomeExterno("");
+      setSelecionados(new Set());
+    } finally {
+      setEnviandoExterno(false);
+    }
+  }
+
   function abrirModalEnviar(papel: "avaliador" | "moderador") {
     setPapelAlvoEnvio(papel);
     // Recalcula na hora em vez de reaproveitar pessoasDaArea/pessoasParaManual
@@ -828,6 +891,16 @@ export default function TrabalhosAdminPage() {
   // usado pelo "Aceitar todos selecionados" do menu de funções em lote.
   const mostrarCheckbox = !!ETAPA_PARA_PAPEL_ALVO[etapa] || etapa === "resultado_final";
 
+  // Na aba Revisão, só os 46 legados (sem nota, fluxo antigo) podem ser
+  // selecionados pra reavaliação (2026-11-06, pedido explícito do usuário —
+  // escopo confirmado: "só os 46 legados", não os que já seguem o fluxo
+  // corrigido com nota travada nem o que já virou "Revisão concluída").
+  // Fora da aba Revisão, todo mundo visível pode ser selecionado, igual
+  // sempre foi.
+  function podeSelecionar(t: Trabalho): boolean {
+    return etapa !== "revisao" || t.revisaoLegado === true;
+  }
+
   // Só os selecionados que ainda fazem sentido aceitar (já apresentados,
   // aguardando decisão) — selecionar um já aceito/recusado não faz nada.
   // Mesmo bug do trabalhosSelecionadosObjs acima, mesma correção — selação
@@ -849,18 +922,24 @@ export default function TrabalhosAdminPage() {
   // Checkbox "selecionar todos" no cabeçalho (2026-08-31, igual serviço de
   // e-mail) — seleciona/desseleciona só os trabalhos visíveis com o filtro
   // atual (ex.: uma área temática), não a tabela inteira sem filtro.
+  // `podeSelecionar` (2026-11-06) filtra pra só os legados na aba Revisão.
+  const trabalhosSelecionaveisVisiveis = useMemo(
+    () => trabalhosFiltrados.filter((t) => etapa !== "revisao" || t.revisaoLegado === true),
+    [trabalhosFiltrados, etapa],
+  );
   const todosVisiveisSelecionados =
-    trabalhosFiltrados.length > 0 && trabalhosFiltrados.every((t) => selecionados.has(t.id));
+    trabalhosSelecionaveisVisiveis.length > 0 &&
+    trabalhosSelecionaveisVisiveis.every((t) => selecionados.has(t.id));
 
   function alternarSelecaoTodos() {
     setSelecionados((prev) => {
       if (todosVisiveisSelecionados) {
         const next = new Set(prev);
-        for (const t of trabalhosFiltrados) next.delete(t.id);
+        for (const t of trabalhosSelecionaveisVisiveis) next.delete(t.id);
         return next;
       }
       const next = new Set(prev);
-      for (const t of trabalhosFiltrados) next.add(t.id);
+      for (const t of trabalhosSelecionaveisVisiveis) next.add(t.id);
       return next;
     });
   }
@@ -947,9 +1026,10 @@ export default function TrabalhosAdminPage() {
 
   /** Nota da comissão vira avaliação normal: status "avaliado", entra no
    * Resultado e concorre ao pódio/empate como qualquer outro (2026-11-06,
-   * pedido explícito do usuário — "concorrem normal"). `notaPelaComissao`
-   * só registra quem deu a nota; avaliadorUid/avaliadorNome ficam como
-   * estavam. */
+   * pedido explícito do usuário — "deixar o botão Dar nota para a
+   * organização e admin", que já é a única audiência desta tela).
+   * `notaPelaComissao` só registra quem deu a nota; avaliadorUid/
+   * avaliadorNome ficam como estavam. */
   async function salvarNotaComissao() {
     if (!notaComissao) return;
     if (!CRITERIOS_AVALIACAO.every((c) => notasComissao[c.key])) return;
@@ -961,6 +1041,7 @@ export default function TrabalhosAdminPage() {
         notasCriterios: notasComissao as unknown as NotasCriterios,
         notaAvaliador: soma,
         notaPelaComissao: true,
+        comentarioRevisao: null,
         atualizadoEm: serverTimestamp(),
       });
       setNotaComissao(null);
@@ -1509,12 +1590,30 @@ export default function TrabalhosAdminPage() {
                     className="flex flex-none items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
                   >
                     <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                    {ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
-                      ? "Enviar para avaliação"
-                      : "Enviar para desempate"}
+                    {etapa === "revisao"
+                      ? "Enviar para reavaliação"
+                      : ETAPA_PARA_PAPEL_ALVO[etapa] === "avaliador"
+                        ? "Enviar para avaliação"
+                        : "Enviar para desempate"}
                     {selecionados.size > 0 && ` (${selecionados.size})`}
                   </button>
                 )
+              )}
+
+              {/* ⚠ EXCEÇÃO TEMPORÁRIA (2026-11-06) — ver comentário em
+                * src/app/api/revisao-externa/convidar/route.ts. */}
+              {etapa === "revisao" && (
+                <button
+                  type="button"
+                  disabled={selecionados.size === 0}
+                  onClick={() => setModalReavaliacaoExterna(true)}
+                  title="Pra professores convidados que não têm conta no SIGMA — manda um link público, sem login, pra avaliar só os trabalhos marcados"
+                  className="flex flex-none items-center justify-center gap-1.5 rounded-xl border border-fatec-line px-4 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                >
+                  <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  Enviar para reavaliação externa
+                  {selecionados.size > 0 && ` (${selecionados.size})`}
+                </button>
               )}
 
               <button
@@ -1707,7 +1806,13 @@ export default function TrabalhosAdminPage() {
                             type="checkbox"
                             checked={selecionados.has(t.id)}
                             onChange={() => alternarSelecao(t.id)}
-                            className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                            disabled={!podeSelecionar(t)}
+                            title={
+                              !podeSelecionar(t)
+                                ? "Esse trabalho já segue o fluxo com nota travada ou já foi reavaliado — só os trabalhos legados (sem nota) entram na reavaliação manual"
+                                : undefined
+                            }
+                            className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500 disabled:cursor-not-allowed disabled:opacity-30"
                           />
                         </td>
                       )}
@@ -1890,12 +1995,25 @@ export default function TrabalhosAdminPage() {
       <Modal
         open={modalEnviar}
         onClose={() => setModalEnviar(false)}
-        title={papelAlvoEnvio === "avaliador" ? "Enviar para avaliação" : "Enviar para desempate"}
+        title={
+          etapa === "revisao"
+            ? "Enviar para reavaliação"
+            : papelAlvoEnvio === "avaliador"
+              ? "Enviar para avaliação"
+              : "Enviar para desempate"
+        }
       >
         <p className="text-sm text-fatec-ink">
           Enviar <span className="font-semibold">{selecionados.size}</span>{" "}
           trabalho(s) selecionado(s) para{" "}
-          {papelAlvoEnvio === "avaliador" ? "avaliação" : "desempate"}.
+          {etapa === "revisao" ? "reavaliação" : papelAlvoEnvio === "avaliador" ? "avaliação" : "desempate"}.
+          {etapa === "revisao" && (
+            <>
+              {" "}
+              A nota anterior (se houver) é descartada — quem receber vai avaliar do zero, como se
+              fosse a primeira vez.
+            </>
+          )}
         </p>
 
         {!modoManual && pessoasDaArea.length > 0 ? (
@@ -2121,6 +2239,59 @@ export default function TrabalhosAdminPage() {
             className="rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
           >
             Enviar
+          </button>
+        </div>
+      </Modal>
+
+      {/* ⚠ EXCEÇÃO TEMPORÁRIA (2026-11-06) — ver comentário em
+        * src/app/api/revisao-externa/convidar/route.ts, remover junto com
+        * o resto da feature depois que os legados da X MAC forem
+        * reavaliados. */}
+      <Modal
+        open={modalReavaliacaoExterna}
+        onClose={() => setModalReavaliacaoExterna(false)}
+        title="Enviar para reavaliação externa"
+      >
+        <p className="text-sm text-fatec-ink">
+          Enviar <span className="font-semibold">{selecionados.size}</span> trabalho(s)
+          selecionado(s) pra um professor sem conta no SIGMA. Ele recebe um e-mail com um link
+          público (sem login) pra avaliar só esses trabalhos.
+        </p>
+        <label className="mt-4 flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-fatec-navy-900">E-mail do professor</span>
+          <input
+            type="email"
+            value={emailExterno}
+            onChange={(e) => setEmailExterno(e.target.value)}
+            placeholder="nome@exemplo.com"
+            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
+          />
+        </label>
+        <label className="mt-3 flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-fatec-navy-900">Nome (opcional)</span>
+          <input
+            value={nomeExterno}
+            onChange={(e) => setNomeExterno(e.target.value)}
+            placeholder="Pra personalizar o e-mail — ele confirma o próprio nome na primeira vez que abrir o link"
+            className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
+          />
+        </label>
+        {erroExterno && <p className="mt-3 text-sm text-rose-600">{erroExterno}</p>}
+        <div className="mt-6 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setModalReavaliacaoExterna(false)}
+            className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={enviarReavaliacaoExterna}
+            disabled={!emailExterno.trim() || enviandoExterno}
+            className="rounded-xl bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+          >
+            {enviandoExterno ? "Enviando..." : "Enviar convite"}
           </button>
         </div>
       </Modal>

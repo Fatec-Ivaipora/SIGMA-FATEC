@@ -13,6 +13,15 @@ export async function enviarEmail(dados: {
   subject: string;
   html: string;
 }) {
+  // Fallback em texto puro, usado pelo cliente de e-mail quando não
+  // renderiza HTML (2026-11-06, bug real — regex genérica de remover tags
+  // também apagava o `href` do botão junto, sobrando só o texto solto sem
+  // link nenhum). Extrai a URL do <a> ANTES de tirar as outras tags.
+  const textoSemHtml = dados.html
+    .replace(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   await getAdminDb()
     .collection("mail")
     .add({
@@ -20,7 +29,7 @@ export async function enviarEmail(dados: {
       message: {
         subject: dados.subject,
         html: dados.html,
-        text: dados.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+        text: textoSemHtml,
       },
     });
 }

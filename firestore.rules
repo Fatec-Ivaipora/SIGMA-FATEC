@@ -378,6 +378,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // convitesRevisaoExterna/{token} (2026-11-06, pedido explícito do
+    // usuário — "muitos dos professores que se prontificaram a ajudar
+    // nessa segunda revisão não são avaliadores e nem estão no SIGMA...
+    // uma tela de avaliação externa que não precisa de login"). O
+    // professor externo nunca autentica no Firebase — a página pública
+    // /reavaliacao-externa/[token] e as rotas /api/revisao-externa/* usam
+    // só o Admin SDK (bypassa estas regras, lê/grava direto), então aqui
+    // é negar tudo pro client, igual mail/ acima. O segredo de verdade é
+    // o token em si (aleatório, ver gerarTokenConvite em
+    // src/app/api/revisao-externa/convidar/route.ts), não essas regras.
+    match /convitesRevisaoExterna/{token} {
+      allow read, write: if false;
+    }
+
     // candidatosAvaliacao/{id} (2026-10-28, pedido explícito do usuário) —
     // autocadastro público de quem quer ser avaliador/moderador (nome,
     // área de formação, telefone, email). Grava telefone/email de gente

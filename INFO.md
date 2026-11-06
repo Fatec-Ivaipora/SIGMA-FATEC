@@ -477,6 +477,120 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-06** — **Reavaliação dos 46 legados: interna + externa sem
+  login** (pedido explícito do usuário — "a comissão está sendo
+  pressionada a reavaliar esses trabalhos por conta que muitas revisões
+  são injustas... criar uma forma de enviar aqueles que estão em revisão
+  para pessoas específicas, eles dessem as notas e fosse para resultado").
+  1. **"revisao" entrou em `STATUS_JA_AVALIADO`** (`src/app/trabalhos/
+     page.tsx`) — trabalho que já tem nota travada ANTES da revisão
+     (fluxo corrigido de 2026-11-05) agora conta pro pódio/desempate na
+     hora, mesmo com o status ainda mostrando "revisão" (pedido
+     explícito — "a ideia é que depois do evento vamos pegar os resumos
+     aceitos e levar pra revista, então esse aluno tem que revisar [o
+     texto]... abrimos um filtro de status revisão depois"). Só pega
+     quem já tem `notaAvaliador` numérico (o filtro já existia em
+     `analiseResultadoPorArea`) — os 46 legados sem nota continuam de
+     fora até serem reavaliados.
+  2. **Reavaliação interna**: aba Revisão ganhou checkbox + "Enviar para
+     reavaliação", reaproveitando a MESMA distribuição manual de
+     avaliador já usada na Submissão — só que agora a partir do status
+     "revisao", e só nos 46 legados (`revisaoLegado === true`; os outros
+     ficam com checkbox desabilitado, com aviso). Ao reatribuir, zera
+     `revisaoLegado` e `comentarioRevisao` — a pessoa escolhida avalia do
+     zero, nota vai direto pra "Avaliado" normal (concorre a pódio).
+  3. **⚠ Reavaliação externa, SEM LOGIN — EXCEÇÃO TEMPORÁRIA, REMOVER
+     DEPOIS** (pedido explícito do usuário — "muitos dos professores que
+     se prontificaram a ajudar nessa segunda revisão não são avaliadores
+     e nem estão no SIGMA... uma tela de avaliação externa que não
+     precisa de login"). Botão "Enviar para reavaliação externa" (aba
+     Revisão) → admin digita e-mail → novo `POST /api/revisao-externa/
+     convidar` cria um convite (coleção `convitesRevisaoExterna`, só
+     Admin SDK, `allow read,write: if false` pro client — ver
+     firestore.rules) com um token aleatório de 192 bits e manda e-mail
+     com o link. Página pública nova `/reavaliacao-externa/[token]` (sem
+     `useRequireAuth`, sem Firebase Auth nenhum) lista os trabalhos
+     daquele convite (lista primeiro, "Avaliar" abre modal com os mesmos
+     5 critérios/escala 1-5 do avaliador interno, às cegas — nunca
+     devolve nome de aluno) e grava via `POST /api/revisao-externa/
+     [token]/avaliar`, que confere no servidor: token existe, trabalhoId
+     pertence a ESSE convite, ainda não avaliado, notas 1-5 completas —
+     aí grava nota + "Avaliado" + `avaliadorNome: "Fulano (avaliador
+     externo convidado)"` (transparência de que não é avaliador
+     cadastrado). **Isso é um remendo pontual pro lote de reavaliação da
+     X MAC, não uma feature permanente** — registrado em memória
+     (`reavaliacao-externa-temporaria.md`) pra lembrar de remover depois
+     (rotas, página, coleção, regra, botão).
+  **Testado**: rodei o fluxo inteiro de ponta a ponta contra um trabalho
+  descartável (não X MAC de verdade) — GET não vaza nome de aluno; POST
+  recusa nota incompleta (400), recusa trabalhoId fora do convite (400,
+  confirma que não dá pra avaliar trabalho de outro convite adulterando
+  o id), aceita nota válida (200, grava status "avaliado" +
+  `notaAvaliador` certo + `revisaoLegado: false`), recusa reenvio do
+  mesmo trabalho (400, não deixa sobrescrever). `tsc`/`eslint` limpos em
+  todos os arquivos novos e tocados.
+  4. **Conflito com solução paralela de um colega, reconciliado** — no
+     mesmo dia um colega subiu (PRs mergeados, `f6d425d`/`0dac8ea`) outra
+     solução pro mesmo problema: "Solicitar revisão" removido do
+     avaliador, "Corrigir" desabilitado pro aluno em "revisao", botão "Dar
+     nota" pra comissão dar nota direto na aba Revisão, label do
+     StatusBadge "Em reavaliação", critérios extraídos pra
+     `src/lib/criteriosAvaliacao.ts`, coluna "nota do avaliador" na aba
+     Revisão. Decisão do usuário (explícita — "vamos manter tudo que
+     fizemos tire o que ele fez, nossa solução é mais robusta, a única
+     coisa é manter sem o botão revisão e o botão corrigir ficam
+     desativados"): manter TUDO deste item (STATUS_JA_AVALIADO,
+     reavaliação interna e externa) e do colega manter só duas coisas —
+     avaliador sem "Solicitar revisão" (`permiteRevisao={false}` em
+     `avaliador/trabalhos/page.tsx`) e aluno sem "Corrigir" durante
+     "revisao" (`podeEditar` em `aluno/trabalhos/page.tsx`). Removido o
+     resto do colega: botão/coluna "Dar nota" e as funções
+     `abrirNotaComissao`/`salvarNotaComissao` (`src/app/trabalhos/
+     page.tsx`), o campo `notaPelaComissao` (`src/lib/data/trabalhos.ts`).
+     Mantido como refactor inofensivo: extração de
+     `src/lib/criteriosAvaliacao.ts`, label "Em reavaliação" do
+     StatusBadge, coluna "nota do avaliador" na aba Revisão (útil pra
+     decidir quem reavaliar).
+  5. **Consequência direta, resolvida**: como o aluno não corrige mais
+     nada em "revisao", os 4 trabalhos do fluxo novo (nota já travada,
+     não são dos 46 legados) ficariam travados pra sempre sem ninguém
+     fechar. Finalizados manualmente pra "avaliado" (reaproveitando a
+     nota já dada pelo avaliador, `comentarioRevisao: null`) — confirmado
+     com o usuário antes de rodar.
+  6. **`podeEditar` travava só em "revisao"** (`aluno/trabalhos/
+     page.tsx`) — relato real do usuário: trabalho "avaliado" (e qualquer
+     status posterior) ainda mostrava o botão Editar enquanto o prazo de
+     inscrição do evento não vencesse. Agora trava a partir de
+     "avaliado" (`STATUS_TRAVA_EDICAO`) — só edita antes da nota
+     (submissao/aguardando_avaliacao/entregue_com_atraso), dentro do
+     prazo de edição.
+  7. **Convite externo agora muda o status na hora de enviar**, não só
+     quando a nota volta (pedido explícito do usuário — "preciso que eles
+     mudem de status ou voltem para avaliação para conseguirmos controlar
+     qual foi enviado ou não"). `POST /api/revisao-externa/convidar`
+     agora move os trabalhos enviados pra "aguardando_avaliacao" num
+     batch (saem da aba Revisão, aparecem na aba Avaliação com
+     `avaliadorNome: "Fulano (reavaliação externa — convite enviado)"`,
+     `avaliadorUid: null`). A rota de gravar nota (`[token]/avaliar`)
+     aceita tanto esse novo status quanto "revisao" (fallback de
+     segurança pra convite antigo).
+  8. **Bug real, corrigido: e-mails com botão perdiam o link no fallback
+     texto puro** (`enviarEmail` em `src/lib/mail.ts`) — achado testando
+     o convite de reavaliação externa, mas afeta TODO e-mail do sistema
+     que usa botão (recuperação de senha, atribuição, etc.): a regex que
+     gera a versão texto-puro (usada pelo cliente de e-mail quando não
+     renderiza HTML) removia a tag `<a>` inteira, `href` junto, sobrando
+     só o texto do botão solto sem link nenhum. Corrigido pra extrair a
+     URL antes de limpar as tags (`texto (url)`).
+  9. **"Dar nota" voltou** (pedido explícito do usuário, depois de
+     reconsiderar o item 4 acima — "quero deixar o botão dar nota para a
+     organização e admin"). Como a tela `/trabalhos` inteira já é
+     `useRequireAuth(["admin", "organizacao"])`, restringir ao papel já é
+     automático — não precisou de trava extra. Restaurados
+     `abrirNotaComissao`/`salvarNotaComissao`, o botão "Dar nota" na aba
+     Revisão e o campo `notaPelaComissao` (exatamente como o colega tinha
+     feito, só que mantendo tudo mais deste item junto).
+
 - **2026-11-05** — **"Ações do resultado" sempre visível, nunca troca de
   botão** (achado real do usuário — "esse botão 'Liberar trabalhos para
   moderadores' não existe não achei ele"). Causa: o botão só aparecia
