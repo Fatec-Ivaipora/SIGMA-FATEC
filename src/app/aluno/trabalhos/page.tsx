@@ -174,7 +174,10 @@ export default function AlunoTrabalhosPage() {
                 // já permitia isso, mas o botão "Corrigir" ficava escondido
                 // se o prazo de edição já tivesse passado, travando o aluno
                 // sem como corrigir o que o avaliador pediu).
-                const podeEditar = souDono && (t.status === "revisao" || dentroDoPrazoEdicao(evento));
+                // Em revisão o aluno NÃO corrige mais (2026-11-06, pedido explícito
+                // do usuário): a comissão organizadora reavalia a versão que
+                // está lá e dá a nota. Só edita dentro do prazo de edição.
+                const podeEditar = souDono && t.status !== "revisao" && dentroDoPrazoEdicao(evento);
                 const convitePendente = !souDono && !!user && !!t.convitesPendentes?.includes(user.uid);
                 return (
                   <div

@@ -32,7 +32,13 @@ import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/Submete
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos, type Evento } from "@/lib/data/eventos";
-import { useTrabalhos, type TrabalhoStatus, type Trabalho, atualizarTrabalho } from "@/lib/data/trabalhos";
+import {
+  useTrabalhos,
+  type TrabalhoStatus,
+  type Trabalho,
+  type NotasCriterios,
+  atualizarTrabalho,
+} from "@/lib/data/trabalhos";
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
 import { useMinhaInscricao, useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
@@ -44,6 +50,7 @@ import {
 } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 import { baixarCertificadosImpressao } from "@/lib/baixarCertificado";
+import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
 
 type Etapa =
   | "submissao"
@@ -351,6 +358,12 @@ export default function TrabalhosAdminPage() {
   // (prazo perdido, orientador errado, colega esquecido etc — admin já tem
   // update liberado em firestore.rules, sem trava de prazo).
   const [trabalhoDetalhe, setTrabalhoDetalhe] = useState<Trabalho | null>(null);
+  // Nota da comissão organizadora pros trabalhos da aba Revisão (2026-11-06,
+  // pedido explícito do usuário — avaliador não pede mais revisão; "os que
+  // estão em revisão a comissão organizadora vai reavaliar e dar as notas").
+  const [notaComissao, setNotaComissao] = useState<Trabalho | null>(null);
+  const [notasComissao, setNotasComissao] = useState<Record<string, number>>({});
+  const [salvandoNotaComissao, setSalvandoNotaComissao] = useState(false);
   const [trabalhoEditando, setTrabalhoEditando] = useState<Trabalho | null>(null);
 
   // Mesma lógica de src/app/aluno/trabalhos/page.tsx#salvarEdicao (convite
@@ -917,6 +930,42 @@ export default function TrabalhosAdminPage() {
     });
     if (user) {
       notificarStatusTrabalho(user, id, decisao === "recusar" ? "nao_aceito" : "aceito");
+    }
+  }
+
+  /** Abre a nota da comissão já com a nota anterior do avaliador marcada
+   * (quando existir) — a comissão confirma ou ajusta. */
+  function abrirNotaComissao(t: Trabalho) {
+    const anterior = (t.notasCriterios ?? {}) as unknown as Record<string, unknown>;
+    const iniciais: Record<string, number> = {};
+    for (const c of CRITERIOS_AVALIACAO) {
+      if (typeof anterior[c.key] === "number") iniciais[c.key] = anterior[c.key] as number;
+    }
+    setNotasComissao(iniciais);
+    setNotaComissao(t);
+  }
+
+  /** Nota da comissão vira avaliação normal: status "avaliado", entra no
+   * Resultado e concorre ao pódio/empate como qualquer outro (2026-11-06,
+   * pedido explícito do usuário — "concorrem normal"). `notaPelaComissao`
+   * só registra quem deu a nota; avaliadorUid/avaliadorNome ficam como
+   * estavam. */
+  async function salvarNotaComissao() {
+    if (!notaComissao) return;
+    if (!CRITERIOS_AVALIACAO.every((c) => notasComissao[c.key])) return;
+    const soma = CRITERIOS_AVALIACAO.reduce((acc, c) => acc + notasComissao[c.key], 0);
+    setSalvandoNotaComissao(true);
+    try {
+      await atualizarTrabalho(notaComissao.id, {
+        status: "avaliado",
+        notasCriterios: notasComissao as unknown as NotasCriterios,
+        notaAvaliador: soma,
+        notaPelaComissao: true,
+        atualizadoEm: serverTimestamp(),
+      });
+      setNotaComissao(null);
+    } finally {
+      setSalvandoNotaComissao(false);
     }
   }
 
@@ -1638,7 +1687,7 @@ export default function TrabalhosAdminPage() {
                     </th>
                     <th className="px-3 py-2 font-semibold">Última edição</th>
                     <th className="px-3 py-2 font-semibold">Situação</th>
-                    {etapa === "resultado_final" && (
+                    {(etapa === "resultado_final" || etapa === "revisao") && (
                       <th className="border-l border-fatec-line px-4 py-2 font-semibold">Ações</th>
                     )}
                   </tr>
@@ -1721,6 +1770,17 @@ export default function TrabalhosAdminPage() {
                           evento={eventos.find((e) => e.id === t.eventoId)}
                         />
                       </td>
+                      {etapa === "revisao" && (
+                        <td className="border-l border-fatec-line px-4 py-3 align-top">
+                          <button
+                            type="button"
+                            onClick={() => abrirNotaComissao(t)}
+                            className="whitespace-nowrap rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                          >
+                            Dar nota
+                          </button>
+                        </td>
+                      )}
                       {etapa === "resultado_final" && (
                         <td className="border-l border-fatec-line px-4 py-3 align-top">
                           {/* Empatou, voltou da apresentação, ainda sem decisão
@@ -2049,6 +2109,101 @@ export default function TrabalhosAdminPage() {
             Enviar
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!notaComissao}
+        onClose={() => setNotaComissao(null)}
+        title="Nota da comissão organizadora"
+      >
+        {notaComissao && (
+          <div className="flex flex-col gap-5">
+            <div>
+              <p className="font-medium text-fatec-navy-900">{tituloExibicao(notaComissao.titulo)}</p>
+              <p className="text-sm text-fatec-muted">
+                {notaComissao.areaTematica} · Avaliador: {notaComissao.avaliadorNome ?? "—"}
+              </p>
+            </div>
+            {notaComissao.comentarioRevisao && (
+              <div className="rounded-xl border border-fatec-orange-200 bg-fatec-orange-50 px-4 py-3">
+                <p className="text-xs font-semibold text-fatec-orange-700">O que o avaliador tinha pedido</p>
+                <p className="mt-1 whitespace-pre-line text-sm text-fatec-ink">{notaComissao.comentarioRevisao}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-fatec-muted">Resumo</p>
+              <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-line rounded-xl border border-fatec-line px-4 py-3 text-sm text-fatec-ink">
+                {notaComissao.resumo}
+              </p>
+            </div>
+            <div className="flex flex-col gap-4 border-t border-fatec-line pt-5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Critérios (1 a 5 cada — a nota final é a soma)
+                {typeof notaComissao.notaAvaliador === "number" && (
+                  <span className="font-normal text-fatec-muted">
+                    {" "}— já vem marcada a nota do avaliador ({notaComissao.notaAvaliador}/25)
+                  </span>
+                )}
+              </span>
+              {CRITERIOS_AVALIACAO.map((c) => (
+                <div
+                  key={c.key}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="min-w-0 sm:max-w-sm">
+                    <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
+                    <p className="text-xs text-fatec-muted">{c.descricao}</p>
+                  </div>
+                  <div className="flex flex-none gap-2">
+                    {NOTAS_AVALIACAO.map((n) => (
+                      <button
+                        key={n.valor}
+                        type="button"
+                        onClick={() => setNotasComissao((prev) => ({ ...prev, [c.key]: n.valor }))}
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors ${
+                          notasComissao[c.key] === n.valor
+                            ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
+                            : "border-fatec-line text-fatec-navy-900 hover:border-fatec-orange-500/60"
+                        }`}
+                      >
+                        {n.valor}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <p className="text-sm text-fatec-muted">
+                Total:{" "}
+                <span className="font-semibold text-fatec-navy-900">
+                  {CRITERIOS_AVALIACAO.reduce((acc, c) => acc + (notasComissao[c.key] ?? 0), 0)}
+                </span>{" "}
+                / {CRITERIOS_AVALIACAO.length * 5}
+              </p>
+            </div>
+            <p className="text-xs text-fatec-muted">
+              Ao salvar, o trabalho vai para a aba Resultado e concorre normalmente.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={salvarNotaComissao}
+                disabled={
+                  salvandoNotaComissao || !CRITERIOS_AVALIACAO.every((c) => notasComissao[c.key])
+                }
+                className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+              >
+                {salvandoNotaComissao ? "Salvando..." : "Salvar nota"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNotaComissao(null)}
+                className="rounded-xl border border-fatec-line px-6 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <DetalheTrabalhoModal

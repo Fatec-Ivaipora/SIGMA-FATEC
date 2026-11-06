@@ -21,14 +21,15 @@ import {
 } from "@/lib/data/trabalhos";
 import { notificarStatusTrabalho } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import {
+  CRITERIOS_AVALIACAO,
+  NOTAS_AVALIACAO,
+  type CriterioDef,
+  type NotaOpcao,
+} from "@/lib/criteriosAvaliacao";
 
 const TODOS_MEUS_EVENTOS = "Todos os meus eventos";
 
-// Escala de nota por critério — cada painel (Avaliação/Apresentação) tem a
-// sua, não necessariamente igual (2026-11-05, pedido explícito do usuário:
-// Apresentação virou 1 a 3 com rótulo, Avaliação continua 1 a 5 sem rótulo).
-type NotaOpcao = { valor: number; label?: string };
-const NOTAS_AVALIACAO: NotaOpcao[] = [1, 2, 3, 4, 5].map((valor) => ({ valor }));
 // "Pontuação: cada critério será avaliado de 1 a 3 pontos, conforme os
 // níveis: 1 – Regular, 2 – Bom, 3 – Excelente" (texto exato pedido pelo
 // usuário) — soma por trabalho vai de 7 a 21 agora (7 critérios), não mais
@@ -46,47 +47,6 @@ const NOTAS_APRESENTACAO: NotaOpcao[] = [
 // — só essa flag esconde o botão da tela. Pra reativar, basta voltar pra
 // `true`.
 const REJEICAO_HABILITADA = false;
-
-type CriterioDef = { key: string; label: string; descricao: string };
-
-// Critérios do edital do evento (item 6.1) — cada um recebe nota de 1 a 5
-// (item 6.2); a nota final somada é o que ranqueia os resumos mais bem
-// pontuados. `descricao` (2026-11-03, pedido explícito do usuário —
-// "colocar na frente de cada critério a sua descrição") — o edital só
-// nomeia os critérios, sem explicar o que cada um significa; texto
-// escrito por nós, pode ser ajustado se a comissão científica quiser
-// outra redação.
-const CRITERIOS_AVALIACAO: CriterioDef[] = [
-  {
-    key: "suficiencia",
-    label: "Suficiência",
-    descricao:
-      "O resumo traz informação suficiente (contexto, objetivo, método, resultados) pra dar pra entender do que se trata o trabalho.",
-  },
-  {
-    key: "coerencia",
-    label: "Coerência",
-    descricao:
-      "As partes do resumo se conectam sem contradição — o que foi proposto bate com o que foi apresentado como resultado.",
-  },
-  {
-    key: "estruturaTexto",
-    label: "Estrutura do texto",
-    descricao:
-      "Segue a estrutura esperada pelo edital: introdução, objetivos, materiais e métodos, resultados, considerações finais.",
-  },
-  {
-    key: "clarezaPrecisao",
-    label: "Clareza e precisão",
-    descricao: "Escrita clara e direta, sem termos vagos, ambíguos ou informação confusa.",
-  },
-  {
-    key: "aplicabilidadeRelevancia",
-    label: "Aplicabilidade e relevância",
-    descricao:
-      "O trabalho tem relevância científica, acadêmica ou social, com contribuição ou aplicação prática reconhecível.",
-  },
-];
 
 // Critérios da etapa de Apresentação (item 6.4 do edital X MAC, conferido
 // 2026-09-08 contra o PDF real — substituem os 5 placeholder de antes, que
@@ -702,7 +662,11 @@ export default function AvaliadorTrabalhosPage() {
               escalaNotas={NOTAS_AVALIACAO}
               statusPendente="aguardando_avaliacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
-              permiteRevisao
+              // Avaliador não pede mais revisão (2026-11-06, pedido explícito do
+              // usuário — "eles só podem dar a nota em cima do trabalho"). Os
+              // que já estavam em revisão a comissão organizadora reavalia
+              // pela aba Revisão (src/app/trabalhos/page.tsx).
+              permiteRevisao={false}
               permiteRejeitar={REJEICAO_HABILITADA}
               respeitaPrazoAvaliacao
               onEnviarNota={async (id, soma, notas) => {

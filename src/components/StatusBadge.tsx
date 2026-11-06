@@ -17,7 +17,7 @@ const STATUS_META: Record<
     bg: "bg-fatec-navy-100",
   },
   revisao: {
-    label: "Revisão solicitada",
+    label: "Em reavaliação",
     dot: "bg-fatec-orange-500",
     text: "text-fatec-orange-600",
     bg: "bg-fatec-orange-100",
