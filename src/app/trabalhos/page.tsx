@@ -40,7 +40,7 @@ import {
   atualizarTrabalho,
 } from "@/lib/data/trabalhos";
 import { useUsuarios, type UsuarioRegistro } from "@/lib/data/usuarios";
-import { useMinhaInscricao, useInscritosDoEvento } from "@/lib/data/inscricoes";
+import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
 import {
   notificarAtribuicao,
@@ -127,6 +127,16 @@ const STATUS_JA_AVALIADO: TrabalhoStatus[] = [
   "nao_aceito",
 ];
 
+// Ouro/prata/bronze por posição no pódio (2026-11-09, pedido explícito do
+// usuário — "melhore essa tag de premiado por cor dourado, prata e bronze
+// e com 1º premiado/2º premiado/3º premiado"). Fallback (posição > 3, não
+// deveria acontecer nunca) cai no laranja genérico de antes.
+const CORES_POSICAO_PODIO: Record<number, string> = {
+  1: "bg-yellow-100 text-yellow-800",
+  2: "bg-slate-200 text-slate-700",
+  3: "bg-orange-200 text-orange-900",
+};
+
 function formatarData(valor: unknown): string {
   if (!valor || typeof valor !== "object" || !("toDate" in valor)) return "—";
   return (valor as { toDate(): Date }).toDate().toLocaleDateString("pt-BR");
@@ -150,17 +160,23 @@ function momentoEnvio(t: Trabalho): number {
   return typeof valor?.toMillis === "function" ? valor.toMillis() : 0;
 }
 
-/** Situação do pagamento do dono do trabalho nesse evento (2026-08-31) —
- * componente próprio só pra poder chamar useMinhaInscricao por linha da
- * tabela. Evento sem taxa não tem pagamento pra checar. A leitura funciona
- * aqui (admin/organização) mesmo sendo de outra pessoa — ver firestore.rules,
+/** Situação do pagamento de TODO o grupo nesse evento (2026-08-31,
+ * ampliado 2026-11-09 — achado real do usuário: "tem alguns trabalhos
+ * aparecendo como não pago, mas e se no grupo de 6 pessoas 5 pagaram e só
+ * o autor principal não pagou?"). Antes só olhava o `alunoUid` (autor
+ * principal) e rotulava "Não pago" mesmo quando o resto do grupo já tinha
+ * pago — parecia que ninguém tinha pago, mas o certificado é liberado POR
+ * PESSOA (ver /api/certificados — cada participante tem sua própria
+ * inscrição), então colegas pagos recebem o certificado normalmente
+ * mesmo com o autor principal inadimplente. Badge agora resume o grupo
+ * (Pago/Não pago só quando é unânime, "X/Y pago" quando é misto) e o
+ * hover mostra nome + status de cada um (verde quem já pagou). Evento sem
+ * taxa não tem pagamento pra checar. A leitura funciona aqui (admin/
+ * organização) mesmo sendo de outra pessoa — ver firestore.rules,
  * inscricoesEvento permite admin/organização lerem qualquer inscrição. */
 function CelulaSituacaoPagamento({ trabalho, evento }: { trabalho: Trabalho; evento: Evento | undefined }) {
   const temTaxa = !!evento?.valorInscricao;
-  const { inscricao, carregando } = useMinhaInscricao(
-    temTaxa ? trabalho.eventoId : undefined,
-    trabalho.alunoUid,
-  );
+  const { inscritos, carregando } = useInscritosDoEvento(temTaxa ? trabalho.eventoId : undefined);
 
   if (!temTaxa) {
     return <span className="text-xs text-fatec-muted">Gratuito</span>;
@@ -168,15 +184,47 @@ function CelulaSituacaoPagamento({ trabalho, evento }: { trabalho: Trabalho; eve
   if (carregando) {
     return <span className="text-xs text-fatec-muted">…</span>;
   }
-  const pago = inscricao?.status === "pago";
+
+  const porUid = new Map(inscritos.map((i) => [i.uid, i]));
+  const membros = [
+    { uid: trabalho.alunoUid, nome: trabalho.alunoNome },
+    ...(trabalho.participantesUids ?? []).map((uid, i) => ({
+      uid,
+      nome: trabalho.participantesNomes?.[i] ?? uid,
+    })),
+  ].map((m) => ({ ...m, pago: porUid.get(m.uid)?.status === "pago" }));
+
+  const qtdPagos = membros.filter((m) => m.pago).length;
+  const todosPagaram = qtdPagos === membros.length;
+  const ninguemPagou = qtdPagos === 0;
+  const rotulo = todosPagaram ? "Pago" : ninguemPagou ? "Não pago" : `${qtdPagos}/${membros.length} pago`;
+
   return (
-    <span
-      className={`inline-flex w-fit items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
-        pago ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-      }`}
-    >
-      {pago ? "Pago" : "Não pago"}
-    </span>
+    <div className="group/pagamento relative inline-block">
+      <span
+        className={`inline-flex w-fit cursor-default items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
+          todosPagaram
+            ? "bg-emerald-100 text-emerald-700"
+            : ninguemPagou
+              ? "bg-amber-100 text-amber-700"
+              : "bg-fatec-sky-100 text-fatec-sky-700"
+        }`}
+      >
+        {rotulo}
+      </span>
+      {membros.length > 1 && (
+        <div className="invisible absolute left-0 top-full z-20 mt-1 w-max max-w-[220px] rounded-xl border border-fatec-line bg-white p-2.5 opacity-0 shadow-lg transition-opacity group-hover/pagamento:visible group-hover/pagamento:opacity-100">
+          {membros.map((m) => (
+            <p
+              key={m.uid}
+              className={`whitespace-nowrap text-xs ${m.pago ? "font-medium text-emerald-600" : "text-fatec-muted"}`}
+            >
+              {m.nome}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -508,10 +556,27 @@ export default function TrabalhosAdminPage() {
   // Análise de ranking por área temática (2026-09-11, substitui o "empate"
   // ingênuo de antes, que marcava qualquer nota repetida — mesmo empatados
   // em 8º lugar, o que não tinha nada a ver com o pódio). Só interessa
-  // empate na FRONTEIRA do top 3 (edital 6.6): quem tira nota acima do
-  // corte já é premiado direto; quem tira abaixo já não é, sem precisar de
-  // apresentação nenhuma; só quem empata bem na 3ª vaga (ou disputa ela)
-  // precisa ir pro moderador desempatar.
+  // empate DENTRO do top 3 (edital 6.6): quem tira nota única acima do
+  // corte já é premiado direto; quem tira nota única abaixo já não é, sem
+  // precisar de apresentação nenhuma; quem tem a MESMA nota de outro
+  // trabalho que caia no top 3 precisa ir pro moderador desempatar.
+  //
+  // CORRIGIDO (bug real, achado em 2026-11-09 — "Engenharias e Ciências
+  // Agrárias: 1º com 25, 2º com 24, 3º com 24", liberado como "sem
+  // empate"): a versão anterior só considerava empate quando a nota batida
+  // na 3ª posição tinha gente demais pra vaga (ex.: 4º lugar também com
+  // aquela nota, disputando a vaga de fora). Duas notas IGUAIS que já
+  // cabiam tranquilas nas vagas que sobraram (ex.: 25/24/24 com só 3
+  // trabalhos na área, ou 25/20/20/15 com 4) eram liberadas direto — mas
+  // mesmo cabendo as duas, ainda não dá pra saber qual delas é 2º e qual é
+  // 3º lugar de verdade (tem prêmio/certificado por colocação exata). Isso
+  // também nunca verificava empate ACIMA do corte (dois 1ºs lugares com a
+  // mesma nota, por exemplo). Agora agrupa por nota (ordem decrescente) e
+  // anda vaga por vaga: nota sozinha que cabe = premiado direto; nota
+  // repetida que ainda tem vaga de pódio em jogo (cabendo todo mundo ou
+  // não) = todo o grupo vai pra empate, sempre — só nota abaixo de onde o
+  // pódio já fechou (sem mais vaga nenhuma) vira aceito direto, empatada
+  // ou não (ali embaixo a ordem exata não importa pra prêmio nenhum).
   //
   // IMPORTANTE (bug real, achado testando em 2026-09-11): o pódio da área
   // tem que ser calculado sobre TODO MUNDO que já foi avaliado ali, mesmo
@@ -541,41 +606,41 @@ export default function TrabalhosAdminPage() {
       const ordenados = [...lista].sort(
         (a, b) => (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0),
       );
-      // Área com 3 ou menos trabalhos: todo mundo cabe no pódio, sem disputa.
-      if (ordenados.length <= 3) {
-        resultado.set(chave, {
-          premiadosDiretos: ordenados.map((t) => t.id),
-          aceitosDiretos: [],
-          empatados: [],
-        });
-        continue;
+      const vagasPodio = Math.min(3, ordenados.length);
+
+      // Agrupa por nota, mantendo a ordem decrescente — cada grupo de nota
+      // repetida é tratado inteiro de uma vez (ver comentário acima).
+      const gruposPorNota: Trabalho[][] = [];
+      for (const t of ordenados) {
+        const ultimo = gruposPorNota[gruposPorNota.length - 1];
+        if (ultimo && ultimo[0].notaAvaliador === t.notaAvaliador) {
+          ultimo.push(t);
+        } else {
+          gruposPorNota.push([t]);
+        }
       }
-      // Nota de quem está na 3ª posição depois de ordenar — não "o 3º valor
-      // distinto" (testado e corrigido, 2026-09-11: com nota repetida os
-      // dois viram coisas diferentes. Ex.: 25, 20, 20, 15 — o 3º valor
-      // distinto seria 15, mas quem está na 3ª posição tem nota 20; usar o
-      // valor distinto errado tratava 15 como fronteira do pódio quando na
-      // real o pódio (25+20+20) já estava fechado sem disputa nenhuma).
-      const corteNota = ordenados[2].notaAvaliador as number;
-      const acimaCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) > corteNota);
-      const noCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) === corteNota);
-      const abaixoCorte = ordenados.filter((t) => (t.notaAvaliador ?? 0) < corteNota);
-      const vagasRestantes = 3 - acimaCorte.length;
-      if (noCorte.length <= vagasRestantes) {
-        // Cabe todo mundo do corte nas vagas que sobraram — não é empate de verdade.
-        resultado.set(chave, {
-          premiadosDiretos: [...acimaCorte, ...noCorte].map((t) => t.id),
-          aceitosDiretos: abaixoCorte.map((t) => t.id),
-          empatados: [],
-        });
-      } else {
-        // Mais gente empatada na fronteira do que vaga sobrando — precisa desempate.
-        resultado.set(chave, {
-          premiadosDiretos: acimaCorte.map((t) => t.id),
-          aceitosDiretos: abaixoCorte.map((t) => t.id),
-          empatados: noCorte.map((t) => t.id),
-        });
+
+      const premiadosDiretos: string[] = [];
+      const aceitosDiretos: string[] = [];
+      const empatados: string[] = [];
+      let preenchidos = 0;
+      for (const grupo of gruposPorNota) {
+        if (preenchidos >= vagasPodio) {
+          // Pódio já fechou antes desse grupo — abaixo da última vaga,
+          // ordem exata não importa pra prêmio nenhum.
+          grupo.forEach((t) => aceitosDiretos.push(t.id));
+        } else if (grupo.length === 1) {
+          premiadosDiretos.push(grupo[0].id);
+        } else {
+          // Nota repetida ainda com vaga de pódio em jogo — sempre precisa
+          // de desempate pra decidir a ordem exata, mesmo que todo mundo
+          // do grupo já coubesse nas vagas que sobraram.
+          grupo.forEach((t) => empatados.push(t.id));
+        }
+        preenchidos += grupo.length;
       }
+
+      resultado.set(chave, { premiadosDiretos, aceitosDiretos, empatados });
     }
     return resultado;
   }, [trabalhos]);
@@ -587,6 +652,32 @@ export default function TrabalhosAdminPage() {
     }
     return empatados;
   }, [analiseResultadoPorArea]);
+
+  // Posição exata (1º/2º/3º) de quem já ficou premiado, por área
+  // (2026-11-09, pedido explícito do usuário — "vou lá no resultado final
+  // tá premiado mas não sei a posição"). Ordena pela nota final (soma com
+  // o moderador quando já passou por desempate, só a do avaliador quando
+  // não precisou) — mesmo critério de valorDe mais abaixo.
+  const posicaoPremiado = useMemo(() => {
+    const porArea = new Map<string, Trabalho[]>();
+    for (const t of trabalhos) {
+      if (!t.premiado) continue;
+      const chave = `${t.eventoId}::${t.areaTematica}`;
+      const lista = porArea.get(chave) ?? [];
+      lista.push(t);
+      porArea.set(chave, lista);
+    }
+    const posicoes = new Map<string, number>();
+    for (const lista of porArea.values()) {
+      const valorFinal = (t: Trabalho) =>
+        typeof t.notaModerador === "number"
+          ? (t.notaAvaliador ?? 0) + t.notaModerador
+          : (t.notaAvaliador ?? 0);
+      const ordenados = [...lista].sort((a, b) => valorFinal(b) - valorFinal(a));
+      ordenados.forEach((t, i) => posicoes.set(t.id, i + 1));
+    }
+    return posicoes;
+  }, [trabalhos]);
 
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -1127,10 +1218,14 @@ export default function TrabalhosAdminPage() {
     return total;
   }, [analiseResultadoPorArea, eventoId, podeAceitarSemEmpate, idsAindaAvaliado]);
 
+  // Sem e-mail (2026-11-09, pedido explícito do usuário — "quero enviar
+  // sem empate sem eles receberem nada"). Só essa ação específica; o
+  // aceite manual por trabalho (decidirResultado) e o aceite em lote dos
+  // empatados (aceitarSelecionados) continuam notificando normalmente.
   async function aceitarSemEmpate() {
     if (eventoId === "todos") return;
     const batch = writeBatch(db);
-    const idsNotificar: string[] = [];
+    let algumAceito = false;
     for (const [chave, analise] of analiseResultadoPorArea) {
       if (!chave.startsWith(`${eventoId}::`)) continue;
       for (const id of analise.premiadosDiretos) {
@@ -1140,7 +1235,7 @@ export default function TrabalhosAdminPage() {
           premiado: true,
           atualizadoEm: serverTimestamp(),
         });
-        idsNotificar.push(id);
+        algumAceito = true;
       }
       for (const id of analise.aceitosDiretos) {
         if (!idsAindaAvaliado.has(id)) continue;
@@ -1149,12 +1244,11 @@ export default function TrabalhosAdminPage() {
           premiado: false,
           atualizadoEm: serverTimestamp(),
         });
-        idsNotificar.push(id);
+        algumAceito = true;
       }
     }
-    if (idsNotificar.length === 0) return;
+    if (!algumAceito) return;
     await batch.commit();
-    if (user) idsNotificar.forEach((id) => notificarStatusTrabalho(user, id, "aceito"));
   }
 
   // Sessões do evento selecionado (2026-11-04) — só pra achar a sala de
@@ -1947,12 +2041,15 @@ export default function TrabalhosAdminPage() {
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
                                   t.premiado
-                                    ? "bg-fatec-orange-100 text-fatec-orange-700"
+                                    ? (CORES_POSICAO_PODIO[posicaoPremiado.get(t.id) ?? 0] ??
+                                      "bg-fatec-orange-100 text-fatec-orange-700")
                                     : "bg-fatec-navy-50 text-fatec-muted"
                                 }`}
                               >
                                 {t.premiado && <Award className="h-3 w-3" strokeWidth={2} />}
-                                {t.premiado ? "Premiado" : "Aceito"}
+                                {t.premiado
+                                  ? `${posicaoPremiado.get(t.id) ?? "?"}º Premiado`
+                                  : "Aceito"}
                               </span>
                               {perfil?.papel === "admin" && (
                                 t.certificadoLiberado ? (

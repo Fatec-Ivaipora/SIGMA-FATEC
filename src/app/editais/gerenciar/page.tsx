@@ -39,7 +39,10 @@ export default function EditaisAdminPage() {
       setTitulo("");
       setDescricao("");
       setArquivo(null);
-    } catch {
+    } catch (e) {
+      // Log do erro de verdade (2026-11-09) — a mensagem genérica escondia
+      // a causa real (ver criarEdital em src/lib/data/editais.ts).
+      console.error("Erro ao enviar edital:", e);
       setErro("Não foi possível enviar. Tente de novo.");
     } finally {
       setEnviando(false);

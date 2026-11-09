@@ -104,8 +104,14 @@ export function criarTurma(dados: {
   orientadorUid: string;
   orientadorNome: string;
 }) {
+  // Nunca grava `disciplina: undefined` (2026-11-09, mesmo bug real achado
+  // em criarEdital/src/lib/data/editais.ts) — Firestore recusa addDoc com
+  // um campo `undefined` no objeto (throw síncrono), campo opcional ficar
+  // em branco quebraria a criação da turma inteira.
+  const { disciplina, ...resto } = dados;
   return addDoc(collection(db, "turmas"), {
-    ...dados,
+    ...resto,
+    ...(disciplina ? { disciplina } : {}),
     alunosUids: [],
     alunosNomes: [],
     convitesPendentesUids: [],

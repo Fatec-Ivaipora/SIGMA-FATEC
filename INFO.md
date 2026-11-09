@@ -477,6 +477,73 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-09** — **Tag "Premiado" mostra a posição + pagamento do grupo
+  inteiro no hover** (pedidos explícitos do usuário).
+  1. Badge "Premiado" na aba Resultado Final agora mostra "1º Premiado"/
+     "2º Premiado"/"3º Premiado" com cor própria (ouro/prata/bronze) em
+     vez de só "Premiado" genérico laranja — novo `posicaoPremiado`
+     (useMemo, ordena por área pela nota final: soma com moderador quando
+     já passou por desempate, só a do avaliador quando não precisou) e
+     `CORES_POSICAO_PODIO` em `src/app/trabalhos/page.tsx`.
+  2. `CelulaSituacaoPagamento` não olha mais só o autor principal — achado
+     real do usuário ("grupo de 6, 5 pagaram, só o principal não — o
+     resto ganha certificado?"). Resposta: sim, `/api/certificados` já
+     libera por pessoa; o problema era só a exibição: um grupo misto
+     aparecia como "Não pago" igual se ninguém tivesse pago. Badge agora
+     resume ("Pago" só se for unânime, "X/Y pago" quando é misto) e passa
+     a usar `useInscritosDoEvento` (lê o evento inteiro, filtra os uids do
+     grupo) em vez de `useMinhaInscricao` (só olhava `alunoUid`); hover
+     mostra nome de cada integrante, verde quem já pagou.
+  **Não testado visualmente** — criar uma conta admin descartável pra
+  conferir no navegador foi bloqueado pelo classificador de permissão
+  (diferente da conta de moderador testada antes); só validado por
+  `tsc`/`eslint`. Pedir pro usuário conferir no próprio login antes de
+  considerar fechado.
+
+- **2026-11-09** — **Bug real, grave: empate dentro do pódio não era
+  detectado** (achado real do usuário — "Engenharias e Ciências Agrárias,
+  1º com 25, 2º com 24, 3º com 24", liberado como "sem empate"; "se isso
+  tá se repetindo nas demais áreas tá errado essa parte"). Causa: o
+  cálculo de `analiseResultadoPorArea` só considerava empate quando tinha
+  gente DEMAIS pra vaga (ex.: um 4º lugar de fora disputando a vaga igual
+  ao 3º); duas notas IGUAIS que já cabiam tranquilas nas vagas que
+  sobraram (3 trabalhos na área com 25/24/24, ou mais trabalhos mas o
+  empate não tinha pressão de fora) eram liberadas direto como pódio sem
+  passar por desempate — mesmo sem dar pra saber qual delas é 2º e qual é
+  3º de verdade. Nunca checava empate ACIMA do corte também (dois 1º
+  lugares). Reescrito pra agrupar por nota e andar vaga por vaga: nota
+  sozinha que cabe = premiado direto; nota repetida com vaga de pódio
+  ainda em jogo = grupo inteiro vai pra empate, sempre (ver comentário em
+  `analiseResultadoPorArea`, `src/app/trabalhos/page.tsx`). Auditei TODAS
+  as áreas do evento atrás do mesmo bug — achei outro caso real
+  (**Relatos de Experiências**, dois trabalhos com 25 cada, também
+  liberados "sem empate"). **Revertidos os 4 trabalhos afetados** (2 em
+  Engenharias e Ciências Agrárias, 2 em Relatos de Experiências) de volta
+  pra status "avaliado" (nota mantida, `premiado` zerado) — voltam a
+  aparecer no Resultado já corretamente marcados como empatados pelo
+  algoritmo novo, prontos pra desempate de verdade.
+
+- **2026-11-09** — **"Aceitar sem empate" não manda mais e-mail** (pedido
+  explícito do usuário — "quero enviar sem empate sem eles receberem
+  nada"). Só essa ação específica (`aceitarSemEmpate` em
+  `src/app/trabalhos/page.tsx`); aceite manual por trabalho e aceite em
+  lote dos empatados continuam notificando normalmente.
+
+- **2026-11-09** — **Bug real: "não foi possível" subir edital/criar turma
+  com campo opcional em branco** (achado real do usuário — tentando subir
+  o PDF do ensalamento em /editais/gerenciar). Causa: `descricao.trim() ||
+  undefined` grava `descricao: undefined` no objeto passado pro
+  `addDoc()` — o SDK do Firestore recusa (throw síncrono) qualquer campo
+  `undefined`, não é falha de rede nem de permissão. O PDF já tinha sido
+  enviado pro Storage com sucesso, só o card em si nunca era criado.
+  Mesmo bug em `criarTurma` (Projeto Integrador, campo "disciplina").
+  Corrigido nos dois (`src/lib/data/editais.ts`, `src/lib/data/turmas.ts`)
+  — omite a chave em vez de gravar `undefined`. Também logado o erro de
+  verdade no console em `/editais/gerenciar` (a mensagem genérica
+  escondia a causa). Varri o resto do projeto atrás do mesmo padrão — os
+  outros casos (`|| undefined` em props de PDF/argumento de hook) não são
+  gravação no Firestore, não têm esse bug.
+
 - **2026-11-09** — **Moderador só avalia a partir do dia do evento**
   (pedido explícito do usuário — "precisamos enviar os empatados pra
   começar a distribuir o cronograma, porém não podemos deixar que os

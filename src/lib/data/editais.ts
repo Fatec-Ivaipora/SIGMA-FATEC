@@ -47,7 +47,18 @@ export async function criarEdital(dados: {
   arquivoUrl: string;
   arquivoNome?: string;
 }) {
-  await addDoc(collection(db, "editais"), { ...dados, criadoEm: serverTimestamp() });
+  // Nunca grava `descricao: undefined` (2026-11-09, achado real — "fica
+  // falando que não é possível" ao subir o PDF do ensalamento em
+  // /editais/gerenciar). O Firestore SDK recusa addDoc com um campo
+  // `undefined` no objeto (throw síncrono, não é falha de rede nem de
+  // permissão) — se a descrição ficasse em branco (campo opcional), o
+  // upload do PDF pro Storage já tinha ido, mas o card nunca era criado.
+  const { descricao, ...resto } = dados;
+  await addDoc(collection(db, "editais"), {
+    ...resto,
+    ...(descricao ? { descricao } : {}),
+    criadoEm: serverTimestamp(),
+  });
 }
 
 export async function excluirEdital(id: string) {
