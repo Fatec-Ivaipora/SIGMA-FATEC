@@ -122,20 +122,29 @@ const CONTEUDO: Record<
       { texto: "Corrigir trabalho", href: `${URL_SISTEMA}/aluno/trabalhos` },
       nome,
     ),
+  // Sem botão "Ver resultado"/"acompanhar o resultado" (2026-11-09,
+  // achado real — relato de aluno: "clica no ver resultado não mostra
+  // nada"). Nessa etapa o aluno não vê nota nem decisão nenhuma na tela
+  // dele de propósito (avaliação às cegas — aceito/não aceito e pódio só
+  // saem depois da apresentação), então um link "ver resultado" levava a
+  // uma tela sem nada de novo. Texto (2026-11-09, pedido explícito do
+  // usuário — "não prometemos nada mas informamos a etapa", depois
+  // "ficou seco", pediu tom de "passando pra avisar") só confirma a
+  // etapa concluída, num tom mais pessoal, sem prometer um próximo aviso.
   avaliado: (t, nome) =>
     modeloEmail(
-      `<p>Seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> já foi avaliado.</p>
-       <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
-      { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      `<p>Passando pra avisar que seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> já foi avaliado. Parabéns por concluir mais essa etapa!</p>`,
+      undefined,
       nome,
     ),
   // Texto pedido pelo usuário (2026-11-06): trabalho que tinha ido pra
-  // revisão (legado da X MAC) e agora foi reavaliado e confirmado.
+  // revisão (legado da X MAC) e agora foi reavaliado e confirmado. Mesmo
+  // motivo acima (2026-11-09): sem botão "ver resultado" nem promessa de
+  // próximo aviso.
   reavaliado: (t, nome) =>
     modeloEmail(
-      `<p>Depois que seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>
-       <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
-      { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+      `<p>Passando pra avisar que, depois que seu trabalho <strong>"${tituloExibicao(t.titulo)}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>`,
+      undefined,
       nome,
     ),
   aceito: (t, nome) =>

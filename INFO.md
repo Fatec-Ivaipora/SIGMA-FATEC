@@ -477,6 +477,19 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-09** — **E-mail "trabalho avaliado"/"reavaliado" não promete
+  mais "ver resultado"** (achado real relatado por aluno — "clica no ver
+  resultado não mostra nada", print do e-mail anexado). Causa: ao virar
+  "avaliado" o aluno nunca vê nota nem decisão nenhuma na tela dele — é de
+  propósito (avaliação às cegas; aceito/não aceito e pódio só saem depois
+  da apresentação) — então o botão "Ver resultado" levava pra uma tela sem
+  nada de novo, só o badge "Avaliado". Tirado o botão e o link; texto final
+  (pedido explícito do usuário — "não prometemos nada mas informamos a
+  etapa") só confirma a etapa concluída com um "parabéns", sem prometer
+  nenhum aviso futuro — nos dois e-mails que usam esse texto (`avaliado` e
+  `reavaliado` em `/api/mail/trabalho-status`, e a cópia embutida em
+  `/api/revisao-externa/[token]/avaliar`).
+
 - **2026-11-06** — **Nome de pessoa sempre em caixa alta na gravação** +
   **e-mail de "reavaliado" pro aluno**.
   1. **Caixa alta** (pedido explícito do usuário — "todos os nomes...

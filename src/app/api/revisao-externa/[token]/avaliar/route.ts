@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { caixaAltaNome } from "@/lib/textoNome";
-import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
+import { enviarEmail, modeloEmail } from "@/lib/mail";
 import { registrarAtividade } from "@/lib/atividadesAdmin";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 
@@ -123,11 +123,15 @@ export async function POST(
       const titulo = tituloExibicao(trabalho.titulo as string);
       const texto = `Seu trabalho "${titulo}" foi reavaliado e está apto pra apresentação.`;
       const subject = `Trabalho reavaliado — ${titulo}`;
+      // Sem botão "ver resultado" nem promessa de próximo aviso
+      // (2026-11-09, achado real — aluno reclamou que a tela não mostra
+      // nada nessa etapa; pedido explícito do usuário — "não prometemos
+      // nada mas informamos a etapa" — ver mesmo texto em
+      // /api/mail/trabalho-status).
       const html = (nomeDestinatario: string | undefined) =>
         modeloEmail(
-          `<p>Depois que seu trabalho <strong>"${titulo}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>
-           <p>Entre no SIGMA pra acompanhar o resultado.</p>`,
-          { texto: "Ver resultado", href: `${URL_SISTEMA}/aluno/trabalhos` },
+          `<p>Passando pra avisar que, depois que seu trabalho <strong>"${titulo}"</strong> foi para revisão, a Comissão Científica reavaliou e confirmou: você está apto(a) pra apresentação. Parabéns!</p>`,
+          undefined,
           nomeDestinatario,
         );
       await Promise.all(
