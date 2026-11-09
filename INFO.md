@@ -477,6 +477,25 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-09** — **Moderador só avalia a partir do dia do evento**
+  (pedido explícito do usuário — "precisamos enviar os empatados pra
+  começar a distribuir o cronograma, porém não podemos deixar que os
+  moderadores consigam avaliar antes do dia do evento"). Admin já pode
+  distribuir os trabalhos empatados pro moderador com antecedência; ele
+  abre e vê os critérios normalmente, mas os botões de nota e "Enviar
+  nota" ficam desabilitados até a data `eventos/{id}.dataRealizacao`
+  (meia-noite LOCAL do dia — ex.: evento dia 11, libera 11/11 00:01) —
+  aviso em laranja no topo da aba Apresentação e dentro do modal
+  explicando quando libera. Novo `chegouODiaDoEvento()` em
+  `src/lib/data/eventos.ts`; novo prop `respeitaLiberacaoNoDiaEvento` em
+  `PainelTrabalhos` (`avaliador/trabalhos/page.tsx`), só ligado na aba do
+  moderador (Avaliação/avaliador não tem essa trava). Reforçado também em
+  `firestore.rules` (`chegouODiaDoEvento(eventoId)`, mesma função só que
+  em meia-noite UTC — poucas horas de diferença do client, aceitável pra
+  trava de reforço) — mesmo se alguém tentar escrever direto por fora da
+  tela, o servidor recusa antes do dia. Evento sem `dataRealizacao` nunca
+  trava (mesmo "campo ausente = sem restrição" do resto do app).
+
 - **2026-11-09** — **E-mail "trabalho avaliado"/"reavaliado" não promete
   mais "ver resultado"** (achado real relatado por aluno — "clica no ver
   resultado não mostra nada", print do e-mail anexado). Causa: ao virar

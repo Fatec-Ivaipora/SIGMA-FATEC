@@ -301,6 +301,18 @@ export function dentroDoPrazoAvaliacao(evento: Evento | undefined): boolean {
   return evento.prazoAvaliacao.toMillis() > Date.now();
 }
 
+/** Moderador só avalia (Apresentação/desempate) a partir do dia do evento
+ * (2026-11-09, pedido explícito do usuário — manda os empatados com
+ * antecedência pra montar o cronograma, mas o moderador não pode dar nota
+ * antes do dia de verdade). `dataRealizacao` é string "AAAA-MM-DD" (input
+ * type="date", sem hora) — meia-noite local do próprio dia já libera (ex.:
+ * evento dia 11, 11/11 00:01 já pode avaliar). Evento sem essa data nunca
+ * trava (mesmo "campo ausente = sem restrição" do resto do app). */
+export function chegouODiaDoEvento(evento: Evento | undefined): boolean {
+  if (!evento?.dataRealizacao) return true;
+  return new Date(`${evento.dataRealizacao}T00:00:00`).getTime() <= Date.now();
+}
+
 /** Indicador do item "Eventos" no menu do aluno (2026-09-04): só acende se
  * existe algum evento visível pra ele (já filtrado por vinculoFatec) em que
  * ele ainda não tem NENHUMA inscricaoEvento — ou seja, ainda não clicou em

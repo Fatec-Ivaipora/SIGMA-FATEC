@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { temPapel } from "@/lib/auth";
-import { useEventos, dentroDoPrazoAvaliacao, type Evento } from "@/lib/data/eventos";
+import { useEventos, dentroDoPrazoAvaliacao, chegouODiaDoEvento, type Evento } from "@/lib/data/eventos";
 import { renderResumoFormatado } from "@/lib/textoFormatado";
 import {
   useTrabalhos,
@@ -114,6 +114,7 @@ function PainelTrabalhos({
   permiteRevisao,
   permiteRejeitar,
   respeitaPrazoAvaliacao,
+  respeitaLiberacaoNoDiaEvento,
   onEnviarNota,
   onSolicitarRevisao,
   onRejeitar,
@@ -148,6 +149,14 @@ function PainelTrabalhos({
   // true na aba Avaliação (avaliador); Apresentação (moderador) não tem
   // prazo próprio ainda. Ver dentroDoPrazoAvaliacao em src/lib/data/eventos.
   respeitaPrazoAvaliacao?: boolean;
+  // Moderador só avalia a partir do dia do evento (2026-11-09, pedido
+  // explícito do usuário — manda os empatados com antecedência pra montar
+  // o cronograma, mas trava a nota até o dia de verdade). Só true na aba
+  // Apresentação (moderador); Avaliação (avaliador) não tem essa trava. O
+  // trabalho continua abrindo normal pra ver os critérios — só os botões de
+  // nota/"Enviar nota" ficam desabilitados, com aviso. Ver
+  // chegouODiaDoEvento em src/lib/data/eventos.
+  respeitaLiberacaoNoDiaEvento?: boolean;
   onEnviarNota: (id: string, soma: number, notas: Record<string, number>) => void;
   // soma/notas também aqui (2026-11-05, pedido explícito do usuário — "antes
   // de mandar para revisão o professor precisa atribuir uma nota", pra não
@@ -202,7 +211,7 @@ function PainelTrabalhos({
   }
 
   function enviar(id: string) {
-    if (!notasCompletas) return;
+    if (!notasCompletas || bloqueadoPorData) return;
     onEnviarNota(id, somaNotas, notas);
     setAvaliando(null);
     setNotas({});
@@ -233,6 +242,19 @@ function PainelTrabalhos({
     ? eventos.filter((ev) => ev.prazoAvaliacao)
     : [];
 
+  // Liberação no dia do evento (2026-11-09) — mesma ideia do bloco acima,
+  // mas pro moderador: avisa no topo de quais eventos a avaliação ainda não
+  // abriu. Só entram eventos que de fato têm trabalho pendente aqui (não
+  // adianta avisar de um evento sem nada pra avaliar ainda).
+  const eventosBloqueadosPorData = respeitaLiberacaoNoDiaEvento
+    ? eventos.filter(
+        (ev) =>
+          ev.dataRealizacao &&
+          !chegouODiaDoEvento(ev) &&
+          trabalhos.some((t) => t.eventoId === ev.id && t.status === statusPendente),
+      )
+    : [];
+
   // Modal de avaliação (2026-11-03, pedido explícito do usuário — "hoje tá
   // muito ruim, ele clica, desce a avaliação ali mesmo, fica confuso e
   // depende do tamanho do título quebra os botões"). Antes a avaliação
@@ -249,6 +271,8 @@ function PainelTrabalhos({
   const eventoDoTrabalhoAvaliando = eventos.find(
     (e) => e.id === trabalhoAvaliando?.eventoId,
   );
+  const bloqueadoPorData =
+    !!respeitaLiberacaoNoDiaEvento && !chegouODiaDoEvento(eventoDoTrabalhoAvaliando);
 
   return (
     <div className="flex flex-col gap-4">
@@ -266,6 +290,21 @@ function PainelTrabalhos({
                 minute: "2-digit",
               })}
               . Depois disso não dá mais pra dar nota, pedir revisão ou rejeitar.
+            </p>
+          ))}
+        </div>
+      )}
+
+      {eventosBloqueadosPorData.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-xl border border-fatec-orange-200 bg-fatec-orange-50 px-4 py-3">
+          {eventosBloqueadosPorData.map((ev) => (
+            <p key={ev.id} className="text-sm text-fatec-orange-700">
+              <span className="font-semibold">
+                {eventosBloqueadosPorData.length > 1 ? `${ev.nome} — avaliação` : "Avaliação"} será
+                liberada no dia:
+              </span>{" "}
+              {new Date(`${ev.dataRealizacao}T00:00:00`).toLocaleDateString("pt-BR")}. Dá pra abrir e
+              ver os trabalhos designados, mas as notas só liberam nesse dia.
             </p>
           ))}
         </div>
@@ -394,6 +433,16 @@ function PainelTrabalhos({
               </div>
             )}
 
+            {bloqueadoPorData && (
+              <p className="rounded-xl border border-fatec-orange-200 bg-fatec-orange-50 px-4 py-3 text-sm font-medium text-fatec-orange-700">
+                A avaliação será liberada no dia{" "}
+                {new Date(`${eventoDoTrabalhoAvaliando?.dataRealizacao}T00:00:00`).toLocaleDateString(
+                  "pt-BR",
+                )}
+                . Até lá dá pra ver os critérios, mas não pra dar nota.
+              </p>
+            )}
+
             {modoAcao === "notas" ? (
               <>
                 <div className="flex flex-col gap-3 border-t border-fatec-line pt-5">
@@ -430,9 +479,10 @@ function PainelTrabalhos({
                           <button
                             key={n.valor}
                             type="button"
+                            disabled={bloqueadoPorData}
                             onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n.valor }))}
                             title={n.label}
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors ${
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                               notas[c.key] === n.valor
                                 ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
                                 : "border-fatec-line text-fatec-navy-900 hover:border-fatec-orange-500/60"
@@ -470,7 +520,7 @@ function PainelTrabalhos({
                   <button
                     type="button"
                     onClick={() => enviar(trabalhoAvaliando.id)}
-                    disabled={!notasCompletas}
+                    disabled={!notasCompletas || bloqueadoPorData}
                     className="rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
                   >
                     Enviar nota
@@ -734,6 +784,7 @@ export default function AvaliadorTrabalhosPage() {
               statusPendente="aguardando_apresentacao"
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao={false}
+              respeitaLiberacaoNoDiaEvento
               onEnviarNota={(id, soma, notas) =>
                 atualizarTrabalho(id, {
                   status: "apresentado",

@@ -77,6 +77,24 @@ service cloud.firestore {
       return !("prazoAvaliacao" in evento) || request.time < evento.prazoAvaliacao;
     }
 
+    // Moderador só avalia (Apresentação/desempate) a partir do dia do evento
+    // (2026-11-09, pedido explícito do usuário) — trava servidor pra reforçar
+    // a trava de tela (ver chegouODiaDoEvento em src/lib/data/eventos.ts);
+    // mesmo "campo ausente = sem restrição" se o evento não tiver
+    // dataRealizacao. dataRealizacao é string "AAAA-MM-DD" (input
+    // type="date"); timestamp.date() aqui é meia-noite UTC desse dia (o
+    // client trava por meia-noite LOCAL — poucas horas de diferença, sem
+    // problema numa trava de reforço, não é a trava principal).
+    function chegouODiaDoEvento(eventoId) {
+      let evento = get(/databases/$(database)/documents/eventos/$(eventoId)).data;
+      return !("dataRealizacao" in evento) ||
+        request.time >= timestamp.date(
+          int(evento.dataRealizacao.split("-")[0]),
+          int(evento.dataRealizacao.split("-")[1]),
+          int(evento.dataRealizacao.split("-")[2])
+        );
+    }
+
     // usuarios/{uid} — RF-26/RF-27/RF-28: qualquer um lê o próprio perfil (para
     // saber seu papel no login); organizacao/admin listam todos. Escrita é do
     // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
@@ -185,8 +203,11 @@ service cloud.firestore {
           (dentroDoPrazoAvaliacao(resource.data.eventoId) || resource.data.status == "entregue_com_atraso" || resource.data.revisaoLegado == true)) ||
         // Moderador só mexe nos campos da própria nota de apresentação —
         // nunca em status de avaliação, resumo, etc (papel novo, mais
-        // restrito que o avaliador de propósito).
+        // restrito que o avaliador de propósito). Só a partir do dia do
+        // evento (2026-11-09, pedido explícito do usuário — reforça a
+        // trava de tela, ver chegouODiaDoEvento acima).
         (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid &&
+          chegouODiaDoEvento(resource.data.eventoId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "atualizadoEm"])) ||
         // Dono do trabalho edita livremente (título, resumo, orientador,
