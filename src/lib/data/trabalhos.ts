@@ -133,6 +133,16 @@ export type Trabalho = {
   moderadorNome?: string | null;
   notaModerador?: number | null;
   notasCriteriosApresentacao?: NotasCriteriosApresentacao | null;
+  // Presença na apresentação (2026-11-10, pedido explícito do usuário —
+  // "tem alunos que já está em primeiro [lugar, só pela nota da avaliação]
+  // mas não vai vir apresentar, e isso é injusto com os demais"). Marcado
+  // pelo moderador na própria sala pra quem NÃO está empatado (quem está
+  // empatado já confirma presença ao receber a nota da apresentação,
+  // não precisa desse campo separado). `false` tira o trabalho do pódio
+  // (perde só `premiado`, continua "aceito") — ver analiseResultadoPorArea
+  // em src/lib/analiseEmpate.ts, que exclui quem tem isso `false` do
+  // cálculo. `undefined` = ainda não chegou a vez de marcar.
+  compareceuApresentacao?: boolean;
   // Controla quando o certificado/declaração desse trabalho aparece pro
   // aluno/avaliador/moderador (2026-08-28) — chegar em "aceito" não libera
   // sozinho; a organização decide o momento clicando "Liberar certificado"

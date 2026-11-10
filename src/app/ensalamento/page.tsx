@@ -12,6 +12,7 @@ import {
   FileDown,
   Plus,
   QrCode,
+  Scale,
   Search,
   Shuffle,
   Trash2,
@@ -48,6 +49,7 @@ import {
   type GrupoParaGrade,
 } from "@/lib/data/sessoes";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
 // Universo do ensalamento (2026-11-04, reescrito — pedido explícito do
 // usuário: "quero poder gerar a grade de horários sem precisar esperar o
@@ -838,6 +840,27 @@ function EnsalamentoAdminView() {
     [trabalhos, eventoId],
   );
 
+  // Quais trabalhos já estão empatados disputando pódio (2026-11-10,
+  // pedido explícito do usuário — "na grade do ensalamento colocar uma
+  // tag... as salas que têm trabalhos empatados"), mesmo ANTES de mandar
+  // pro moderador — mesmo cálculo de src/app/trabalhos/page.tsx (aba
+  // Resultado), ver src/lib/analiseEmpate.ts. Só pra uso interno da tela
+  // admin: NUNCA sai no PDF público (os alunos não sabem que o moderador
+  // só dá nota nos trabalhos empatados).
+  const idsEmpatados = useMemo(() => {
+    const comNota = trabalhos.filter(
+      (t) =>
+        t.eventoId === eventoId &&
+        STATUS_JA_AVALIADO.includes(t.status) &&
+        typeof t.notaAvaliador === "number",
+    );
+    const empatados = new Set<string>();
+    for (const analise of analisarEmpatesPorArea(comNota).values()) {
+      analise.empatados.forEach((id) => empatados.add(id));
+    }
+    return empatados;
+  }, [trabalhos, eventoId]);
+
   // Moderador por sala (2026-11-04, pedido explícito do usuário — "cada
   // sala tem que ter seu moderador... o moderador vai receber o trabalho
   // no SIGMA dele sem o admin precisar enviar na mão"). Guardado no
@@ -1060,8 +1083,9 @@ function EnsalamentoAdminView() {
         (a, b) => a.horarioInicio.toMillis() - b.horarioInicio.toMillis(),
       ),
       total: sessoesDaSala.reduce((acc, s) => acc + s.trabalhoIds.length, 0),
+      temEmpate: sessoesDaSala.some((s) => s.trabalhoIds.some((id) => idsEmpatados.has(id))),
     }));
-  }, [sessoes]);
+  }, [sessoes, idsEmpatados]);
   // Nome depende de `salas` (não memoizado — vem de um `.filter()` simples a
   // cada render), então resolve/ordena fora do useMemo acima.
   const salasComSessoes = [...salasComSessoesBase]
@@ -1572,6 +1596,19 @@ function EnsalamentoAdminView() {
                               <tr key={grupo.salaId} className="border-b border-fatec-line last:border-0">
                                 <td className="px-3 py-2.5 align-top font-medium text-fatec-navy-900">
                                   {grupo.nome}
+                                  {/* Tag "tem empate" (2026-11-10, pedido
+                                    * explícito do usuário) — só nessa tela
+                                    * admin, NUNCA no PDF público (ver
+                                    * comentário em idsEmpatados acima). */}
+                                  {grupo.temEmpate && (
+                                    <span
+                                      className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-fatec-orange-100 px-2 py-0.5 text-xs font-semibold text-fatec-orange-700"
+                                      title="Tem trabalho empatado disputando pódio nessa sala"
+                                    >
+                                      <Scale className="h-3 w-3" strokeWidth={2} />
+                                      Tem empate
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-fatec-ink">
                                   {/* Caixa alta (2026-11-05, pedido explícito
@@ -1843,10 +1880,15 @@ function EnsalamentoAdminView() {
                           new Date(sessao.horarioInicio.toDate().getTime() + i * duracaoMin * 60000),
                         )
                       : null;
+                  const empatado = idsEmpatados.has(id);
                   return (
                     <li
                       key={id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-fatec-line px-4 py-2.5"
+                      className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 ${
+                        empatado
+                          ? "border-fatec-orange-300 bg-fatec-orange-50"
+                          : "border-fatec-line"
+                      }`}
                     >
                       <span className="min-w-0 text-sm text-fatec-ink">
                         {horarioItem && (
@@ -1854,6 +1896,12 @@ function EnsalamentoAdminView() {
                         )}
                         {t ? tituloExibicao(t.titulo) : id}
                         <span className="text-fatec-muted"> · {sessao.areaTematica}</span>
+                        {empatado && (
+                          <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-fatec-orange-100 px-2 py-0.5 text-xs font-semibold text-fatec-orange-700">
+                            <Scale className="h-3 w-3" strokeWidth={2} />
+                            Empatado
+                          </span>
+                        )}
                       </span>
                       <select
                         value=""

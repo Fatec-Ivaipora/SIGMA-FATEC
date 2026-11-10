@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { serverTimestamp } from "firebase/firestore";
 import { Modal } from "@/components/Modal";
 import { Sidebar } from "@/components/Sidebar";
@@ -11,6 +11,8 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { temPapel } from "@/lib/auth";
 import { useEventos, dentroDoPrazoAvaliacao, chegouODiaDoEvento, type Evento } from "@/lib/data/eventos";
 import { renderResumoFormatado } from "@/lib/textoFormatado";
+import { useSessoesDoEvento, type Sessao } from "@/lib/data/sessoes";
+import { useSalasCatalogo } from "@/lib/data/salas";
 import {
   useTrabalhos,
   atualizarTrabalho,
@@ -115,9 +117,15 @@ function PainelTrabalhos({
   permiteRejeitar,
   respeitaPrazoAvaliacao,
   respeitaLiberacaoNoDiaEvento,
+  permitePresenca,
+  agruparPorSala,
+  sessoesPorId,
+  nomesSalas,
+  duracaoApresentacaoMinutos,
   onEnviarNota,
   onSolicitarRevisao,
   onRejeitar,
+  onMarcarPresenca,
 }: {
   trabalhos: Trabalho[];
   eventos: Evento[];
@@ -157,6 +165,26 @@ function PainelTrabalhos({
   // nota/"Enviar nota" ficam desabilitados, com aviso. Ver
   // chegouODiaDoEvento em src/lib/data/eventos.
   respeitaLiberacaoNoDiaEvento?: boolean;
+  // Confirmação de presença pra quem NÃO está empatado (2026-11-10,
+  // pedido explícito do usuário — "tem alunos que já está em primeiro...
+  // mas não vai vir apresentar, e isso é injusto com os demais"). Só true
+  // na aba Apresentação (moderador); esses trabalhos chegam aqui com
+  // moderadorUid preenchido mas status continua o que já era (normalmente
+  // "aceito") — ver liberarTrabalhosParaModeradores em
+  // src/app/trabalhos/page.tsx. Marcar falta tira o trabalho do pódio na
+  // hora (ver analiseResultadoPorArea); quem vinha atrás sobe sozinho.
+  permitePresenca?: boolean;
+  // Agrupa por sala, com cabeçalho "Evento X - Sala Y" colapsável, e mostra
+  // o horário de cada trabalho (2026-11-10, pedido explícito do usuário —
+  // "acho legal se tiver ali na frente do nome do trabalho o horário...
+  // esses trabalhos estarem dentro de um menu que se clicar ele expande").
+  // Só true na aba Apresentação (moderador); precisa de sessoesPorId/
+  // nomesSalas/duracaoApresentacaoMinutos pra resolver sala e horário —
+  // sem eles, cai de volta na lista achatada de sempre.
+  agruparPorSala?: boolean;
+  sessoesPorId?: Map<string, Sessao>;
+  nomesSalas?: Map<string, string>;
+  duracaoApresentacaoMinutos?: number;
   onEnviarNota: (id: string, soma: number, notas: Record<string, number>) => void;
   // soma/notas também aqui (2026-11-05, pedido explícito do usuário — "antes
   // de mandar para revisão o professor precisa atribuir uma nota", pra não
@@ -168,6 +196,7 @@ function PainelTrabalhos({
     notas: Record<string, number>,
   ) => void;
   onRejeitar?: (id: string) => void;
+  onMarcarPresenca?: (id: string, presente: boolean) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [eventoId, setEventoId] = useState(TODOS_MEUS_EVENTOS);
@@ -274,6 +303,132 @@ function PainelTrabalhos({
   const bloqueadoPorData =
     !!respeitaLiberacaoNoDiaEvento && !chegouODiaDoEvento(eventoDoTrabalhoAvaliando);
 
+  // Horário específico do trabalho dentro da sessão (2026-11-10) — mesma
+  // conta do PDF do ensalamento (horarioInicio + índice × duração); roda de
+  // conversa não tem horário por trabalho, todos ficam expostos juntos.
+  function horarioDoTrabalho(t: Trabalho): string | null {
+    if (!t.sessaoId) return null;
+    const sessao = sessoesPorId?.get(t.sessaoId);
+    if (!sessao || sessao.modalidade !== "oral" || !duracaoApresentacaoMinutos) return null;
+    const indice = sessao.trabalhoIds.indexOf(t.id);
+    if (indice < 0) return null;
+    const inicio = sessao.horarioInicio.toDate().getTime() + indice * duracaoApresentacaoMinutos * 60000;
+    return new Date(inicio).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Grupos "Evento X - Sala Y" (2026-11-10) — só quando agruparPorSala.
+  // Quem não tem sessão resolvida (ainda não ensalado, ou dado antigo sem
+  // sessaoId) cai num grupo "Sem sala definida" no fim, nunca some da
+  // lista.
+  const SEM_SALA = "sem-sala";
+  const gruposPorSala = useMemo(() => {
+    if (!agruparPorSala) return null;
+    const mapa = new Map<string, Trabalho[]>();
+    for (const t of trabalhosFiltrados) {
+      const sessao = t.sessaoId ? sessoesPorId?.get(t.sessaoId) : undefined;
+      const chave = sessao ? `${t.eventoId}::${sessao.salaId}` : SEM_SALA;
+      const lista = mapa.get(chave) ?? [];
+      lista.push(t);
+      mapa.set(chave, lista);
+    }
+    // "Sem sala" sempre por último, o resto em ordem alfabética do nome.
+    return new Map(
+      [...mapa.entries()].sort(([a], [b]) => {
+        if (a === SEM_SALA) return 1;
+        if (b === SEM_SALA) return -1;
+        return a.localeCompare(b, "pt-BR");
+      }),
+    );
+  }, [agruparPorSala, trabalhosFiltrados, sessoesPorId]);
+  const [salasAbertas, setSalasAbertas] = useState<Set<string>>(new Set());
+  function alternarSala(chave: string) {
+    setSalasAbertas((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(chave)) novo.delete(chave);
+      else novo.add(chave);
+      return novo;
+    });
+  }
+
+  function renderLinhaTrabalho(t: Trabalho) {
+    const ganhouExcecaoDePrazo = t.status === "entregue_com_atraso" || t.revisaoLegado === true;
+    const prazoEncerrado =
+      respeitaPrazoAvaliacao &&
+      !ganhouExcecaoDePrazo &&
+      !dentroDoPrazoAvaliacao(eventos.find((e) => e.id === t.eventoId));
+    const mostraAvaliar =
+      t.status === statusPendente || (respeitaPrazoAvaliacao && ganhouExcecaoDePrazo);
+    const podeMarcarPresenca =
+      permitePresenca &&
+      !mostraAvaliar &&
+      t.status !== "apresentado" &&
+      typeof t.compareceuApresentacao !== "boolean";
+    const presencaJaMarcada =
+      permitePresenca && t.status !== "apresentado" && typeof t.compareceuApresentacao === "boolean";
+    const horario = horarioDoTrabalho(t);
+    return (
+      <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-medium text-fatec-navy-900">
+              {horario && (
+                <span className="mr-1.5 font-semibold text-fatec-sky-600">{horario} —</span>
+              )}
+              {tituloExibicao(t.titulo)}
+            </p>
+            <p className="text-sm text-fatec-muted">
+              {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={t.status} />
+            {mostraAvaliar &&
+              (prazoEncerrado ? (
+                <span className="text-xs font-medium text-fatec-muted">
+                  Prazo de avaliação encerrado
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => abrirAvaliacao(t.id)}
+                  className="rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                >
+                  Avaliar
+                </button>
+              ))}
+            {podeMarcarPresenca && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onMarcarPresenca?.(t.id, true)}
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  Presente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMarcarPresenca?.(t.id, false)}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                >
+                  Faltou
+                </button>
+              </div>
+            )}
+            {presencaJaMarcada && (
+              <span
+                className={`text-xs font-semibold ${
+                  t.compareceuApresentacao ? "text-emerald-700" : "text-rose-700"
+                }`}
+              >
+                {t.compareceuApresentacao ? "Presente" : "Faltou"}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {eventosComPrazo.length > 0 && (
@@ -347,54 +502,43 @@ function PainelTrabalhos({
         </p>
       )}
 
-      {trabalhosFiltrados.map((t) => {
-        // "entregue_com_atraso" (2026-11-04) é uma exceção ao prazo geral —
-        // esse trabalho específico continua avaliável mesmo depois do
-        // prazo, então nunca mostra "Prazo de avaliação encerrado" nele
-        // (ver firestore.rules, mesma exceção do lado do servidor).
-        // `revisaoLegado` (2026-11-05, pedido explícito do usuário — "pra
-        // isso eles não tem prazo, podem fazer isso até o fechamento do
-        // evento") entra na mesma exceção: os 49 trabalhos que já estavam em
-        // revisão sem nota continuam avaliáveis sem limite de prazo, mesmo
-        // que o aluno tenha corrigido ANTES do prazo (ficando em
-        // "aguardando_avaliacao" comum em vez de "entregue_com_atraso").
-        const ganhouExcecaoDePrazo = t.status === "entregue_com_atraso" || t.revisaoLegado === true;
-        const prazoEncerrado =
-          respeitaPrazoAvaliacao &&
-          !ganhouExcecaoDePrazo &&
-          !dentroDoPrazoAvaliacao(eventos.find((e) => e.id === t.eventoId));
-        const mostraAvaliar =
-          t.status === statusPendente || (respeitaPrazoAvaliacao && ganhouExcecaoDePrazo);
-        return (
-          <div key={t.id} className="rounded-2xl border border-fatec-line bg-white p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-medium text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
-                <p className="text-sm text-fatec-muted">
-                  {eventos.find((e) => e.id === t.eventoId)?.nome ?? t.eventoId}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge status={t.status} />
-                {mostraAvaliar &&
-                  (prazoEncerrado ? (
-                    <span className="text-xs font-medium text-fatec-muted">
-                      Prazo de avaliação encerrado
-                    </span>
+      {gruposPorSala
+        ? Array.from(gruposPorSala.entries()).map(([chave, lista]) => {
+            const primeiro = lista[0];
+            const sessaoDoGrupo = primeiro.sessaoId ? sessoesPorId?.get(primeiro.sessaoId) : undefined;
+            const nomeSala = sessaoDoGrupo ? nomesSalas?.get(sessaoDoGrupo.salaId) : undefined;
+            const eventoNome = eventos.find((e) => e.id === primeiro.eventoId)?.nome;
+            const titulo =
+              chave === SEM_SALA
+                ? "Sem sala definida ainda"
+                : `${eventoNome ?? "Evento"} - Sala ${nomeSala ?? "?"}`;
+            const aberto = salasAbertas.has(chave);
+            return (
+              <div key={chave} className="overflow-hidden rounded-2xl border border-fatec-line bg-white">
+                <button
+                  type="button"
+                  onClick={() => alternarSala(chave)}
+                  className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-fatec-navy-50"
+                >
+                  <span className="font-semibold text-fatec-navy-900">
+                    {titulo}{" "}
+                    <span className="font-normal text-fatec-muted">({lista.length})</span>
+                  </span>
+                  {aberto ? (
+                    <ChevronDown className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={2} />
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => abrirAvaliacao(t.id)}
-                      className="rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-                    >
-                      Avaliar
-                    </button>
-                  ))}
+                    <ChevronRight className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={2} />
+                  )}
+                </button>
+                {aberto && (
+                  <div className="flex flex-col gap-3 border-t border-fatec-line p-5">
+                    {lista.map((t) => renderLinhaTrabalho(t))}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-        );
-      })}
+            );
+          })
+        : trabalhosFiltrados.map((t) => renderLinhaTrabalho(t))}
 
       <Modal
         open={!!trabalhoAvaliando}
@@ -648,6 +792,24 @@ export default function AvaliadorTrabalhosPage() {
     [trabalhos, user?.uid],
   );
 
+  // Sala/horário por trabalho na Apresentação (2026-11-10, pedido explícito
+  // do usuário — agrupar por "Evento X - Sala Y" com horário na frente).
+  // Assume 1 evento só por moderador aqui (o uso real é sempre assim — um
+  // moderador cobre um evento de cada vez); se um dia cobrir 2 eventos ao
+  // mesmo tempo, só o primeiro ganha sala/horário resolvidos, o resto cai
+  // no grupo "Sem sala definida" (nunca some da lista, só sem agrupamento
+  // fino). `useSalasCatalogo` é compartilhado entre todos os eventos (não
+  // precisa saber qual evento pra pegar os nomes).
+  const eventoIdApresentacao = trabalhosApresentacao[0]?.eventoId;
+  const { sessoes: sessoesApresentacao } = useSessoesDoEvento(eventoIdApresentacao);
+  const { salas } = useSalasCatalogo();
+  const sessoesPorId = useMemo(
+    () => new Map(sessoesApresentacao.map((s) => [s.id, s])),
+    [sessoesApresentacao],
+  );
+  const nomesSalas = useMemo(() => new Map(salas.map((s) => [s.id, s.nome])), [salas]);
+  const eventoApresentacao = eventos.find((e) => e.id === eventoIdApresentacao);
+
   if (carregando || !perfil) return null;
 
   const mostrarAbas = souAvaliador && souModerador;
@@ -785,11 +947,31 @@ export default function AvaliadorTrabalhosPage() {
               mensagemVazia="Nenhum trabalho designado a você ainda."
               permiteRevisao={false}
               respeitaLiberacaoNoDiaEvento
+              permitePresenca
+              agruparPorSala
+              sessoesPorId={sessoesPorId}
+              nomesSalas={nomesSalas}
+              duracaoApresentacaoMinutos={eventoApresentacao?.duracaoApresentacaoMinutos}
               onEnviarNota={(id, soma, notas) =>
                 atualizarTrabalho(id, {
                   status: "apresentado",
                   notasCriteriosApresentacao: notas as unknown as NotasCriteriosApresentacao,
                   notaModerador: soma,
+                  // Receber nota já prova que apresentou — presença fica
+                  // automática, sem precisar de um clique extra do moderador
+                  // (2026-11-10, pedido explícito do usuário).
+                  compareceuApresentacao: true,
+                  atualizadoEm: serverTimestamp(),
+                })
+              }
+              onMarcarPresenca={(id, presente) =>
+                atualizarTrabalho(id, {
+                  compareceuApresentacao: presente,
+                  // Falta tira só o prêmio — o trabalho continua "aceito"
+                  // (foi avaliado, o texto era bom); quem vinha atrás na
+                  // área sobe de posição sozinho (ver analiseResultadoPorArea
+                  // em src/app/trabalhos/page.tsx, que exclui quem faltou).
+                  ...(presente ? {} : { premiado: false }),
                   atualizadoEm: serverTimestamp(),
                 })
               }

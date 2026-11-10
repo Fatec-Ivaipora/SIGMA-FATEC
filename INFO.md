@@ -477,6 +477,206 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-10** — **Bug real: trabalho "apresentado" aparecia em Desempate
+  E em Resultado Final ao mesmo tempo** (achado pelo usuário — "nos 2
+  trabalhos estão tanto em desempate como resultado final não faz sentido
+  pela regra que criamos, eles teriam que estar no desempate esperando eu
+  enviar pra resultado final"). Causa: `STATUS_POR_ETAPA.resultado_final`
+  (`src/app/trabalhos/page.tsx`) ainda incluía `"apresentado"` — resquício
+  de antes da decisão de fluxo manual (ver "Removida a auto-finalização"
+  abaixo). Tirado; agora `resultado_final` só tem `["aceito",
+  "nao_aceito"]` — um trabalho "apresentado" só sai do Desempate quando o
+  admin de fato clica "Enviar para resultado final".
+
+- **2026-11-10** — **Presença na apresentação fica automática ao receber
+  nota de desempate** (pedido explícito do usuário — "se um trabalho
+  recebe nota para desempate não precisa colocar presença porque ele veio,
+  a presença tem que ser automática"). `onEnviarNota`
+  (`src/app/avaliador/trabalhos/page.tsx`) agora grava `compareceuApresentacao:
+  true` junto com a nota — sem clique extra do moderador. A tela do
+  moderador também parou de mostrar qualquer ação/rótulo de presença
+  (nem botões, nem "Presente"/"Faltou") pra trabalho já "apresentado" —
+  o status já basta, era ação redundante.
+
+- **2026-11-10** — **Bug real do Firestore: `get()` em regra não funciona
+  pra `list`/query, só pra leitura direta por id** — descoberto ao tentar
+  publicar a regra de leitura de `sessoes` pro moderador (tela de
+  Apresentação agrupada por sala/horário, ver entrada "Confirmação de
+  presença" abaixo). A função `souModeradorDaSala` (fazia `get()` no
+  documento do evento) passava numa leitura direta (`GET
+  sessoes/{id}` → 200) mas era sempre negada numa consulta com `where`
+  (exatamente o que a tela usa) — confirmado testando a API REST do
+  Firestore direto, fora do app. Regra simplificada: moderador lê
+  `sessoes` liberado por papel (igual já era `salas` — "não é sensível"),
+  sem precisar de `get()`. Publicada com sucesso
+  (`firebase deploy --only firestore:rules`); também criado `firebase.json`
+  e `.firebaserc` (nunca existiam no repo — por isso as duas tentativas
+  de publicar de sessões anteriores nem chegavam a rodar). Confirmado ao
+  vivo com dados descartáveis: tela do moderador mostrando "X MAC - Sala
+  12 (4)" com o horário de cada trabalho certinho (19:00/19:15/19:30/19:45).
+
+- **2026-11-10** — **Aba Desempate acompanha o resultado ao vivo e manda
+  pra Resultado Final em lote** (pedido explícito do usuário, depois de
+  corrigir meu entendimento errado — "na minha tela de admin vai aparecer
+  em desempate a situação apresentado, a presença em verde e a nota que o
+  moderador deu... eu mesmo selecionar e enviar para resultado final").
+  - `STATUS_POR_ETAPA.apresentacao` ganhou `"apresentado"` (antes só
+    `"aguardando_apresentacao"`) — fica só aqui enquanto não vira "aceito"
+    (ver correção do bug de aparecer nas duas abas, entrada mais recente
+    acima).
+  - Colunas "Nota av"/"Nota des" e "Apresentação" (presença) — antes só em
+    Resultado Final — agora também aparecem no Desempate.
+  - Checkbox de seleção (`podeSelecionar`, virou `useCallback`) libera no
+    Desempate só quando o trabalho está "apresentado" E o grupo empatado
+    inteiro já tem nota do moderador (fora de `idsEmpatados`) — confirmado
+    com o usuário: desabilitado enquanto algum colega de empate ainda não
+    tem nota.
+  - Novo botão **"Enviar para resultado final"** (lote, só Desempate):
+    grava `status: "aceito"` + `premiado` certo pros selecionados, usando
+    o mesmo `analiseResultadoPorArea` de sempre (`premiadoFinalPorId`,
+    novo). Manda e-mail de "aceito" igual o resto dos fluxos manuais de
+    resultado final.
+
+- **2026-11-10** — **Removida a auto-finalização do desempate** (pedido
+  explícito do usuário, revertendo o que tinha pedido no mesmo dia —
+  "quero acompanhar os trabalhos que estão sendo avaliados e eu mesmo
+  selecionar e enviar para resultado final... assim consigo ver que
+  moderador está faltando etc"). Tirado o `useEffect` que gravava sozinho
+  `status`/`premiado` assim que um grupo empatado tinha nota do moderador
+  pra todo mundo (`src/app/trabalhos/page.tsx`). Fluxo volta a ser 100%
+  manual: moderador dá nota → trabalho fica "apresentado" → aparece na aba
+  Resultado Final com a nota visível (coluna "Apresentação" mostra quem
+  faltou) → admin decide na mão (Premiar/Aceitar/Recusar, do jeito que já
+  era antes de hoje). `analisarEmpatesPorArea`/posição calculada
+  continuam do jeito que estão — só o cálculo exibido, nunca mais grava
+  sozinho.
+
+- **2026-11-10** — **Aba Resultado Final: coluna "Apresentação" no lugar
+  de "Enviado em"/"Última edição"** (pedido explícito do usuário — "podemos
+  tirar enviado em e última edição do resultado final e colocar no lugar
+  apresentação com um checkbox vermelho e verde"). Só na etapa
+  `resultado_final` (`src/app/trabalhos/page.tsx`). Mostra `t.
+  compareceuApresentacao` — verde com check (presente), vermelho com X
+  (faltou, perdeu a vaga do pódio) ou cinza com "—" (ainda não confirmado
+  pelo moderador). Ampliado no mesmo dia (pedido explícito do usuário —
+  "remove no menu resultado também, não serve pra nós", depois "em
+  desempate também remove esses 2"): as etapas "resultado" e
+  "apresentacao" (Desempate) também perderam as duas colunas, sem
+  substituir por nada. Submissão/Avaliação/Revisão continuam com "Enviado
+  em"/"Última edição" normais.
+
+- **2026-11-10** — **Confirmação de presença na apresentação — quem falta
+  perde a vaga do pódio** (pedido explícito do usuário — "tem alunos que
+  já está em primeiro [só pela nota da avaliação] mas não vai vir
+  apresentar, e isso é injusto com os demais"). Decidido com o usuário:
+  moderador marca (não o admin), falta só zera `premiado` (continua
+  "aceito", nunca vira "recusado"), promoção pra quem sobe de posição é
+  automática.
+  1. Novo campo `compareceuApresentacao?: boolean` em `Trabalho`
+     (`src/lib/data/trabalhos.ts`).
+  2. `liberarTrabalhosParaModeradores` (`src/app/trabalhos/page.tsx`) além
+     dos empatados, agora também manda os "colegas de sala" (mesma
+     sessão/sala, não empatados, já com posição decidida só pela nota)
+     pro mesmo moderador — só pra confirmação de presença, sem mudar
+     `status` nenhum, sem sobrescrever quem já foi marcado.
+  3. Painel do moderador (Apresentação, `avaliador/trabalhos/page.tsx`)
+     ganhou `permitePresenca`: quem não está na lista de "precisa nota"
+     mostra "Presente"/"Faltou" em vez do formulário de avaliação. Ganhou
+     também `agruparPorSala` (pedido explícito do usuário, mesmo dia —
+     "acho legal se tiver o horário na frente do nome... os trabalhos
+     dentro de um menu que expande") — lista vira cards colapsáveis
+     "Evento X - Sala Y", cada trabalho com o horário calculado (mesma
+     conta do PDF do ensalamento: horarioInicio da sessão + índice ×
+     duração; roda de conversa não mostra horário individual).
+  4. `analiseResultadoPorArea` exclui quem tem `compareceuApresentacao
+     === false` do cálculo inteiro (como se não existisse pro ranking) —
+     quem vinha logo atrás sobe de posição sozinho, via a mesma
+     auto-finalização já existente (agora ampliada pra também reconciliar
+     trabalhos que já estavam "aceito", não só "apresentado").
+  5. `firestore.rules`: moderador agora também pode gravar
+     `compareceuApresentacao`/`premiado` (além dos campos de nota que já
+     podia, só a partir do dia do evento), e ganhou leitura de `salas`
+     (nome da sala, não sensível) e de `sessoes` da própria sala que
+     modera (`souModeradorDaSala`, novo helper) — precisa pra resolver o
+     agrupamento/horário do item 3.
+  **Testado com dados descartáveis de verdade** (conta de moderador, evento,
+  trabalhos, sala e sessão, tudo apagado depois): confirmei que a tela já
+  mostra certinho "Avaliar" pros empatados e "Presente"/"Faltou" pros
+  outros, e que clicar "Faltou" grava a mudança — só que a gravação real
+  ficou bloqueada porque a regra nova do Firestore ainda não tinha sido
+  publicada (2 tentativas de publicar foram recusadas pelo classificador
+  de permissão — "Production Deploy"; pode ser necessário publicar na mão,
+  `firebase deploy --only firestore:rules`, ou tentar de novo depois). O
+  agrupamento por sala/horário foi confirmado visualmente com um preview
+  temporário no código (dado fictício, nunca commitado) enquanto a regra
+  não estava publicada — mostrou "Evento - Sala 99 (fictícia)" com os 4
+  trabalhos a cada 15 min, exatamente como esperado.
+
+- **2026-11-10** — **Nota de apresentação só desempata DENTRO do grupo
+  empatado na avaliação, nunca ultrapassa quem tem nota maior** (pedido
+  explícito do usuário — "Projetos Integradores – Engenharias e Ciências
+  Agrárias": 1º com 25 (sem precisar de apresentação) e 3 empatados com 24
+  disputando a 2ª/3ª vaga; "na teoria não era pra passar, o primeiro
+  critério é a nota de avaliação... a apresentação é só pra desempatar").
+  `analisarEmpatesPorArea` (`src/lib/analiseEmpate.ts`) agrupa pela nota
+  da AVALIAÇÃO primeiro (critério principal, intocado); só subdivide um
+  grupo empatado pela nota da APRESENTAÇÃO quando TODO MUNDO do grupo já
+  tem `notaModerador` (enquanto falta nota de alguém, o grupo inteiro
+  continua em empate — nunca trata "ainda não avaliado" como "nota
+  zero"). Testado rodando os 4 números reais da área, inclusive forçando
+  nota máxima de apresentação num dos 24 pra confirmar que ele não
+  ultrapassa o 25.
+  2. **Auto-finaliza o desempate resolvido** (pedido explícito do usuário
+     — "quando [o moderador] der a nota, a ideia é que os trabalhos
+     fossem sozinhos pra resultado final... vamos ficar de olho durante o
+     evento"). Novo `useEffect` em `trabalhos/page.tsx`: assim que
+     `analiseResultadoPorArea` consegue decidir (todo mundo do grupo já
+     tem nota do moderador), qualquer trabalho ainda em "apresentado"
+     grava sozinho `status: "aceito"` + `premiado` certo, sem precisar
+     clicar Premiar/Aceitar na mão. "Recusar" nunca é automático (julgamento
+     manual, fora do escopo). Sem Cloud Function nesse projeto — só roda
+     enquanto a tela de Trabalhos está aberta em algum navegador (combina
+     com o plano do usuário de ficar de olho no Resultado Final durante o
+     evento). Sem e-mail de propósito (mesmo critério do "Aceitar sem
+     empate"). Confirmado que zero trabalhos estão em "apresentado" agora
+     — não dispara nada de surpresa assim que subir.
+
+- **2026-11-10** — **Coluna "Nota av" sempre começa da maior pra menor**
+  (pedido explícito do usuário — "sempre que eu mudo de área ou troco de
+  resultado para resultado final embaralha tudo... quero sempre ver a
+  maior primeiro"). `direcaoOrdenacaoNota` (`trabalhos/page.tsx`) agora
+  começa em "desc" (antes começava `null`, caindo no "último envio
+  primeiro") e trocar de aba (`setEtapa`) não reseta mais pra `null` —
+  fica na mesma ordenação até clicar pra inverter. Trocar de área nunca
+  mexia nisso.
+
+- **2026-11-10** — **Bug real: posição do "Premiado" não contava quem
+  ainda está em empate** (achado real do usuário — "Relatos de
+  Experiências: RPG com nota 22 aparece como 1º Premiado, mas tem 2
+  trabalhos com nota 25 ainda em empate — o RPG na verdade é 3º").
+  Causa: `posicaoPremiado` calculava a posição só entre quem já tinha
+  `premiado === true`, ignorando quem está pendurado em empate (status
+  "avaliado", sem premiado ainda) com nota mais alta. Corrigido: a
+  posição agora vem de `analiseResultadoPorArea.posicoes` — novo campo em
+  `AnaliseArea` (`src/lib/analiseEmpate.ts`), calculado sobre o pool
+  INTEIRO da área (empatados pendentes incluídos) no mesmo passo que já
+  decide quem é `premiadosDiretos`/`empatados`. Mesmo cálculo usado pela
+  tag "Tem empate" do ensalamento, então os dois nunca mais divergem.
+
+- **2026-11-10** — **Tag "Tem empate" na grade do ensalamento** (pedido
+  explícito do usuário — "já temos os trabalhos que estão empatados sem
+  mesmo enviar pros moderadores... colocar uma tag entre o nome da sala e
+  o nome do moderador"). Reaproveita o MESMO cálculo de empate da aba
+  Resultado (não um novo) — extraído pra `src/lib/analiseEmpate.ts`
+  (`analisarEmpatesPorArea`/`STATUS_JA_AVALIADO`, usado agora tanto por
+  `trabalhos/page.tsx` quanto por `ensalamento/page.tsx`, pra nunca mais
+  divergir). Na tabela da grade, sala com trabalho empatado ganha uma tag
+  laranja "Tem empate"; abrindo "ver lista" da sala, o(s) trabalho(s)
+  empatado(s) aparecem destacados (fundo laranja + badge "Empatado").
+  **Só na tela admin — nunca no PDF público** (pedido explícito do
+  usuário — "isso não pode sair, os alunos não sabem que [o moderador] só
+  avalia os trabalhos empatados"); `/api/ensalamento/pdf` não foi tocado.
+
 - **2026-11-09** — **Tag "Premiado" mostra a posição + pagamento do grupo
   inteiro no hover** (pedidos explícitos do usuário).
   1. Badge "Premiado" na aba Resultado Final agora mostra "1º Premiado"/

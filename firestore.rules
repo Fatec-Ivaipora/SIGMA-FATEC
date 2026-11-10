@@ -95,6 +95,7 @@ service cloud.firestore {
         );
     }
 
+
     // usuarios/{uid} — RF-26/RF-27/RF-28: qualquer um lê o próprio perfil (para
     // saber seu papel no login); organizacao/admin listam todos. Escrita é do
     // admin (RF-27) — exceto a CRIAÇÃO do próprio documento por um aluno recém
@@ -205,11 +206,13 @@ service cloud.firestore {
         // nunca em status de avaliação, resumo, etc (papel novo, mais
         // restrito que o avaliador de propósito). Só a partir do dia do
         // evento (2026-11-09, pedido explícito do usuário — reforça a
-        // trava de tela, ver chegouODiaDoEvento acima).
+        // trava de tela, ver chegouODiaDoEvento acima). `compareceuApresentacao`/
+        // `premiado` (2026-11-10, confirmação de presença) entraram aqui
+        // também — marcar falta zera `premiado`, nunca mexe em `status`.
         (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid &&
           chegouODiaDoEvento(resource.data.eventoId) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "atualizadoEm"])) ||
+            .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "compareceuApresentacao", "premiado", "atualizadoEm"])) ||
         // Dono do trabalho edita livremente (título, resumo, orientador,
         // colegas, etc.) enquanto "revisao" (avaliador pediu ajuste, sem
         // prazo) OU dentro do prazo de edição do evento — depois disso,
@@ -367,7 +370,10 @@ service cloud.firestore {
     // /usuarios: organização lê tudo, não edita o que não é dela); nenhum
     // papel de avaliação nem aluno precisa ler isso direto.
     match /salas/{id} {
-      allow read: if logado() && meuPapel() in ["organizacao", "admin"];
+      // Moderador também lê (2026-11-10, pedido explícito do usuário — tela
+      // dele agrupa os trabalhos por sala, "Evento X MAC - Sala XX") — é só
+      // nome de sala, nada sensível.
+      allow read: if logado() && (meuPapel() in ["organizacao", "admin"] || souAvaliacao("moderador"));
       allow write: if souAdmin();
     }
 
@@ -375,9 +381,16 @@ service cloud.firestore {
     // gerado pela grade automática de /ensalamento (2026-09-17). Mesmo
     // padrão de /salas — só admin/organização mexem.
     match /sessoes/{id} {
+      // Moderador também lê (2026-11-10, pedido explícito do usuário — tela
+      // dele agrupa os trabalhos por sala/horário, precisa ler a sessão pra
+      // saber o horário de cada trabalho). Igual a /salas: é só
+      // horário/sala/área, nada sensível — por isso não restringe por sala
+      // específica (get() em regra de list/query não funciona no Firestore,
+      // só em leitura direta por id).
       allow read: if logado() && (
         souAdmin() ||
-        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        souAvaliacao("moderador")
       );
       allow create: if logado() && (
         souAdmin() ||

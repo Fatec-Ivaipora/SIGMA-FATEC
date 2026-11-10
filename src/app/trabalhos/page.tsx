@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -51,6 +51,7 @@ import {
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 import { baixarCertificadosImpressao } from "@/lib/baixarCertificado";
 import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
+import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
 type Etapa =
   | "submissao"
@@ -82,8 +83,15 @@ const STATUS_POR_ETAPA: Record<Etapa, TrabalhoStatus[]> = {
   // (ver comentário em TrabalhoStatus).
   revisao: ["revisao", "entregue_com_atraso", "revisao_realizada"],
   resultado: ["avaliado"],
-  apresentacao: ["aguardando_apresentacao"],
-  resultado_final: ["apresentado", "aceito", "nao_aceito"],
+  // "apresentado" entrou em 2026-11-10 (pedido explícito do usuário —
+  // "quero acompanhar os trabalhos que estão sendo avaliados... na minha
+  // tela de admin vai aparecer em desempate a situação apresentado, a
+  // presença e a nota que o moderador deu"). Fica só aqui — NÃO entra em
+  // Resultado Final (duas abas com o mesmo trabalho não faz sentido no
+  // fluxo manual: só vira "aceito"/"nao_aceito" quando o admin clica
+  // "Enviar para resultado final", daí sim some daqui e aparece lá).
+  apresentacao: ["aguardando_apresentacao", "apresentado"],
+  resultado_final: ["aceito", "nao_aceito"],
 };
 
 // Etapas em que a organização seleciona trabalhos e distribui entre pessoas
@@ -118,15 +126,6 @@ const ETAPA_PARA_PAPEL_ALVO: Partial<Record<Etapa, "avaliador" | "moderador">> =
 // `typeof t.notaAvaliador === "number"`, então isso NUNCA pega os
 // trabalhos legados sem nota (que continuam de fora até alguém os
 // reavaliar — ver tela Revisão, "Enviar para reavaliação").
-const STATUS_JA_AVALIADO: TrabalhoStatus[] = [
-  "avaliado",
-  "revisao",
-  "aguardando_apresentacao",
-  "apresentado",
-  "aceito",
-  "nao_aceito",
-];
-
 // Ouro/prata/bronze por posição no pódio (2026-11-09, pedido explícito do
 // usuário — "melhore essa tag de premiado por cor dourado, prata e bronze
 // e com 1º premiado/2º premiado/3º premiado"). Fallback (posição > 3, não
@@ -415,7 +414,13 @@ export default function TrabalhosAdminPage() {
   // cada coluna separadamente foi tentado e revertido (2026-09-11): dá
   // ranking capenga, ex. 25 av + 24 apr (total 49) aparecia atrás de 10 av +
   // 25 apr (total 35) se você olhasse só a coluna apr.
-  const [direcaoOrdenacaoNota, setDirecaoOrdenacaoNota] = useState<"desc" | "asc" | null>(null);
+  // Padrão "maior nota primeiro" (2026-11-10, pedido explícito do usuário
+  // — "sempre que eu mudo de área ou troco de resultado para resultado
+  // final embaralha tudo... quero sempre ver a maior primeiro"). Antes
+  // começava null (sem ordenar por nota, caía no "último envio primeiro")
+  // e trocar de etapa resetava pra null de novo — ver setEtapa abaixo, não
+  // reseta mais.
+  const [direcaoOrdenacaoNota, setDirecaoOrdenacaoNota] = useState<"desc" | "asc" | null>("desc");
   const alternarOrdenacaoNota = () =>
     setDirecaoOrdenacaoNota((atual) => (atual === "desc" ? "asc" : "desc"));
 
@@ -505,7 +510,6 @@ export default function TrabalhosAdminPage() {
   function setEtapa(nova: Etapa) {
     setEtapaBruta(nova);
     setSelecionados(new Set());
-    setDirecaoOrdenacaoNota(null);
     setMenuResultadoAberto(false);
   }
 
@@ -553,96 +557,25 @@ export default function TrabalhosAdminPage() {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
   }, [eventos, eventoId]);
 
-  // Análise de ranking por área temática (2026-09-11, substitui o "empate"
-  // ingênuo de antes, que marcava qualquer nota repetida — mesmo empatados
-  // em 8º lugar, o que não tinha nada a ver com o pódio). Só interessa
-  // empate DENTRO do top 3 (edital 6.6): quem tira nota única acima do
-  // corte já é premiado direto; quem tira nota única abaixo já não é, sem
-  // precisar de apresentação nenhuma; quem tem a MESMA nota de outro
-  // trabalho que caia no top 3 precisa ir pro moderador desempatar.
-  //
-  // CORRIGIDO (bug real, achado em 2026-11-09 — "Engenharias e Ciências
-  // Agrárias: 1º com 25, 2º com 24, 3º com 24", liberado como "sem
-  // empate"): a versão anterior só considerava empate quando a nota batida
-  // na 3ª posição tinha gente demais pra vaga (ex.: 4º lugar também com
-  // aquela nota, disputando a vaga de fora). Duas notas IGUAIS que já
-  // cabiam tranquilas nas vagas que sobraram (ex.: 25/24/24 com só 3
-  // trabalhos na área, ou 25/20/20/15 com 4) eram liberadas direto — mas
-  // mesmo cabendo as duas, ainda não dá pra saber qual delas é 2º e qual é
-  // 3º lugar de verdade (tem prêmio/certificado por colocação exata). Isso
-  // também nunca verificava empate ACIMA do corte (dois 1ºs lugares com a
-  // mesma nota, por exemplo). Agora agrupa por nota (ordem decrescente) e
-  // anda vaga por vaga: nota sozinha que cabe = premiado direto; nota
-  // repetida que ainda tem vaga de pódio em jogo (cabendo todo mundo ou
-  // não) = todo o grupo vai pra empate, sempre — só nota abaixo de onde o
-  // pódio já fechou (sem mais vaga nenhuma) vira aceito direto, empatada
-  // ou não (ali embaixo a ordem exata não importa pra prêmio nenhum).
-  //
-  // IMPORTANTE (bug real, achado testando em 2026-09-11): o pódio da área
-  // tem que ser calculado sobre TODO MUNDO que já foi avaliado ali, mesmo
-  // quem já saiu de "avaliado" (porque já foi aceito/premiado antes). Se
-  // filtrássemos só por status === "avaliado", clicar "Aceitar sem empate"
-  // tira os não-empatados da lista e o cálculo seguinte recalcula o corte
-  // só com quem sobrou — aí um trio empatado na 3ª vaga "esquece" que já
-  // tinha 2 trabalhos melhores aceitos antes dele e vira "cabe todo mundo,
-  // sem empate" por engano. Por isso o pool aqui é qualquer trabalho que já
-  // passou pela avaliação (tem nota), não só quem ainda está pendurado.
-  type AnaliseArea = {
-    premiadosDiretos: string[];
-    aceitosDiretos: string[];
-    empatados: string[];
-  };
+  // Análise de ranking por área temática — ver comentário completo (regra
+  // de empate, bug corrigido em 2026-11-09, por que o pool é "qualquer
+  // trabalho com nota" e não só status "avaliado") em
+  // `analisarEmpatesPorArea`, src/lib/analiseEmpate.ts — extraído pra lá
+  // em 2026-11-10 pra ser reaproveitado também em src/app/ensalamento/
+  // page.tsx (tag de "tem empate" na grade).
   const analiseResultadoPorArea = useMemo(() => {
-    const porGrupo = new Map<string, Trabalho[]>();
-    for (const t of trabalhos) {
-      if (!STATUS_JA_AVALIADO.includes(t.status) || typeof t.notaAvaliador !== "number") continue;
-      const chave = `${t.eventoId}::${t.areaTematica}`;
-      const lista = porGrupo.get(chave) ?? [];
-      lista.push(t);
-      porGrupo.set(chave, lista);
-    }
-    const resultado = new Map<string, AnaliseArea>();
-    for (const [chave, lista] of porGrupo) {
-      const ordenados = [...lista].sort(
-        (a, b) => (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0),
-      );
-      const vagasPodio = Math.min(3, ordenados.length);
-
-      // Agrupa por nota, mantendo a ordem decrescente — cada grupo de nota
-      // repetida é tratado inteiro de uma vez (ver comentário acima).
-      const gruposPorNota: Trabalho[][] = [];
-      for (const t of ordenados) {
-        const ultimo = gruposPorNota[gruposPorNota.length - 1];
-        if (ultimo && ultimo[0].notaAvaliador === t.notaAvaliador) {
-          ultimo.push(t);
-        } else {
-          gruposPorNota.push([t]);
-        }
-      }
-
-      const premiadosDiretos: string[] = [];
-      const aceitosDiretos: string[] = [];
-      const empatados: string[] = [];
-      let preenchidos = 0;
-      for (const grupo of gruposPorNota) {
-        if (preenchidos >= vagasPodio) {
-          // Pódio já fechou antes desse grupo — abaixo da última vaga,
-          // ordem exata não importa pra prêmio nenhum.
-          grupo.forEach((t) => aceitosDiretos.push(t.id));
-        } else if (grupo.length === 1) {
-          premiadosDiretos.push(grupo[0].id);
-        } else {
-          // Nota repetida ainda com vaga de pódio em jogo — sempre precisa
-          // de desempate pra decidir a ordem exata, mesmo que todo mundo
-          // do grupo já coubesse nas vagas que sobraram.
-          grupo.forEach((t) => empatados.push(t.id));
-        }
-        preenchidos += grupo.length;
-      }
-
-      resultado.set(chave, { premiadosDiretos, aceitosDiretos, empatados });
-    }
-    return resultado;
+    const comNota = trabalhos.filter(
+      (t) =>
+        STATUS_JA_AVALIADO.includes(t.status) &&
+        typeof t.notaAvaliador === "number" &&
+        // Quem faltou na apresentação sai do cálculo do pódio inteiro
+        // (2026-11-10, pedido explícito do usuário) — como se não
+        // existisse pra fins de ranking, mesmo com nota boa na avaliação.
+        // `premiado` desse trabalho já foi zerado na hora de marcar falta
+        // (ver onMarcarPresenca), não depende de recálculo nenhum aqui.
+        t.compareceuApresentacao !== false,
+    );
+    return analisarEmpatesPorArea(comNota);
   }, [trabalhos]);
 
   const idsEmpatados = useMemo(() => {
@@ -653,31 +586,45 @@ export default function TrabalhosAdminPage() {
     return empatados;
   }, [analiseResultadoPorArea]);
 
+  // Quem já tem posição sem ambiguidade nenhuma (não está em `empatados`)
+  // e o `premiado` que vai levar pro Resultado Final (2026-11-10, pedido
+  // explícito do usuário — aba Desempate ganha "Enviar para resultado
+  // final" em lote, mas só libera o checkbox quando o grupo INTEIRO já
+  // está resolvido — "o checkbox fica desabilitado até o grupo inteiro
+  // ter nota", confirmado com o usuário). Vem do mesmo
+  // analiseResultadoPorArea de sempre, só reorganizado por id.
+  const premiadoFinalPorId = useMemo(() => {
+    const mapa = new Map<string, boolean>();
+    for (const analise of analiseResultadoPorArea.values()) {
+      analise.premiadosDiretos.forEach((id) => mapa.set(id, true));
+      analise.aceitosDiretos.forEach((id) => mapa.set(id, false));
+    }
+    return mapa;
+  }, [analiseResultadoPorArea]);
+
   // Posição exata (1º/2º/3º) de quem já ficou premiado, por área
   // (2026-11-09, pedido explícito do usuário — "vou lá no resultado final
-  // tá premiado mas não sei a posição"). Ordena pela nota final (soma com
-  // o moderador quando já passou por desempate, só a do avaliador quando
-  // não precisou) — mesmo critério de valorDe mais abaixo.
+  // tá premiado mas não sei a posição").
+  //
+  // CORRIGIDO (bug real, achado em 2026-11-10 — "Relatos de Experiências:
+  // RPG com nota 22 aparecia como 1º Premiado, mas tem 2 trabalhos com
+  // nota 25 ainda em empate — o RPG na verdade é 3º, não dá nem pra mudar
+  // isso"): a versão anterior calculava a posição só entre quem JÁ tinha
+  // `premiado === true`, ignorando quem ainda está pendurado em empate
+  // (status "avaliado", sem premiado ainda) mas tem nota mais alta. Agora
+  // reaproveita `analiseResultadoPorArea.posicoes` (src/lib/analiseEmpate.ts),
+  // que já calcula a posição sobre o pool INTEIRO da área (empatados
+  // incluídos) — o trabalho só não entra lá dentro quando não tem posição
+  // sem ambiguidade nenhuma (aí fica sem badge de posição mesmo).
   const posicaoPremiado = useMemo(() => {
-    const porArea = new Map<string, Trabalho[]>();
-    for (const t of trabalhos) {
-      if (!t.premiado) continue;
-      const chave = `${t.eventoId}::${t.areaTematica}`;
-      const lista = porArea.get(chave) ?? [];
-      lista.push(t);
-      porArea.set(chave, lista);
-    }
     const posicoes = new Map<string, number>();
-    for (const lista of porArea.values()) {
-      const valorFinal = (t: Trabalho) =>
-        typeof t.notaModerador === "number"
-          ? (t.notaAvaliador ?? 0) + t.notaModerador
-          : (t.notaAvaliador ?? 0);
-      const ordenados = [...lista].sort((a, b) => valorFinal(b) - valorFinal(a));
-      ordenados.forEach((t, i) => posicoes.set(t.id, i + 1));
+    for (const analise of analiseResultadoPorArea.values()) {
+      for (const [id, posicao] of Object.entries(analise.posicoes)) {
+        posicoes.set(id, posicao);
+      }
     }
     return posicoes;
-  }, [trabalhos]);
+  }, [analiseResultadoPorArea]);
 
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -979,18 +926,29 @@ export default function TrabalhosAdminPage() {
   );
 
   // Checkbox de seleção também aparece no Resultado Final (2026-08-31) —
-  // usado pelo "Aceitar todos selecionados" do menu de funções em lote.
-  const mostrarCheckbox = !!ETAPA_PARA_PAPEL_ALVO[etapa] || etapa === "resultado_final";
+  // usado pelo "Aceitar todos selecionados" do menu de funções em lote —
+  // e no Desempate (2026-11-10, "Enviar para resultado final" em lote).
+  const mostrarCheckbox =
+    !!ETAPA_PARA_PAPEL_ALVO[etapa] || etapa === "resultado_final" || etapa === "apresentacao";
 
   // Na aba Revisão, só os 46 legados (sem nota, fluxo antigo) podem ser
   // selecionados pra reavaliação (2026-11-06, pedido explícito do usuário —
   // escopo confirmado: "só os 46 legados", não os que já seguem o fluxo
   // corrigido com nota travada nem o que já virou "Revisão concluída").
-  // Fora da aba Revisão, todo mundo visível pode ser selecionado, igual
-  // sempre foi.
-  function podeSelecionar(t: Trabalho): boolean {
-    return etapa !== "revisao" || t.revisaoLegado === true;
-  }
+  // Na aba Desempate (2026-11-10), só quem já está "apresentado" E já tem
+  // posição resolvida (fora de `idsEmpatados` — grupo inteiro com nota do
+  // moderador) pode ser selecionado pra "Enviar para resultado final";
+  // quem ainda está "aguardando apresentação" ou num empate parcial fica
+  // sem checkbox mesmo. Fora dessas duas abas, todo mundo visível pode
+  // ser selecionado, igual sempre foi.
+  const podeSelecionar = useCallback(
+    (t: Trabalho): boolean => {
+      if (etapa === "revisao") return t.revisaoLegado === true;
+      if (etapa === "apresentacao") return t.status === "apresentado" && !idsEmpatados.has(t.id);
+      return true;
+    },
+    [etapa, idsEmpatados],
+  );
 
   // Só os selecionados que ainda fazem sentido aceitar (já apresentados,
   // aguardando decisão) — selecionar um já aceito/recusado não faz nada.
@@ -1013,10 +971,11 @@ export default function TrabalhosAdminPage() {
   // Checkbox "selecionar todos" no cabeçalho (2026-08-31, igual serviço de
   // e-mail) — seleciona/desseleciona só os trabalhos visíveis com o filtro
   // atual (ex.: uma área temática), não a tabela inteira sem filtro.
-  // `podeSelecionar` (2026-11-06) filtra pra só os legados na aba Revisão.
+  // `podeSelecionar` (2026-11-06, ampliado 2026-11-10 pro Desempate) filtra
+  // pra só quem é selecionável em cada aba.
   const trabalhosSelecionaveisVisiveis = useMemo(
-    () => trabalhosFiltrados.filter((t) => etapa !== "revisao" || t.revisaoLegado === true),
-    [trabalhosFiltrados, etapa],
+    () => trabalhosFiltrados.filter((t) => podeSelecionar(t)),
+    [trabalhosFiltrados, podeSelecionar],
   );
   const todosVisiveisSelecionados =
     trabalhosSelecionaveisVisiveis.length > 0 &&
@@ -1295,6 +1254,10 @@ export default function TrabalhosAdminPage() {
     const porModerador = new Map<string, { uid: string; nome: string; quantidade: number }>();
     const pendentes: { trabalho: Trabalho; motivo: string }[] = [];
 
+    // Salas que vão ganhar moderador nessa leva — usado logo abaixo pra
+    // também avisar os colegas de sala (ver comentário na 2ª parte).
+    const salasAtendidas = new Set<string>();
+
     for (const t of trabalhosEmpatados) {
       const sessao = t.sessaoId ? sessaoPorId.get(t.sessaoId) : undefined;
       if (!sessao) {
@@ -1319,6 +1282,7 @@ export default function TrabalhosAdminPage() {
         moderadorNome: moderador.nome,
         atualizadoEm: serverTimestamp(),
       });
+      salasAtendidas.add(sessao.salaId);
       const atual = porModerador.get(moderador.uid) ?? {
         uid: moderador.uid,
         nome: moderador.nome,
@@ -1326,6 +1290,42 @@ export default function TrabalhosAdminPage() {
       };
       atual.quantidade++;
       porModerador.set(moderador.uid, atual);
+    }
+
+    // Colegas de sala que NÃO estão empatados (já têm posição decidida só
+    // pela nota da avaliação) também vão pro moderador — não pra dar nota
+    // nenhuma, só pra marcar presença (2026-11-10, pedido explícito do
+    // usuário — "tem alunos que sabemos que já está em primeiro... mas não
+    // vai vir apresentar, e isso é injusto com os demais"). Se o moderador
+    // marcar falta, o trabalho perde só o "Premiado" (continua aceito, ver
+    // onMarcarPresenca) e analiseResultadoPorArea já recalcula sozinho a
+    // posição de quem sobe no CÁLCULO (badge "Premiado"/posição exibida) —
+    // mas a decisão em si (clicar Premiar/Aceitar) continua manual, pedido
+    // explícito do usuário (2026-11-10 — "quero acompanhar os trabalhos...
+    // e eu mesmo selecionar e enviar para resultado final"; ver comentário
+    // removido do antigo auto-finalizador, substituído pelos botões
+    // Premiar/Aceitar/Recusar de sempre na aba Resultado Final). Nunca
+    // sobrescreve quem já foi marcado (`typeof compareceuApresentacao !==
+    // "boolean"`), nem mexe no status (fica "aceito" do jeito que já
+    // estava).
+    for (const salaId of salasAtendidas) {
+      const moderador = moderadoresPorSala[salaId];
+      if (!moderador) continue;
+      const idsDaSala = new Set(
+        sessoesDoEvento.filter((s) => s.salaId === salaId).flatMap((s) => s.trabalhoIds),
+      );
+      for (const trabalhoId of idsDaSala) {
+        if (idsDoEvento.has(trabalhoId)) continue; // já processado acima
+        const t = trabalhos.find((tr) => tr.id === trabalhoId);
+        if (!t || typeof t.compareceuApresentacao === "boolean") continue;
+        if (!STATUS_JA_AVALIADO.includes(t.status)) continue;
+        if (conflitoDeInteresse(moderador, t)?.nivel === "certo") continue;
+        batch.update(doc(db, "trabalhos", trabalhoId), {
+          moderadorUid: moderador.uid,
+          moderadorNome: moderador.nome,
+          atualizadoEm: serverTimestamp(),
+        });
+      }
     }
 
     if (porModerador.size > 0) {
@@ -1364,6 +1364,40 @@ export default function TrabalhosAdminPage() {
     await batch.commit();
     if (user) {
       selecionadosElegiveisParaAceite.forEach((t) => notificarStatusTrabalho(user, t.id, "aceito"));
+    }
+    setSelecionados(new Set());
+  }
+
+  // "Enviar para resultado final" em lote, só na aba Desempate (2026-11-10,
+  // pedido explícito do usuário — "eu mesmo selecionar e enviar para
+  // resultado final... aí acontece o cálculo da posição"). Cada
+  // selecionado já passou por `podeSelecionar` na hora de marcar o
+  // checkbox (status "apresentado" + grupo inteiro resolvido, fora de
+  // `idsEmpatados`), mas confere de novo aqui antes de gravar — nunca
+  // confia só no que a tela já filtrou. `premiadoFinalPorId` é o mesmo
+  // cálculo de sempre (analiseResultadoPorArea): quem é premiado direto
+  // ou só aceito, sem "Recusar" automático nenhum (isso continua manual,
+  // nos botões de sempre da aba Resultado Final).
+  async function enviarParaResultadoFinal() {
+    const elegiveis = trabalhos.filter(
+      (t) =>
+        selecionados.has(t.id) &&
+        t.status === "apresentado" &&
+        !idsEmpatados.has(t.id) &&
+        premiadoFinalPorId.has(t.id),
+    );
+    if (elegiveis.length === 0) return;
+    const batch = writeBatch(db);
+    for (const t of elegiveis) {
+      batch.update(doc(db, "trabalhos", t.id), {
+        status: "aceito",
+        premiado: premiadoFinalPorId.get(t.id) ?? false,
+        atualizadoEm: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    if (user) {
+      elegiveis.forEach((t) => notificarStatusTrabalho(user, t.id, "aceito"));
     }
     setSelecionados(new Set());
   }
@@ -1678,6 +1712,18 @@ export default function TrabalhosAdminPage() {
                     </>
                   )}
                 </div>
+              ) : etapa === "apresentacao" ? (
+                <button
+                  type="button"
+                  disabled={selecionados.size === 0}
+                  onClick={enviarParaResultadoFinal}
+                  title="Marca como Aceito/Premiado quem já está apresentado e com posição resolvida (grupo inteiro com nota do moderador) — mesmo cálculo de sempre."
+                  className="flex flex-none items-center justify-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
+                >
+                  <Send className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  Enviar para resultado final
+                  {selecionados.size > 0 && ` (${selecionados.size})`}
+                </button>
               ) : (
                 ETAPA_PARA_PAPEL_ALVO[etapa] && (
                   <button
@@ -1842,7 +1888,7 @@ export default function TrabalhosAdminPage() {
                         </button>
                       </th>
                     )}
-                    {etapa === "resultado_final" && (
+                    {(etapa === "resultado_final" || etapa === "apresentacao") && (
                       <>
                         <th className="px-3 py-2 text-center font-semibold" title="Nota da avaliação">
                           <button
@@ -1862,7 +1908,7 @@ export default function TrabalhosAdminPage() {
                         </th>
                         <th
                           className="px-3 py-2 text-center font-semibold"
-                          title="Nota do desempate — só existe pra quem empatou e precisou dela. Ordena junto com a nota av, pela soma das duas."
+                          title="Nota do desempate — só existe pra quem empatou e precisou dela (moderador já deu) ou terminou de apresentar. Ordena junto com a nota av, pela soma das duas."
                         >
                           <button
                             type="button"
@@ -1881,10 +1927,21 @@ export default function TrabalhosAdminPage() {
                         </th>
                       </>
                     )}
-                    <th className="px-3 py-2 font-semibold" title="Mais recentes primeiro">
-                      Enviado em ↓
-                    </th>
-                    <th className="px-3 py-2 font-semibold">Última edição</th>
+                    {etapa === "resultado_final" || etapa === "apresentacao" ? (
+                      <th
+                        className="px-3 py-2 text-center font-semibold"
+                        title="Confirmado pelo moderador na sala — quem faltou perde a vaga do pódio"
+                      >
+                        Apresentação
+                      </th>
+                    ) : etapa === "resultado" ? null : (
+                      <>
+                        <th className="px-3 py-2 font-semibold" title="Mais recentes primeiro">
+                          Enviado em ↓
+                        </th>
+                        <th className="px-3 py-2 font-semibold">Última edição</th>
+                      </>
+                    )}
                     <th className="px-3 py-2 font-semibold">Situação</th>
                     {(etapa === "resultado_final" || etapa === "revisao") && (
                       <th className="border-l border-fatec-line px-4 py-2 font-semibold">Ações</th>
@@ -1905,9 +1962,11 @@ export default function TrabalhosAdminPage() {
                             onChange={() => alternarSelecao(t.id)}
                             disabled={!podeSelecionar(t)}
                             title={
-                              !podeSelecionar(t)
-                                ? "Esse trabalho já segue o fluxo com nota travada ou já foi reavaliado — só os trabalhos legados (sem nota) entram na reavaliação manual"
-                                : undefined
+                              podeSelecionar(t)
+                                ? undefined
+                                : etapa === "apresentacao"
+                                  ? "Ainda aguardando apresentação, ou o grupo empatado não está totalmente resolvido ainda (algum colega de empate sem nota do moderador)"
+                                  : "Esse trabalho já segue o fluxo com nota travada ou já foi reavaliado — só os trabalhos legados (sem nota) entram na reavaliação manual"
                             }
                             className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500 disabled:cursor-not-allowed disabled:opacity-30"
                           />
@@ -1964,7 +2023,7 @@ export default function TrabalhosAdminPage() {
                           )}
                         </td>
                       )}
-                      {etapa === "resultado_final" && (
+                      {(etapa === "resultado_final" || etapa === "apresentacao") && (
                         <>
                           <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
                             {t.notaAvaliador ?? "—"}
@@ -1974,12 +2033,41 @@ export default function TrabalhosAdminPage() {
                           </td>
                         </>
                       )}
-                      <td className="whitespace-nowrap px-3 py-2.5 align-top font-medium text-fatec-navy-900">
-                        {formatarDataHora(t.enviadoEm)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 align-top text-fatec-muted">
-                        {formatarData(t.atualizadoEm)}
-                      </td>
+                      {etapa === "resultado_final" || etapa === "apresentacao" ? (
+                        <td className="px-3 py-2.5 text-center align-top">
+                          {t.compareceuApresentacao === true ? (
+                            <span
+                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+                              title="Presente na apresentação"
+                            >
+                              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            </span>
+                          ) : t.compareceuApresentacao === false ? (
+                            <span
+                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700"
+                              title="Faltou — perdeu a vaga do pódio"
+                            >
+                              <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            </span>
+                          ) : (
+                            <span
+                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-fatec-navy-50 text-fatec-muted"
+                              title="Ainda não confirmado pelo moderador"
+                            >
+                              —
+                            </span>
+                          )}
+                        </td>
+                      ) : etapa === "resultado" ? null : (
+                        <>
+                          <td className="whitespace-nowrap px-3 py-2.5 align-top font-medium text-fatec-navy-900">
+                            {formatarDataHora(t.enviadoEm)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 align-top text-fatec-muted">
+                            {formatarData(t.atualizadoEm)}
+                          </td>
+                        </>
+                      )}
                       <td className="whitespace-nowrap px-3 py-2.5 align-top">
                         <CelulaSituacaoPagamento
                           trabalho={t}
