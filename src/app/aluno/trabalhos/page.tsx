@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
-import { Check, Download, FileStack, Pencil, Eye, X } from "lucide-react";
+import { Check, Clock, Download, FileStack, MapPin, Pencil, Eye, X } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
@@ -27,6 +27,7 @@ import {
   notificarStatusTrabalho,
 } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import type { ApresentacaoAluno } from "@/app/api/trabalhos/minhas-apresentacoes/route";
 
 // Prazo de edição (2026-09-04): 23:55 do dia de fim das inscrições, gravado
 // em eventos/{id}.prazoEdicaoTrabalho na criação do evento (ver
@@ -58,6 +59,31 @@ export default function AlunoTrabalhosPage() {
   const { eventos } = useEventosPublicos();
   const temEventoPendente = useIndicadorEventos(perfil, user?.uid);
   const eventosMonitoradosSimples = useMonitoriasSimplesDoAluno(user?.uid);
+  // Sala e horário de apresentação (2026-11-11, pedido explícito do usuário
+  // — "vamos colocar para eles verem"). Vem de uma rota do servidor porque o
+  // aluno não lê /sessoes nem /salas pelas regras; uma chamada só por
+  // carregamento da tela, devolve apenas os trabalhos dele.
+  const [apresentacoes, setApresentacoes] = useState<Record<string, ApresentacaoAluno>>({});
+  useEffect(() => {
+    if (!user) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/trabalhos/minhas-apresentacoes", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!res.ok) return;
+        const corpo = (await res.json()) as { apresentacoes?: Record<string, ApresentacaoAluno> };
+        if (!cancelado) setApresentacoes(corpo.apresentacoes ?? {});
+      } catch {
+        // melhor esforço — sem sala/horário a tela continua funcionando.
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [user]);
   const [editando, setEditando] = useState<Trabalho | null>(null);
   // Qual tag de autor está com o aviso aberto (2026-10-27, pedido explícito
   // do usuário) — chave única "trabalhoId:uid". Clique em vez de hover
@@ -221,6 +247,31 @@ export default function AlunoTrabalhosPage() {
                         {" · "}
                         {t.areaTematica}
                       </p>
+                      {apresentacoes[t.id] && (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-fatec-orange-50 px-3 py-2 text-sm text-fatec-navy-900">
+                          <span className="flex items-center gap-1.5 font-semibold">
+                            <MapPin className="h-4 w-4 text-fatec-orange-600" strokeWidth={2} />
+                            Sala {apresentacoes[t.id].sala}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="h-4 w-4 text-fatec-orange-600" strokeWidth={2} />
+                            {apresentacoes[t.id].dia} ·{" "}
+                            {apresentacoes[t.id].horario ? (
+                              <>
+                                <span className="font-semibold">{apresentacoes[t.id].horario}</span>
+                                <span className="text-fatec-muted">
+                                  {" "}(bloco da sala: {apresentacoes[t.id].bloco})
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-semibold">{apresentacoes[t.id].bloco}</span>
+                            )}
+                          </span>
+                          <span className="text-xs text-fatec-muted">
+                            {apresentacoes[t.id].modalidade === "oral" ? "Apresentação oral" : "Roda de conversa"}
+                          </span>
+                        </div>
+                      )}
                       {(t.participantesNomes?.length ?? 0) > 0 && (
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           <span className="text-xs text-fatec-muted">Autores:</span>
