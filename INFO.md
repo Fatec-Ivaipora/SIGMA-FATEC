@@ -477,6 +477,27 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Consulta pública do ensalamento, sem login nenhum**
+  (pedido explícito do usuário — "uma tela fora do SIGMA, ela não terá
+  acesso a nada dentro do SIGMA... pra deixar com os moderadores e
+  espalhar como QR code pela faculdade, pra pessoa perdida procurar pelo
+  nome dela ou o nome do trabalho"). Nova rota pública
+  `/consulta/{eventoId}` (sem Sidebar, sem auth — mesmo padrão de
+  `/reavaliacao-externa`) + `GET /api/ensalamento/consulta`, 100%
+  via Admin SDK (nunca expõe Firestore a visitante anônimo, nenhuma regra
+  nova). Busca por nome (autor(es)) OU título do trabalho, devolve só
+  título/autores/sala/horário — nunca nota, status, e-mail ou CPF (mesmo
+  tanto que já vai pro PDF impresso, nada a mais). Liga/desliga em
+  `eventos/{id}.consultaPublicaAtiva` (novo campo), botão "Consulta
+  pública" do lado de "Gerar PDF" na tela de Ensalamento — mostra o link +
+  QR code (`QRCode.toDataURL`, mesma lib já usada no check-in) quando
+  ativa. Desativar NÃO muda a URL/QR (pedido explícito — "se eu ativar e
+  depois desativar o url muda?" → não, só passa a mostrar "indisponível"),
+  pode imprimir o QR uma vez só e ligar/desligar quando quiser. Testado ao
+  vivo na X MAC de verdade: ativei, busquei "bordado" (acha pelo título) e
+  "Guilherme Pricinato" (acha os 2 trabalhos da pessoa, cada um com
+  sala/horário certo).
+
 - **2026-11-11** — **Bug real, grave: 9 moderadores (71 trabalhos) ficaram
   sem nenhum trabalho atribuído depois de "Liberar para moderadores"**
   (achado pelo usuário no dia do evento — "liberei os trabalhos... a

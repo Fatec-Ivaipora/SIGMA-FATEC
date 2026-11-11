@@ -1111,6 +1111,46 @@ function EnsalamentoAdminView() {
     setGerandoPdf(false);
   }
 
+  // Consulta pública do ensalamento (2026-11-11, pedido explícito do
+  // usuário — "uma tela fora do SIGMA... pra deixar com os moderadores e
+  // espalhar como QR code"). Liga/desliga em eventos/{id}.consultaPublicaAtiva
+  // — ver GET /api/ensalamento/consulta e /consulta/{eventoId}/page.tsx.
+  const [modalConsultaPublica, setModalConsultaPublica] = useState(false);
+  const [alternandoConsultaPublica, setAlternandoConsultaPublica] = useState(false);
+  const [qrConsultaDataUrl, setQrConsultaDataUrl] = useState<string | null>(null);
+  const [copiouLinkConsulta, setCopiouLinkConsulta] = useState(false);
+  const urlConsultaPublica =
+    typeof window !== "undefined" && eventoId
+      ? `${window.location.origin}/consulta/${eventoId}`
+      : "";
+
+  useEffect(() => {
+    if (!modalConsultaPublica || !urlConsultaPublica) {
+      // Sincroniza com o modal (estado externo de UI) — limpa o QR
+      // anterior assim que fecha, pra não gerar de novo sem precisar.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQrConsultaDataUrl(null);
+      return;
+    }
+    let cancelado = false;
+    QRCode.toDataURL(urlConsultaPublica, { width: 280, margin: 1 }).then((dataUrl) => {
+      if (!cancelado) setQrConsultaDataUrl(dataUrl);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [modalConsultaPublica, urlConsultaPublica]);
+
+  async function alternarConsultaPublica(ativar: boolean) {
+    if (!eventoId) return;
+    setAlternandoConsultaPublica(true);
+    try {
+      await updateDoc(doc(db, "eventos", eventoId), { consultaPublicaAtiva: ativar });
+    } finally {
+      setAlternandoConsultaPublica(false);
+    }
+  }
+
   // Lista de trabalhos por SALA abre num modal (2026-11-04, corrigido —
   // achado real do usuário: "a grade tá muito feia, se clica ela expande,
   // confunde com a próxima, horrível". Antes expandia dentro da própria
@@ -1554,6 +1594,17 @@ function EnsalamentoAdminView() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setModalConsultaPublica(true)}
+                          className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                        >
+                          <QrCode className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Consulta pública
+                          {evento?.consultaPublicaAtiva && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setModalModeradores(true)}
                           className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                         >
@@ -1738,6 +1789,74 @@ function EnsalamentoAdminView() {
             {removendoSala ? "Removendo..." : "Remover do catálogo"}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={modalConsultaPublica}
+        onClose={() => setModalConsultaPublica(false)}
+        title="Consulta pública do ensalamento"
+      >
+        <p className="text-sm text-fatec-ink">
+          Tela sem login, fora do SIGMA — qualquer pessoa com o link ou o
+          QR code pode procurar pelo próprio nome ou pelo título do
+          trabalho e descobrir a sala/horário. Nada de nota, status,
+          e-mail ou CPF aparece ali, só o que já vai no PDF impresso.
+        </p>
+
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-fatec-navy-900">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                evento?.consultaPublicaAtiva ? "bg-emerald-500" : "bg-fatec-muted"
+              }`}
+            />
+            {evento?.consultaPublicaAtiva ? "Ativa" : "Desativada"}
+          </span>
+          <button
+            type="button"
+            onClick={() => alternarConsultaPublica(!evento?.consultaPublicaAtiva)}
+            disabled={alternandoConsultaPublica}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              evento?.consultaPublicaAtiva
+                ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                : "bg-fatec-orange-500 text-white shadow-md shadow-fatec-orange-500/25 hover:bg-fatec-orange-600"
+            }`}
+          >
+            {alternandoConsultaPublica
+              ? "Salvando..."
+              : evento?.consultaPublicaAtiva
+                ? "Desativar"
+                : "Ativar"}
+          </button>
+        </div>
+
+        {evento?.consultaPublicaAtiva && (
+          <div className="mt-4 flex flex-col items-center gap-4 rounded-xl border border-fatec-line bg-fatec-navy-50 px-4 py-5">
+            {qrConsultaDataUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- data URL gerado na hora, não é asset estático.
+              <img src={qrConsultaDataUrl} alt="QR code da consulta pública" className="h-48 w-48" />
+            )}
+            <div className="flex w-full items-center gap-2">
+              <input
+                readOnly
+                value={urlConsultaPublica}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 truncate rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs text-fatec-ink outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(urlConsultaPublica);
+                  setCopiouLinkConsulta(true);
+                  setTimeout(() => setCopiouLinkConsulta(false), 2000);
+                }}
+                className="flex-none rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+              >
+                {copiouLinkConsulta ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal

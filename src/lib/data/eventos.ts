@@ -222,6 +222,13 @@ export type Evento = {
   // sessaoId -> sessao.salaId -> moderadoresPorSala[salaId] -> quem recebe
   // o trabalho pra avaliar.
   moderadoresPorSala?: Record<string, { uid: string; nome: string }>;
+  // Consulta pública do ensalamento (2026-11-11, pedido explícito do
+  // usuário — tela sem login nenhum, pra divulgar por QR code pela
+  // faculdade; "se não [ativa] a url morre"). Sem isso (ausente/false), a
+  // rota pública (`/consulta/{eventoId}`, API em
+  // `/api/ensalamento/consulta`) não devolve nenhum dado, só avisa que
+  // está indisponível — nunca expõe nome/sala/horário de ninguém à toa.
+  consultaPublicaAtiva?: boolean;
   // Modelo do evento (2026-09-22, pedido da comissão — nem todo evento tem
   // trabalho acadêmico, ex. palestra/curso/workshop). Ausente = modelo de
   // hoje (trabalho, avaliação, ensalamento — todos os campos acima). Nesse
