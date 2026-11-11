@@ -114,8 +114,11 @@ export async function GET(request: Request) {
 
       resultados.push({
         titulo: tituloExibicao(t.titulo as string),
-        autores: autoresLista.join(", "),
-        salaNome: sessao.salaNome,
+        // Caixa alta (2026-11-11, achado real do usuário — "tem nome em
+        // caixa alto e outro em caixa baixa", mesmo padrão do PDF do
+        // ensalamento e de tituloExibicao acima).
+        autores: autoresLista.join(", ").toLocaleUpperCase("pt-BR"),
+        salaNome: sessao.salaNome.toLocaleUpperCase("pt-BR"),
         horario,
       });
     }

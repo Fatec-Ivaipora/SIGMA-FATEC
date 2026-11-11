@@ -477,6 +477,14 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Consulta pública: autor(es) e sala em caixa alta**
+  (achado real do usuário, ao vivo — "tem nome em caixa alto e outro em
+  caixa baixa, deixe padrão tudo em caixa alto"). `GET
+  /api/ensalamento/consulta` já deixava o título em caixa alta
+  (`tituloExibicao`), mas não os nomes dos autores nem o nome da sala —
+  agora os dois também passam por `toLocaleUpperCase("pt-BR")`, mesmo
+  padrão do PDF do ensalamento.
+
 - **2026-11-11** — **Consulta pública do ensalamento, sem login nenhum**
   (pedido explícito do usuário — "uma tela fora do SIGMA, ela não terá
   acesso a nada dentro do SIGMA... pra deixar com os moderadores e
