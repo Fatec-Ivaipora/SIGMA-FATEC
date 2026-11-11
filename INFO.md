@@ -477,6 +477,14 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Filtro de presença/falta em Desempate e Resultado
+  Final** (pedido explícito do usuário — "poermos filtrar quanto
+  faltaram quantos vierão"). Grupo "Todos | Presentes (N) | Faltas (N)"
+  ao lado de "Só empatados", com contagem já considerando os outros
+  filtros ativos (evento/área/busca). Reaproveita a mesma lista de
+  condições de `trabalhosFiltrados` (extraída pra
+  `trabalhosAntesDaPresenca`), não duplica a lógica de filtro.
+
 - **2026-11-11** — **Botão de certificado restrito à aba Avaliação, PDF do
   pódio por área pro palco, e correção manual de presença** (3 pedidos
   explícitos do usuário no mesmo dia). (1) "Imprimir certificados (papel

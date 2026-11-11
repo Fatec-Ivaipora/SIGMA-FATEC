@@ -404,6 +404,13 @@ export default function TrabalhosAdminPage() {
   // organização não tinha como saber quem precisa da apresentação pra
   // desempatar.
   const [soEmpatados, setSoEmpatados] = useState(false);
+  // Filtro de presença/falta na apresentação (2026-11-11, pedido explícito
+  // do usuário — "poermos filtrar quanto faltaram quantos vieram"). Só faz
+  // sentido nas abas Desempate e Resultado Final (únicas que mostram a
+  // coluna Apresentação) — ver o botão abaixo, renderizado só nessas duas.
+  const [presencaFiltro, setPresencaFiltro] = useState<"todos" | "presente" | "falta">(
+    "todos",
+  );
 
   // Ordenação por nota (2026-09-11, pedido explícito) — clicar no cabeçalho
   // alterna maior→menor / menor→maior; null = ordem padrão (como veio do
@@ -708,7 +715,11 @@ export default function TrabalhosAdminPage() {
     }
   }
 
-  const trabalhosFiltrados = useMemo(() => {
+  // Base sem o filtro de presença ainda — serve tanto pra contar quantos
+  // vieram/faltaram (badge do filtro abaixo) quanto como ponto de partida
+  // de trabalhosFiltrados, pra não duplicar a mesma lista de condições
+  // duas vezes com risco de uma desalinhar da outra.
+  const trabalhosAntesDaPresenca = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return trabalhos.filter((t) => {
       const bateEtapa = STATUS_POR_ETAPA[etapa].includes(t.status);
@@ -723,6 +734,30 @@ export default function TrabalhosAdminPage() {
       return bateEtapa && bateEvento && bateArea && bateEmpate && bateBusca;
     });
   }, [trabalhos, busca, eventoId, areaFiltro, etapa, soEmpatados, idsEmpatados]);
+
+  const contagemPresenca = useMemo(() => {
+    let presentes = 0;
+    let faltas = 0;
+    for (const t of trabalhosAntesDaPresenca) {
+      if (t.compareceuApresentacao === true) presentes++;
+      else if (t.compareceuApresentacao === false) faltas++;
+    }
+    return { presentes, faltas };
+  }, [trabalhosAntesDaPresenca]);
+
+  const trabalhosFiltrados = useMemo(() => {
+    if (
+      presencaFiltro === "todos" ||
+      (etapa !== "apresentacao" && etapa !== "resultado_final")
+    ) {
+      return trabalhosAntesDaPresenca;
+    }
+    return trabalhosAntesDaPresenca.filter((t) =>
+      presencaFiltro === "presente"
+        ? t.compareceuApresentacao === true
+        : t.compareceuApresentacao === false,
+    );
+  }, [trabalhosAntesDaPresenca, presencaFiltro, etapa]);
 
   // Lista exibida na tabela — igual a trabalhosFiltrados, só que reordenada
   // por nota quando o usuário clica no cabeçalho (ver direcaoOrdenacaoNota
@@ -1754,6 +1789,70 @@ export default function TrabalhosAdminPage() {
                   </span>
                 )}
               </button>
+
+              {(etapa === "apresentacao" || etapa === "resultado_final") && (
+                <div className="flex items-center gap-1 rounded-xl border border-fatec-line bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setPresencaFiltro("todos")}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      presencaFiltro === "todos"
+                        ? "bg-fatec-navy-900 text-white"
+                        : "text-fatec-navy-900 hover:bg-fatec-navy-50"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPresencaFiltro((v) => (v === "presente" ? "todos" : "presente"))
+                    }
+                    title="Só quem foi marcado presente na apresentação"
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      presencaFiltro === "presente"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "text-fatec-navy-900 hover:bg-fatec-navy-50"
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5 flex-none" strokeWidth={2.5} />
+                    Presentes
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+                        presencaFiltro === "presente"
+                          ? "bg-emerald-500 text-white"
+                          : "bg-fatec-navy-100 text-fatec-navy-800"
+                      }`}
+                    >
+                      {contagemPresenca.presentes}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPresencaFiltro((v) => (v === "falta" ? "todos" : "falta"))
+                    }
+                    title="Só quem foi marcado falta na apresentação"
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      presencaFiltro === "falta"
+                        ? "bg-rose-100 text-rose-700"
+                        : "text-fatec-navy-900 hover:bg-fatec-navy-50"
+                    }`}
+                  >
+                    <X className="h-3.5 w-3.5 flex-none" strokeWidth={2.5} />
+                    Faltas
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+                        presencaFiltro === "falta"
+                          ? "bg-rose-500 text-white"
+                          : "bg-fatec-navy-100 text-fatec-navy-800"
+                      }`}
+                    >
+                      {contagemPresenca.faltas}
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
