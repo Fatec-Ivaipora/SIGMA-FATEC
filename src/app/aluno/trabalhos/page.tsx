@@ -287,7 +287,8 @@ export default function AlunoTrabalhosPage() {
                       )}
                       {t.modalidadeApresentacao === "oral" && (
                         <a
-                          href="/materiais/modelo-apresentacao-mac.pdf"
+                          href="/materiais/modelo-apresentacao-mac.pptx"
+                          download="Modelo de apresentacao MAC.pptx"
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"

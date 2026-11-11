@@ -672,7 +672,8 @@ export function SubmeterTrabalhoModal({
                 </div>
               </div>
               <a
-                href="/materiais/modelo-apresentacao-mac.pdf"
+                href="/materiais/modelo-apresentacao-mac.pptx"
+                download="Modelo de apresentacao MAC.pptx"
                 target="_blank"
                 rel="noreferrer"
                 className="flex flex-none items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-fatec-orange-600 transition-colors hover:bg-fatec-orange-50"
