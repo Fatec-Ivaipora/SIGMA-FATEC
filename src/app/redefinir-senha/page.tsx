@@ -3,37 +3,23 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-  type AuthError,
-} from "firebase/auth";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { auth } from "@/lib/firebase";
 import { AuthSplitLayout } from "@/components/AuthSplitLayout";
 
-function mensagemErroSalvar(erro: AuthError): string {
-  switch (erro.code) {
-    case "auth/weak-password":
-      return "A senha precisa ter pelo menos 6 caracteres.";
-    case "auth/expired-action-code":
-    case "auth/invalid-action-code":
-      return "Esse link expirou ou já foi usado. Peça um novo.";
-    default:
-      return "Não foi possível salvar a nova senha. Tente novamente.";
-  }
-}
-
-/** Lê ?mode=resetPassword&oobCode=... da URL que o Firebase gerou (ver
- * actionCodeSettings.url em /recuperar-senha) — precisa de useSearchParams,
- * por isso o Suspense no componente de baixo (exigência do Next.js). */
+/** Lê ?token=... da URL que /api/auth/recuperar-senha gerou — precisa de
+ * useSearchParams, por isso o Suspense no componente de baixo (exigência
+ * do Next.js). Token próprio nosso, não mais oobCode do Firebase (2026-11-
+ * 11, ver comentário completo em
+ * src/app/api/auth/recuperar-senha/route.ts — gerar um segundo link
+ * invalidava o primeiro na hora, sem ter nada a ver com expiração por
+ * tempo). */
 function RedefinirSenhaForm() {
   const router = useRouter();
-  const oobCode = useSearchParams().get("oobCode");
+  const token = useSearchParams().get("token");
 
   const [estado, setEstado] = useState<
     | { status: "verificando" }
-    | { status: "invalido" }
+    | { status: "invalido"; mensagem: string }
     | { status: "pronto"; email: string }
     | { status: "sucesso" }
   >({ status: "verificando" });
@@ -43,14 +29,25 @@ function RedefinirSenhaForm() {
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!oobCode) {
-      Promise.resolve().then(() => setEstado({ status: "invalido" }));
+    if (!token) {
+      Promise.resolve().then(() =>
+        setEstado({ status: "invalido", mensagem: "Link inválido." }),
+      );
       return;
     }
-    verifyPasswordResetCode(auth, oobCode)
-      .then((email) => setEstado({ status: "pronto", email }))
-      .catch(() => setEstado({ status: "invalido" }));
-  }, [oobCode]);
+    fetch(`/api/auth/redefinir-senha?token=${encodeURIComponent(token)}`)
+      .then(async (r) => {
+        const corpo = await r.json();
+        if (!r.ok) {
+          setEstado({ status: "invalido", mensagem: corpo.erro ?? "Link inválido." });
+          return;
+        }
+        setEstado({ status: "pronto", email: corpo.email });
+      })
+      .catch(() =>
+        setEstado({ status: "invalido", mensagem: "Falha de conexão — tente de novo." }),
+      );
+  }, [token]);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -60,14 +57,23 @@ function RedefinirSenhaForm() {
       setErro("As senhas não coincidem.");
       return;
     }
-    if (!oobCode) return;
+    if (!token) return;
 
     setSalvando(true);
     try {
-      await confirmPasswordReset(auth, oobCode, novaSenha);
+      const r = await fetch("/api/auth/redefinir-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, novaSenha }),
+      });
+      const corpo = await r.json();
+      if (!r.ok) {
+        setErro(corpo.erro ?? "Não foi possível salvar a nova senha. Tente novamente.");
+        return;
+      }
       setEstado({ status: "sucesso" });
-    } catch (e) {
-      setErro(mensagemErroSalvar(e as AuthError));
+    } catch {
+      setErro("Falha de conexão — tente de novo.");
     } finally {
       setSalvando(false);
     }
@@ -95,8 +101,7 @@ function RedefinirSenhaForm() {
               Link inválido ou expirado
             </h1>
             <p className="mt-1.5 text-sm text-fatec-muted">
-              Esse link de recuperação não é mais válido — pode já ter sido
-              usado, ou o prazo passou. Pede um novo abaixo.
+              {estado.mensagem} Pede um novo abaixo.
             </p>
           </div>
           <Link

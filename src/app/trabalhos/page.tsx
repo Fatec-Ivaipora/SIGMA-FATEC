@@ -432,6 +432,26 @@ export default function TrabalhosAdminPage() {
   const alternarOrdenacaoNota = () =>
     setDirecaoOrdenacaoNota((atual) => (atual === "desc" ? "asc" : "desc"));
 
+  // Qual coluna a ordenação de nota segue, em Apresentação/Resultado Final
+  // (2026-11-11, pedido explícito do usuário — "hoje se eu filtro por av
+  // ele mostra do maior pro menor e vice versa, mas eu quero... filtrar o
+  // des por nota tbm mas não da pra usar os 2 juntos"). Antes as duas
+  // colunas ("Nota av"/"Nota des") chamavam o mesmo alternarOrdenacaoNota
+  // e caíam na mesma soma — clicar numa não tinha efeito nenhum diferente
+  // de clicar na outra. `null` = ainda não escolheu nenhuma, cai no padrão
+  // "maior nota primeiro" de sempre (posição real do pódio em Resultado
+  // Final, soma/av em Apresentação); "av"/"des" = ordena só por aquela
+  // coluna sozinha, clicar na outra troca pra ela (nunca as duas juntas).
+  const [colunaOrdenacaoNota, setColunaOrdenacaoNota] = useState<"av" | "des" | null>(null);
+  const ordenarPorColuna = (coluna: "av" | "des") => {
+    if (colunaOrdenacaoNota === coluna) {
+      alternarOrdenacaoNota();
+    } else {
+      setColunaOrdenacaoNota(coluna);
+      setDirecaoOrdenacaoNota("desc");
+    }
+  };
+
   // Ver detalhes / editar um trabalho (2026-09-11) — clicar no título da
   // tabela abre o resumo completo; "Editar" (só admin) troca pro mesmo
   // wizard de submissão em modo edição, pra corrigir casos excepcionais
@@ -772,17 +792,45 @@ export default function TrabalhosAdminPage() {
     if (!direcaoOrdenacaoNota) {
       return [...trabalhosFiltrados].sort((a, b) => momentoEnvio(b) - momentoEnvio(a));
     }
-    // Resultado Final ordena pela SOMA (av + apr) — é o placar real de quem
-    // passou por desempate; quem só tem av (venceu sem precisar de
-    // apresentação) ordena só por ela.
-    const valorDe = (t: Trabalho) =>
-      etapa === "resultado_final"
+    // Coluna explícita (2026-11-11, pedido explícito do usuário — "quero...
+    // filtrar o des por nota tbm mas não da pra usar os 2 juntos"): "av"
+    // ordena só por notaAvaliador, "des" só por notaModerador — nunca os
+    // dois juntos, escolher uma desativa a outra (ver colunaOrdenacaoNota
+    // acima). Sem coluna escolhida ainda, cai no padrão de sempre: soma
+    // (av+apr) quando existem as duas, só av quando o trabalho venceu sem
+    // precisar de apresentação.
+    const valorDe = (t: Trabalho) => {
+      if (colunaOrdenacaoNota === "av") return t.notaAvaliador;
+      if (colunaOrdenacaoNota === "des") return t.notaModerador;
+      return etapa === "resultado_final"
         ? typeof t.notaModerador === "number"
           ? (t.notaAvaliador ?? 0) + t.notaModerador
           : t.notaAvaliador
         : t.notaAvaliador;
+    };
     const sinal = direcaoOrdenacaoNota === "desc" ? -1 : 1;
     return [...trabalhosFiltrados].sort((a, b) => {
+      // Resultado Final, sem coluna explícita (2026-11-11, bug real achado
+      // pelo usuário — "a pontuação foi certa mas a ordem tá errada"):
+      // comparar SOMA (av+apr, até 50) com AV sozinha (até 25) é comparar
+      // escalas diferentes — um 1º lugar que venceu sem precisar de
+      // apresentação (av=25 sozinha) aparecia listado DEPOIS de 2º/3º
+      // lugares que só tiveram nota alta porque SOMARAM av+apr. A posição
+      // (1º/2º/3º) já sai certa de `posicaoPremiado` (vem de
+      // analisarEmpatesPorArea, a mesma fonte de sempre) — é só a ORDEM da
+      // tabela que usava outro critério. Só entra aqui quando o usuário
+      // não escolheu "Nota av"/"Nota des" explicitamente — essa escolha
+      // sempre ordena pela coluna sozinha, mesmo que isso bagunce a ordem
+      // do pódio (é exatamente pra comparar uma nota isolada da outra).
+      if (etapa === "resultado_final" && colunaOrdenacaoNota === null) {
+        const posA = posicaoPremiado.get(a.id);
+        const posB = posicaoPremiado.get(b.id);
+        if (posA !== undefined && posB !== undefined) {
+          return sinal * (posA - posB) * -1;
+        }
+        if (posA !== undefined) return -1;
+        if (posB !== undefined) return 1;
+      }
       const va = valorDe(a);
       const vb = valorDe(b);
       const na = typeof va === "number";
@@ -793,7 +841,7 @@ export default function TrabalhosAdminPage() {
       if (nb) return 1;
       return 0;
     });
-  }, [trabalhosFiltrados, direcaoOrdenacaoNota, etapa]);
+  }, [trabalhosFiltrados, direcaoOrdenacaoNota, colunaOrdenacaoNota, etapa, posicaoPremiado]);
 
   // Orientador pode ser alocado como avaliador de um evento (2026-08-25,
   // RF-46). Também entra quem tem "avaliador" em papeisAvaliacao mesmo com
@@ -2221,7 +2269,7 @@ export default function TrabalhosAdminPage() {
                       <th className="px-3 py-2 text-center font-semibold">
                         <button
                           type="button"
-                          onClick={alternarOrdenacaoNota}
+                          onClick={() => ordenarPorColuna("av")}
                           className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
                         >
                           Nota av (/25)
@@ -2237,38 +2285,38 @@ export default function TrabalhosAdminPage() {
                     )}
                     {(etapa === "resultado_final" || etapa === "apresentacao") && (
                       <>
-                        <th className="px-3 py-2 text-center font-semibold" title="Nota da avaliação">
+                        <th className="px-3 py-2 text-center font-semibold" title="Nota da avaliação — clique pra ordenar só por ela">
                           <button
                             type="button"
-                            onClick={alternarOrdenacaoNota}
+                            onClick={() => ordenarPorColuna("av")}
                             className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
                           >
                             Nota av (/25)
-                            {direcaoOrdenacaoNota === "desc" ? (
-                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
-                            ) : direcaoOrdenacaoNota === "asc" ? (
-                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
-                            ) : (
+                            {colunaOrdenacaoNota !== "av" ? (
                               <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : direcaoOrdenacaoNota === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : (
+                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
                             )}
                           </button>
                         </th>
                         <th
                           className="px-3 py-2 text-center font-semibold"
-                          title="Nota do desempate — só existe pra quem empatou e precisou dela (moderador já deu) ou terminou de apresentar. Ordena junto com a nota av, pela soma das duas."
+                          title="Nota do desempate — só existe pra quem empatou e precisou dela (moderador já deu) ou terminou de apresentar. Clique pra ordenar só por ela (desativa a ordenação por nota av)."
                         >
                           <button
                             type="button"
-                            onClick={alternarOrdenacaoNota}
+                            onClick={() => ordenarPorColuna("des")}
                             className="mx-auto flex items-center gap-1 uppercase tracking-[-0.01em] text-fatec-muted transition-colors hover:text-fatec-navy-900"
                           >
                             Nota des (/25)
-                            {direcaoOrdenacaoNota === "desc" ? (
-                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
-                            ) : direcaoOrdenacaoNota === "asc" ? (
-                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
-                            ) : (
+                            {colunaOrdenacaoNota !== "des" ? (
                               <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : direcaoOrdenacaoNota === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+                            ) : (
+                              <ChevronUp className="h-3.5 w-3.5" strokeWidth={2} />
                             )}
                           </button>
                         </th>

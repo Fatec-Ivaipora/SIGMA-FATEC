@@ -477,6 +477,55 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Nota av e nota des ordenam cada uma sozinha agora**
+  (pedido explícito do usuário — "hoje se eu filtro por av ele mostra do
+  maior pro menor e vice versa, mas eu quero... filtrar o des por nota
+  tbm mas não da pra usar os 2 juntos"). As duas colunas chamavam o
+  mesmo toggle e caíam na mesma soma — clicar numa não fazia diferença
+  nenhuma da outra. Agora cada cabeçalho ("Nota av"/"Nota des") ordena só
+  pela sua própria nota; clicar numa desativa a outra automaticamente (só
+  a coluna ativa mostra a seta), nunca as duas juntas. Sem nenhuma
+  coluna escolhida, continua caindo no padrão de sempre (posição real do
+  pódio em Resultado Final, soma/av em Apresentação).
+
+- **2026-11-11** — **Ordem da tabela de Resultado Final corrigida (bug
+  real, achado ao vivo durante o evento — "a pontuação foi certa mas a
+  ordem tá errada")**. A posição (1º/2º/3º Premiado) sempre saiu certa de
+  `analisarEmpatesPorArea`; o problema era só a ORDEM das linhas na
+  tabela, que comparava SOMA (av+apr, até 50) com AV sozinha (até 25) —
+  escalas diferentes. Um 1º lugar que venceu sem precisar de apresentação
+  (av=25 sozinha) aparecia listado depois de 2º/3º lugares que só tinham
+  nota alta porque somaram av+apr (ex. real: av=25 sozinha ficava abaixo
+  de av=24+apr=18=42 e av=24+apr=16=40 — exatamente o 1º/2º/3º
+  aparecendo na ordem 2º/3º/1º). Corrigido: na aba Resultado Final, quem
+  já tem posição premiada ordena pela posição real primeiro (1º antes de
+  2º antes de 3º), só quem não é premiado cai no critério de nota de
+  sempre.
+
+- **2026-11-11** — **Link de redefinição de senha não depende mais do
+  oobCode do Firebase** (achado real, reportado pelo usuário — "os link
+  de redefinição esta[ão] expirando" / "quando chega" [já expirado]).
+  Investigado direto na API do Identity Toolkit: gerar um SEGUNDO link de
+  redefinição pro mesmo e-mail invalida o PRIMEIRO em menos de 1 segundo
+  — não é expiração por tempo nenhuma, é o próprio Firebase matando o
+  link anterior assim que outro é pedido (ex.: admin manda de novo, ou a
+  pessoa pede pelo autoatendimento em cima do que o admin já tinha
+  mandado). `/api/auth/recuperar-senha` agora gera um token próprio
+  (mesmo padrão de `gerarTokenConvite`/`convitesRevisaoExterna`), grava
+  em `redefinicoesSenha/{token}` (client sem acesso, só Admin SDK, ver
+  firestore.rules) com validade de 24h que a gente controla; nova rota
+  `/api/auth/redefinir-senha` valida e troca a senha
+  (`updateUser`), e invalida qualquer outro token ainda pendente da
+  mesma conta ao confirmar (sem isso, um link antigo esquecido na caixa
+  de entrada continuaria valendo depois da senha já ter sido trocada por
+  outro). Testado de ponta a ponta com usuário descartável: 2 links
+  gerados em sequência, os 2 continuam válidos, usar o mais antigo troca
+  a senha de verdade (confirmado com login via REST), e o mais novo (não
+  usado) fica invalidado na hora. **Pendente**: alguém com acesso de
+  produção rodar `firebase deploy --only firestore:rules` depois desse
+  push (a sessão do Claude Code não tem permissão de fazer deploy de
+  produção).
+
 - **2026-11-11** — **Filtro de presença/falta em Desempate e Resultado
   Final** (pedido explícito do usuário — "poermos filtrar quanto
   faltaram quantos vierão"). Grupo "Todos | Presentes (N) | Faltas (N)"

@@ -1,28 +1,42 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { enviarEmail, modeloEmail, URL_SISTEMA } from "@/lib/mail";
 
+const VALIDADE_HORAS = 24;
+
+// Token próprio, não mais o oobCode nativo do Firebase (2026-11-11, achado
+// real: gerar um SEGUNDO link de redefinição pro mesmo e-mail invalida o
+// PRIMEIRO na hora — testado direto na API do Identity Toolkit, o oobCode
+// antigo vira INVALID_OOB_CODE em menos de 1 segundo depois do novo ser
+// gerado, mesmo o antigo nunca tendo sido usado. Isso explicava os "o link
+// expira em menos de 1 minuto" — não é expiração por tempo nenhuma, é o
+// próprio Firebase matando o link anterior assim que outro é pedido (ex.:
+// admin manda de novo, ou a pessoa pede pelo autoatendimento em cima do
+// que o admin já tinha mandado). Token aleatório de 24 bytes, mesmo padrão
+// de gerarTokenConvite em /api/revisao-externa/convidar — vira o id do
+// documento em `redefinicoesSenha` (client não lê nem escreve essa coleção
+// de jeito nenhum, ver firestore.rules), com validade própria que a gente
+// controla (24h), em vez de depender do oobCode do Firebase pra qualquer
+// coisa além do updateUser final (ver /api/auth/redefinir-senha).
+function gerarTokenRedefinicao(): string {
+  return randomBytes(24).toString("base64url");
+}
+
 async function gerarEEnviar(emailNormalizado: string) {
   const usuario = await getAdminAuth().getUserByEmail(emailNormalizado);
-  // generatePasswordResetLink sempre devolve um link que passa primeiro
-  // pela página intermediária hospedada pelo próprio Firebase
-  // (`{authDomain}/__/auth/action`, que só depois redireciona pra `url`)
-  // — `handleCodeInApp` NÃO muda isso (só afeta o sendPasswordResetEmail
-  // do client, que já não usamos mais). Achado real (2026-10-07): essa
-  // página intermediária chama a API do Google com referer
-  // `fateclab-4cc74.firebaseapp.com`, e a chave de API do projeto só
-  // libera o domínio de produção como referer permitido — a chamada
-  // tomava 403 (API_KEY_HTTP_REFERRER_BLOCKED), página em branco com erro
-  // cru em JSON. Solução: extrai só o oobCode do link gerado e monta o
-  // link do e-mail apontando DIRETO pra nosso /redefinir-senha (que já lê
-  // oobCode da URL sozinho, ver redefinir-senha/page.tsx) — nunca passa
-  // pela intermediária do Firebase, não depende de mais nenhuma
-  // configuração no Google Cloud Console.
-  const linkGerado = await getAdminAuth().generatePasswordResetLink(emailNormalizado, {
-    url: `${URL_SISTEMA}/redefinir-senha`,
-  });
-  const oobCode = new URL(linkGerado).searchParams.get("oobCode");
-  const link = `${URL_SISTEMA}/redefinir-senha?oobCode=${encodeURIComponent(oobCode ?? "")}`;
+  const token = gerarTokenRedefinicao();
+  const agora = new Date();
+  await getAdminDb()
+    .doc(`redefinicoesSenha/${token}`)
+    .set({
+      uid: usuario.uid,
+      email: emailNormalizado,
+      criadoEm: agora,
+      expiraEm: new Date(agora.getTime() + VALIDADE_HORAS * 60 * 60 * 1000),
+      usadoEm: null,
+    });
+  const link = `${URL_SISTEMA}/redefinir-senha?token=${encodeURIComponent(token)}`;
   await enviarEmail({
     to: emailNormalizado,
     subject: "Redefinição de senha — SIGMA",

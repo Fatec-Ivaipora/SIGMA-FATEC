@@ -426,6 +426,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // redefinicoesSenha/{token} (2026-11-11) — token próprio de
+    // redefinição de senha, mesmo padrão de convitesRevisaoExterna acima:
+    // só /api/auth/recuperar-senha (cria) e /api/auth/redefinir-senha (lê
+    // e consome) tocam essa coleção, sempre via Admin SDK. Substituiu o
+    // oobCode nativo do Firebase Auth — achado real: gerar um segundo link
+    // de redefinição pro mesmo e-mail invalidava o primeiro na hora, sem
+    // ter nada a ver com expiração por tempo.
+    match /redefinicoesSenha/{token} {
+      allow read, write: if false;
+    }
+
     // candidatosAvaliacao/{id} (2026-10-28, pedido explícito do usuário) —
     // autocadastro público de quem quer ser avaliador/moderador (nome,
     // área de formação, telefone, email). Grava telefone/email de gente
