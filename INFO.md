@@ -477,6 +477,31 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Bug real, grave: 9 moderadores (71 trabalhos) ficaram
+  sem nenhum trabalho atribuído depois de "Liberar para moderadores"**
+  (achado pelo usuário no dia do evento — "liberei os trabalhos... a
+  moderadora maria vitória elesbão não recebeu nem um, tá em branco, mas a
+  rafaela tropp tem 8"). Causa: `liberarTrabalhosParaModeradores`
+  (`src/app/trabalhos/page.tsx`) só rodava a 2ª parte (atribuir "colegas de
+  sala" pra confirmação de presença) pras salas que já tinham algum
+  trabalho EMPATADO nessa leva (`salasAtendidas`) — uma sala sem nenhum
+  empate (todos os trabalhos já "aceito" direto, sem precisar de
+  desempate) nunca entrava ali, e o moderador dela ficava 100% em branco.
+  Corrigido pra rodar em TODA sala com moderador atribuído
+  (`Object.entries(moderadoresPorSala)`), não só nas que tiveram empate.
+  Corrigido também o bug gêmeo que isso escondia: o `batch.commit()` só
+  rodava se `porModerador.size > 0` (só contava quem recebeu trabalho
+  empatado) — virou `temAtualizacao` (true assim que QUALQUER
+  `batch.update` é enfileirado, empate ou presença). Rodado um backfill
+  imediato em produção (script descartável, mesmo padrão de sempre) pra
+  corrigir os 9 moderadores já afetados na hora, sem esperar o próximo
+  clique em "Liberar": LEONARDO DOS SANTOS SILVA, FABIANE DO NASCIMENTO
+  OLIVEIRA COBIANCHI, JOÃO CARLOS GONÇALVES, Daiane Aparecida da Rocha,
+  JOSÉ LAURO DE ALMEIDA, TAYNARA KAROLINE DOS SANTOS, MARIA VITÓRIA
+  ALMEIDA ELESBÃO, DANIELLE KOCHINSKI BITTENCOURT e EDUARDO LIMA NUNES —
+  71 trabalhos no total, confirmado reproduzindo a mesma regra de conflito
+  de interesse do código real antes de gravar.
+
 - **2026-11-11** — **Aviso de Safari na tela de pagamento, com contagem
   antes de liberar o botão** (achado real do usuário, com print de aluno
   travado numa tela preta do Safari "servidor parou de responder" — trocar

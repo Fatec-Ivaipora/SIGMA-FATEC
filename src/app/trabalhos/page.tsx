@@ -1253,10 +1253,7 @@ export default function TrabalhosAdminPage() {
     const batch = writeBatch(db);
     const porModerador = new Map<string, { uid: string; nome: string; quantidade: number }>();
     const pendentes: { trabalho: Trabalho; motivo: string }[] = [];
-
-    // Salas que vão ganhar moderador nessa leva — usado logo abaixo pra
-    // também avisar os colegas de sala (ver comentário na 2ª parte).
-    const salasAtendidas = new Set<string>();
+    let temAtualizacao = false;
 
     for (const t of trabalhosEmpatados) {
       const sessao = t.sessaoId ? sessaoPorId.get(t.sessaoId) : undefined;
@@ -1282,7 +1279,7 @@ export default function TrabalhosAdminPage() {
         moderadorNome: moderador.nome,
         atualizadoEm: serverTimestamp(),
       });
-      salasAtendidas.add(sessao.salaId);
+      temAtualizacao = true;
       const atual = porModerador.get(moderador.uid) ?? {
         uid: moderador.uid,
         nome: moderador.nome,
@@ -1308,9 +1305,15 @@ export default function TrabalhosAdminPage() {
     // sobrescreve quem já foi marcado (`typeof compareceuApresentacao !==
     // "boolean"`), nem mexe no status (fica "aceito" do jeito que já
     // estava).
-    for (const salaId of salasAtendidas) {
-      const moderador = moderadoresPorSala[salaId];
-      if (!moderador) continue;
+    //
+    // Roda pra TODA sala com moderador atribuído (não só pras que tiveram
+    // empate nessa leva) — bug real corrigido em 2026-11-11: antes só
+    // olhava `salasAtendidas` (salas com empate), então uma sala sem
+    // nenhum empate (todos os trabalhos já "aceito" direto) nunca entrava
+    // aqui, e o moderador dela ficava sem nenhum trabalho (achado pelo
+    // usuário — "a moderadora maria vitória elesbão não recebeu nem um,
+    // tá em branco").
+    for (const [salaId, moderador] of Object.entries(moderadoresPorSala)) {
       const idsDaSala = new Set(
         sessoesDoEvento.filter((s) => s.salaId === salaId).flatMap((s) => s.trabalhoIds),
       );
@@ -1325,10 +1328,11 @@ export default function TrabalhosAdminPage() {
           moderadorNome: moderador.nome,
           atualizadoEm: serverTimestamp(),
         });
+        temAtualizacao = true;
       }
     }
 
-    if (porModerador.size > 0) {
+    if (temAtualizacao) {
       await batch.commit();
       if (user) {
         notificarAtribuicao(
