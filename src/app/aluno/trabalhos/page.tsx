@@ -91,7 +91,23 @@ export default function AlunoTrabalhosPage() {
   // celular não tem hover — ninguém no toque veria um `title` nativo.
   const [avisoAutorAberto, setAvisoAutorAberto] = useState<string | null>(null);
 
+  // Regra única de quem pode editar (2026-11-11, achado real do usuário —
+  // "porque o botão ver o aluno consegue editar o trabalho" depois do prazo):
+  // o botão "Ver" abria a mesma janela de edição destravada pro DONO, porque
+  // a janela só travava pra quem não era dono. Agora o botão e a janela usam
+  // a mesma regra, e o salvar também recusa.
+  function podeEditarTrabalho(t: Trabalho): boolean {
+    const evento = eventos.find((e) => e.id === t.eventoId);
+    return (
+      t.alunoUid === user?.uid && !STATUS_TRAVA_EDICAO.has(t.status) && dentroDoPrazoEdicao(evento)
+    );
+  }
+
   async function salvarEdicao(trabalho: Trabalho, dados: DadosSubmissao) {
+    if (!podeEditarTrabalho(trabalho)) {
+      setEditando(null);
+      return;
+    }
     // Convite pendente só é criado pra colega novo — quem já tinha aceitado
     // (não está mais em convitesPendentes) continua aceito; quem foi
     // removido da lista simplesmente sai dos dois campos.
@@ -218,8 +234,7 @@ export default function AlunoTrabalhosPage() {
                 // invalidaria a avaliação em silêncio). Só fica editável antes
                 // da nota: submissao/aguardando_avaliacao/entregue_com_atraso,
                 // e mesmo assim só dentro do prazo de edição.
-                const podeEditar =
-                  souDono && !STATUS_TRAVA_EDICAO.has(t.status) && dentroDoPrazoEdicao(evento);
+                const podeEditar = podeEditarTrabalho(t);
                 const convitePendente = !souDono && !!user && !!t.convitesPendentes?.includes(user.uid);
                 return (
                   <div
@@ -409,7 +424,7 @@ export default function AlunoTrabalhosPage() {
         <SubmeterTrabalhoModal
           open={!!editando}
           modoEdicao
-          somenteLeitura={editando.alunoUid !== user?.uid}
+          somenteLeitura={!podeEditarTrabalho(editando)}
           eventoId={editando.eventoId}
           temTaxa={!!eventos.find((e) => e.id === editando.eventoId)?.valorInscricao}
           eventoNome={eventos.find((e) => e.id === editando.eventoId)?.nome ?? ""}
