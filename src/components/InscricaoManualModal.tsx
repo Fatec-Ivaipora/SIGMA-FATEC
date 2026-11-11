@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { User } from "firebase/auth";
-import { CheckCircle2, Loader2, Search } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Search } from "lucide-react";
 import { Modal } from "@/components/Modal";
+import { baixarReciboPagamento } from "@/lib/baixarCertificado";
 import { useAlunosParaBusca, type AlunoParaBusca } from "@/lib/data/usuarios";
 
 /** Inscrição extra (2026-08-26) — organização/admin marcam manualmente um
@@ -27,6 +28,10 @@ export function InscricaoManualModal({
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
+  // Guarda quem acabou de ser inscrito (2026-11-11) — `selecionado` já zera
+  // logo depois do sucesso, mas o botão "Baixar recibo" ainda precisa do uid.
+  const [ultimoInscrito, setUltimoInscrito] = useState<AlunoParaBusca | null>(null);
+  const [baixandoRecibo, setBaixandoRecibo] = useState(false);
 
   const alunos = useAlunosParaBusca(user?.uid);
   const termo = busca.trim().toLowerCase();
@@ -41,6 +46,7 @@ export function InscricaoManualModal({
     setSelecionado(null);
     setErro(null);
     setSucesso(null);
+    setUltimoInscrito(null);
     onClose();
   }
 
@@ -58,6 +64,7 @@ export function InscricaoManualModal({
       const corpo = await resposta.json();
       if (!resposta.ok) throw new Error(corpo.erro ?? "Não foi possível inscrever.");
       setSucesso(`${selecionado.nome} foi inscrito e marcado como pago.`);
+      setUltimoInscrito(selecionado);
       setSelecionado(null);
       setBusca("");
     } catch (e) {
@@ -65,6 +72,17 @@ export function InscricaoManualModal({
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function baixarRecibo() {
+    if (!user || !ultimoInscrito) return;
+    setBaixandoRecibo(true);
+    const resultado = await baixarReciboPagamento(user, {
+      eventoId,
+      alunoUid: ultimoInscrito.uid,
+    });
+    if (!resultado.ok) setErro(resultado.erro);
+    setBaixandoRecibo(false);
   }
 
   return (
@@ -76,10 +94,27 @@ export function InscricaoManualModal({
         </p>
 
         {sucesso && (
-          <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            <CheckCircle2 className="h-4 w-4 flex-none" strokeWidth={2} />
-            {sucesso}
-          </p>
+          <div className="flex flex-col gap-3 rounded-xl bg-emerald-50 px-4 py-3">
+            <p className="flex items-center gap-2 text-sm text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 flex-none" strokeWidth={2} />
+              {sucesso}
+            </p>
+            {ultimoInscrito && (
+              <button
+                type="button"
+                onClick={baixarRecibo}
+                disabled={baixandoRecibo}
+                className="flex w-fit items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {baixandoRecibo ? (
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                ) : (
+                  <Download className="h-4 w-4" strokeWidth={2} />
+                )}
+                {baixandoRecibo ? "Gerando recibo..." : "Baixar recibo"}
+              </button>
+            )}
+          </div>
         )}
         {erro && (
           <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</p>

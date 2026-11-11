@@ -941,6 +941,83 @@ export function ListaPresencaPDF({
   );
 }
 
+/** Recibo de pagamento da Inscrição extra (2026-11-11, pedido explícito do
+ * usuário — "no pagamento extra, quando eu inscrever alguém, consegue gerar
+ * um recibo de pagamento pra podermos entregar ao aluno?"). Documento
+ * simples, sem assinatura (confirmado com o usuário) — só comprova o
+ * recebimento de quem pagou por fora do sistema (dinheiro em mãos). Mesmo
+ * cabeçalho/rodapé da Ata/Lista de Presença, pra parecer da mesma família.
+ * Ver POST /api/asaas/manual, que já grava `valor`/`pagoEm` usados aqui. */
+export function ReciboPagamentoPDF({
+  alunoNome,
+  eventoNome,
+  cpf,
+  valor,
+  dataPagamento,
+}: {
+  alunoNome: string;
+  eventoNome: string;
+  // Opcional (2026-11-11, ampliado) — só mostra a linha se existir; nem
+  // todo cadastro antigo tem CPF salvo (ver usuarios/{uid}.cpf).
+  cpf?: string;
+  valor: number;
+  dataPagamento: Date;
+}) {
+  const valorFormatado = valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+  const dataFormatada = dataPagamento.toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+  return (
+    <Document>
+      <Page size="A4" style={estiloAta.page}>
+        <View style={estiloAta.cabecalho}>
+          <Image src={LOGO_PADRAO} style={estiloAta.logoCabecalho} />
+          <Text style={estiloAta.textoCredenciamento}>
+            Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+            UNESVI{"\n"}
+            Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+            {"\n"}
+            Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+          </Text>
+        </View>
+
+        <Text style={[estiloAta.titulo, { fontFamily: "Helvetica-Bold" }]}>
+          {eventoNome.toUpperCase()}
+        </Text>
+
+        <View style={{ marginTop: 16, gap: 4 }}>
+          <Text style={estiloAta.corpo}>
+            <Text style={estiloAta.negrito}>Inscrito: </Text>
+            {alunoNome.toUpperCase()}
+          </Text>
+          {cpf && (
+            <Text style={estiloAta.corpo}>
+              <Text style={estiloAta.negrito}>CPF: </Text>
+              {cpf}
+            </Text>
+          )}
+          <Text style={estiloAta.corpo}>
+            <Text style={estiloAta.negrito}>Valor: </Text>
+            {valorFormatado}
+          </Text>
+        </View>
+
+        <Text style={[estiloAta.corpo, { marginTop: 10, fontSize: 9, color: cores.muted }]}>
+          Pago em {dataFormatada}.
+        </Text>
+
+        <Text fixed style={estiloAta.rodape}>
+          Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+          /Paraná{"\n"}www.fatecivaipora.com.br
+        </Text>
+      </Page>
+    </Document>
+  );
+}
+
 /** Relatório de participantes por curso (2026-10-28, pedido explícito do
  * usuário — entregar aos coordenadores). Uma página (ou mais) por curso:
  * resumo, grupos (trabalhos enviados com os integrantes) e a lista de

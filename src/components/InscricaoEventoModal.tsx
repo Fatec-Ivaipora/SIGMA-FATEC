@@ -16,6 +16,26 @@ import { useMinhaInscricao } from "@/lib/data/inscricoes";
 const INTERVALO_VERIFICACAO_MS = 8000;
 const TENTATIVAS_MAXIMAS = 22; // ~3 min de conferida automática
 
+// Segundos de "Aguarde..." no botão do Safari (2026-11-11, pedido explícito
+// do usuário — "ninguém vai ler" um aviso parado do lado do botão; a ideia
+// é travar o botão com uma contagem E já mostrar a mensagem durante ela,
+// forçando a pessoa a notar e ter tempo de ler antes de poder clicar).
+// Ajustado de 5 pra 10s no mesmo dia (segundo pedido, mesmo motivo).
+const SEGUNDOS_AVISO_SAFARI = 10;
+
+// Safari (2026-11-11, pedido explícito do usuário — achado real: aluno
+// clicava em "Pagar", a página do Asaas não abria ("servidor parou de
+// responder"), trocar de wifi/4G não resolvia — sinal de bloqueio do
+// PRÓPRIO aparelho/navegador, não da rede). Detecta só o Safari de
+// verdade (webkit sem chrome/crios/fxios/edg/android no UA — no iOS todo
+// navegador usa o motor da Apple por trás, então "Chrome" lá também passa
+// nesse teste se não excluir esses tokens).
+function ehSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /safari/i.test(ua) && !/chrome|crios|fxios|edg|android/i.test(ua);
+}
+
 /** Modal de pagamento da inscrição num evento com taxa (2026-08-26, revisado
  * 2026-08-31). Pagamento não bloqueia mais trabalho/convites — a diretoria
  * não quis essa trava (ver src/app/aluno/eventos/page.tsx) — então esse modal
@@ -54,6 +74,17 @@ export function InscricaoEventoModal({
   const [erro, setErro] = useState<string | null>(null);
   const [aindaNaoCaiu, setAindaNaoCaiu] = useState(false);
   const tentativasAutomaticas = useRef(0);
+  // Calculado só no client (2026-11-11) — navigator não existe no SSR;
+  // computar direto no render (ou num useState lazy) daria erro de
+  // hidratação, já que o servidor sempre veria "não é Safari". O efeito
+  // roda uma vez só, no mount, depois que já hidratou.
+  const [avisarSafari, setAvisarSafari] = useState(false);
+  useEffect(() => {
+    // Sincroniza com navigator.userAgent (API de plataforma, não existe
+    // durante SSR) — por isso não dá pra virar useState lazy nem useMemo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAvisarSafari(ehSafari());
+  }, []);
 
   function fechar() {
     setCpf("");
@@ -135,6 +166,33 @@ export function InscricaoEventoModal({
   const cpfValido = cpf.replace(/\D/g, "").length === 11;
   const podeGerar = temCpf || cpfValido;
 
+  // Contagem do aviso do Safari (2026-11-11) — só começa quando o CPF já
+  // está pronto (podeGerar), senão contaria enquanto a pessoa ainda está
+  // digitando. Reinicia do zero se o CPF for apagado/ficar inválido de
+  // novo (volta a precisar reparar no aviso antes de poder pagar).
+  const [contagemSafari, setContagemSafari] = useState<number | null>(null);
+  useEffect(() => {
+    if (!avisarSafari || !podeGerar) {
+      // Reseta a contagem (não é "ajustar estado de um prop" — é desligar
+      // o cronômetro, mesmo espírito do clearInterval abaixo).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setContagemSafari(null);
+      return;
+    }
+    setContagemSafari(SEGUNDOS_AVISO_SAFARI);
+    const id = setInterval(() => {
+      setContagemSafari((atual) => {
+        if (atual === null || atual <= 1) {
+          clearInterval(id);
+          return 0;
+        }
+        return atual - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [avisarSafari, podeGerar]);
+  const aguardandoAvisoSafari = avisarSafari && !!contagemSafari && contagemSafari > 0;
+
   return (
     <Modal open={open} onClose={fechar} title={`Inscrição — ${eventoNome}`}>
       <div className="flex flex-col gap-6">
@@ -182,16 +240,41 @@ export function InscricaoEventoModal({
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</p>
             )}
 
+            {avisarSafari && contagemSafari !== null && (
+              <div className="flex items-start gap-3 rounded-xl bg-fatec-orange-50 px-4 py-3 text-sm text-fatec-orange-700">
+                {/* eslint-disable-next-line @next/next/no-img-element -- ícone
+                    fixo e pequeno, mesmo padrão de <img> já usado no projeto
+                    (não precisa da otimização do next/image). */}
+                <img
+                  src="/images/logo-safari.png"
+                  alt="Logo do Safari"
+                  className="mt-0.5 h-6 w-6 flex-none"
+                />
+                <p>
+                  Você está no Safari — alguns aparelhos bloqueiam a página
+                  de pagamento nele (fica uma tela preta, &ldquo;servidor
+                  parou de responder&rdquo;). Se isso acontecer, tente abrir
+                  pelo Chrome.
+                </p>
+              </div>
+            )}
+
             {!invoiceUrl ? (
               <div className="flex flex-col gap-3">
                 <button
                   type="button"
                   onClick={gerarCobranca}
-                  disabled={!podeGerar || gerando}
+                  disabled={!podeGerar || gerando || aguardandoAvisoSafari}
                   className="flex w-fit items-center gap-2 rounded-xl bg-fatec-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
                 >
-                  {gerando && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
-                  {gerando ? "Gerando cobrança..." : "Pagar agora"}
+                  {(gerando || aguardandoAvisoSafari) && (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  )}
+                  {gerando
+                    ? "Gerando cobrança..."
+                    : aguardandoAvisoSafari
+                      ? `Aguarde ${contagemSafari}s...`
+                      : "Pagar agora"}
                 </button>
               </div>
             ) : (

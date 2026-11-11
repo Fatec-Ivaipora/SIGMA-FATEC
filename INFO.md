@@ -477,6 +477,49 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Aviso de Safari na tela de pagamento, com contagem
+  antes de liberar o botão** (achado real do usuário, com print de aluno
+  travado numa tela preta do Safari "servidor parou de responder" — trocar
+  de wifi/4G não resolvia, sinal de bloqueio do próprio aparelho/navegador,
+  não da rede; confirmado comparando com os 1051 `asaasInvoiceUrl` reais
+  gravados pra X MAC — todos `www.asaas.com`, nunca passam por encurtador
+  nenhum do nosso lado). Pedido explícito do usuário depois de ver o
+  aviso simples: "ninguém vai ler... minha ideia é depois que ele termina
+  de colocar o CPF, o botão continua cinza com uma contagem, aí aparece a
+  mensagem" — ajustado no mesmo dia (segundo pedido) pra 10s com a
+  mensagem já visível DURANTE toda a contagem (não só no fim), e pra usar
+  a logo de verdade do Safari em vez de um ícone genérico (recortada em
+  círculo, sem o fundo quadrado branco original —
+  `public/images/logo-safari.png`, fonte: print do próprio usuário).
+  `InscricaoEventoModal.tsx`: detecta Safari de verdade por
+  `navigator.userAgent` (exclui Chrome/Edge/Android que também usam
+  webkit no iOS), só depois que o CPF fica válido (`podeGerar`) conta 10s
+  com o botão "Pagar agora" desabilitado ("Aguarde Xs..."), mostrando o
+  aviso com a logo o tempo todo. Testado ao vivo com conta descartável,
+  forçando `ehSafari()` a retornar `true` temporariamente, revertido antes
+  do commit.
+
+- **2026-11-11** — **Recibo de pagamento em PDF na Inscrição extra**
+  (pedido explícito do usuário — "no pagamento extra, quando eu inscrever
+  alguém, consegue gerar um recibo de pagamento pra podermos entregar ao
+  aluno?"). Layout ajustado no mesmo dia pra bater com um recibo real da
+  instituição que o usuário mandou de exemplo (campos rotulados, nome do
+  evento como título) — pedido explícito: "vamos puxar nome do evento,
+  nome do inscrito, CPF e valor". Sem assinatura (confirmado com o
+  usuário). Mesma família visual (cabeçalho/rodapé) da Ata e da Lista de
+  Presença. Novo `ReciboPagamentoPDF`
+  (`src/lib/certificadosPdf.tsx`) — evento em destaque, depois
+  "Inscrito:"/"CPF:"/"Valor:", CPF vindo de `usuarios/{uid}.cpf` (só
+  aparece se a pessoa tiver — não é obrigatório pra esse fluxo), e uma
+  linha final "Pago em DD/MM/AAAA" (texto "por fora do sistema (dinheiro
+  em mãos)" tirado depois, pedido explícito — "achei essa mensagem
+  ruim"). Rota `GET /api/inscricoes/recibo/pdf`
+  (qualquer inscrição com `status: "pago"`, não só manual) e
+  `baixarReciboPagamento` (`src/lib/baixarCertificado.ts`). Botão "Baixar
+  recibo" aparece no próprio modal de Inscrição extra, logo depois de
+  confirmar o pagamento. Testado gerando o PDF de verdade com dado
+  fictício (rota temporária, descartada depois).
+
 - **2026-11-10** — **Bug real: trabalho "apresentado" aparecia em Desempate
   E em Resultado Final ao mesmo tempo** (achado pelo usuário — "nos 2
   trabalhos estão tanto em desempate como resultado final não faz sentido

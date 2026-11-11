@@ -225,6 +225,29 @@ export async function baixarGradeEnsalamentoPdf(
   return { ok: true };
 }
 
+/** Recibo de pagamento da Inscrição extra (2026-11-11, pedido explícito do
+ * usuário) — ver GET /api/inscricoes/recibo/pdf. Mesmo padrão de download
+ * das funções acima. */
+export async function baixarReciboPagamento(
+  user: User,
+  dados: { eventoId: string; alunoUid: string },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams(dados).toString();
+  const res = await fetch(`/api/inscricoes/recibo/pdf?${query}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o recibo." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "recibo.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
 /** Etiquetas das pastas (folha Carta, 20 por folha) — ver /api/trabalhos/etiquetas. */
 export async function baixarEtiquetasPastas(
   user: User,
