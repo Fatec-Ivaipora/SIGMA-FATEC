@@ -18,8 +18,9 @@ import {
   Users,
   Printer,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
-import { serverTimestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
+import { serverTimestamp, writeBatch, doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { Modal } from "@/components/Modal";
@@ -49,7 +50,7 @@ import {
   notificarAlteracaoAdmin,
 } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
-import { baixarCertificadosImpressao } from "@/lib/baixarCertificado";
+import { baixarCertificadosImpressao, baixarPodioPorArea } from "@/lib/baixarCertificado";
 import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
 import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
@@ -626,6 +627,87 @@ export default function TrabalhosAdminPage() {
     return posicoes;
   }, [analiseResultadoPorArea]);
 
+  // Desempate manual (2026-11-11, pedido explícito do usuário — achado
+  // real: "ano passado mesmo com o desempate teve caso de 10 trabalhos
+  // terem nota máxima no desempate"). Só entra aqui quando o empate
+  // PERSISTE depois da nota do moderador — todo mundo do grupo empatado
+  // já com `notaModerador` (quem ainda espera nota continua só como
+  // "Aguardando nota do moderador" na tabela de sempre, não aparece
+  // aqui). Confirmado com o usuário: no máximo 1 grupo preso por área,
+  // porque `vagasPodio` nunca passa de 3 (não cabe 2 grupos de 2+ dentro
+  // de só 3 vagas).
+  type AreaComEmpatePersistente = {
+    chave: string;
+    eventoNome: string;
+    areaTematica: string;
+    // Pool inteiro da área (mesmo filtro do analiseResultadoPorArea),
+    // ordenado por nota — é a "prévia do resultado final" que o admin
+    // precisa ver pra entender se o empate decide alguma posição.
+    pool: Trabalho[];
+    idsEmpatadosDaArea: Set<string>;
+  };
+  const areasComEmpatePersistente = useMemo((): AreaComEmpatePersistente[] => {
+    const resultado: AreaComEmpatePersistente[] = [];
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (analise.empatados.length === 0) continue;
+      const idsEmpatadosDaArea = new Set(analise.empatados);
+      const pool = trabalhos.filter(
+        (t) =>
+          STATUS_JA_AVALIADO.includes(t.status) &&
+          typeof t.notaAvaliador === "number" &&
+          t.compareceuApresentacao !== false &&
+          `${t.eventoId}::${t.areaTematica}` === chave,
+      );
+      if (eventoId !== "todos" && pool[0]?.eventoId !== eventoId) continue;
+      const todosComNotaModerador = pool
+        .filter((t) => idsEmpatadosDaArea.has(t.id))
+        .every((t) => typeof t.notaModerador === "number");
+      if (!todosComNotaModerador) continue;
+      pool.sort((a, b) => {
+        const diffAv = (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0);
+        if (diffAv !== 0) return diffAv;
+        return (b.notaModerador ?? 0) - (a.notaModerador ?? 0);
+      });
+      const eventoNome = eventos.find((e) => e.id === pool[0]?.eventoId)?.nome ?? "";
+      resultado.push({
+        chave,
+        eventoNome,
+        areaTematica: pool[0]?.areaTematica ?? "",
+        pool,
+        idsEmpatadosDaArea,
+      });
+    }
+    return resultado;
+  }, [analiseResultadoPorArea, trabalhos, eventos, eventoId]);
+
+  const [posicaoManualPendente, setPosicaoManualPendente] = useState<Record<string, number>>({});
+  const [salvandoDesempateManual, setSalvandoDesempateManual] = useState<string | null>(null);
+
+  async function salvarDesempateManual(area: AreaComEmpatePersistente) {
+    const idsDoGrupo = Array.from(area.idsEmpatadosDaArea);
+    const escolhas = idsDoGrupo.map((id) => posicaoManualPendente[id]);
+    if (escolhas.some((p) => typeof p !== "number")) return;
+    if (new Set(escolhas).size !== escolhas.length) return;
+    setSalvandoDesempateManual(area.chave);
+    try {
+      const batch = writeBatch(db);
+      idsDoGrupo.forEach((id, i) => {
+        batch.update(doc(db, "trabalhos", id), {
+          posicaoManual: escolhas[i],
+          atualizadoEm: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      setPosicaoManualPendente((atual) => {
+        const novo = { ...atual };
+        idsDoGrupo.forEach((id) => delete novo[id]);
+        return novo;
+      });
+    } finally {
+      setSalvandoDesempateManual(null);
+    }
+  }
+
   const trabalhosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return trabalhos.filter((t) => {
@@ -900,8 +982,9 @@ export default function TrabalhosAdminPage() {
   // do usuário — "liberar pra secretaria gerar"): organização do evento também
   // gera, não só o admin. Precisa de um evento escolhido no filtro. A
   // secretaria imprime ANTES do evento: entram todos os trabalhos que já
-  // foram pra avaliação (só fica de fora a Submissão), e o botão aparece em
-  // todas as abas. Com trabalhos marcados na tabela, imprime só esses.
+  // foram pra avaliação. Com trabalhos marcados na tabela, imprime só esses.
+  // Botão só na aba Avaliação (2026-11-11, pedido explícito do usuário —
+  // restringiu de "todas as abas" pra essa só).
   const [gerandoImpressao, setGerandoImpressao] = useState(false);
   const [erroImpressao, setErroImpressao] = useState<string | null>(null);
   async function imprimirCertificados() {
@@ -911,6 +994,23 @@ export default function TrabalhosAdminPage() {
     const r = await baixarCertificadosImpressao(user, eventoId, [...selecionados]);
     if (!r.ok) setErroImpressao(r.erro);
     setGerandoImpressao(false);
+  }
+
+  // Pódio por área temática, pra chamar no palco (2026-11-11, pedido
+  // explícito do usuário — "no final do evento podermos imprimir e levar
+  // lá na frente no palco e chamar os premiados de cada área"). Dentro de
+  // "Funções em lote", só Resultado Final — reaproveita a mesma
+  // analisarEmpatesPorArea de sempre (ver GET /api/trabalhos/podio), nunca
+  // uma conta de posição própria.
+  const [gerandoPodio, setGerandoPodio] = useState(false);
+  const [erroPodio, setErroPodio] = useState<string | null>(null);
+  async function gerarPodioPorArea() {
+    if (!user || eventoId === "todos") return;
+    setErroPodio(null);
+    setGerandoPodio(true);
+    const r = await baixarPodioPorArea(user, eventoId);
+    if (!r.ok) setErroPodio(r.erro);
+    setGerandoPodio(false);
   }
 
   // "Liberar certificados" age sobre tudo que está aceito e ainda não foi
@@ -1110,6 +1210,23 @@ export default function TrabalhosAdminPage() {
   async function liberarCertificado(id: string) {
     await updateDoc(doc(db, "trabalhos", id), {
       certificadoLiberado: true,
+      atualizadoEm: serverTimestamp(),
+    });
+  }
+
+  /** Corrige presença/falta marcada errado pelo moderador (2026-11-11,
+   * pedido explícito do usuário — "a professora clicou errado... para caso
+   * aconteça mais a gente corrija manualmente"). Exclusivo do admin. Além
+   * de presente/falta, admin também precisa conseguir voltar pro estado
+   * "ainda não confirmado" (`null` aqui = apaga o campo) — achado real: um
+   * trabalho foi marcado "faltou" por engano ANTES da apresentação
+   * acontecer, então o certo não era presente nem falta, era nenhum dos
+   * dois ainda. Mesma regra de sempre pro `premiado` (ver onMarcarPresenca
+   * em avaliador/trabalhos/page.tsx): só falta tira o prêmio. */
+  async function corrigirPresenca(id: string, presente: boolean | null) {
+    await updateDoc(doc(db, "trabalhos", id), {
+      compareceuApresentacao: presente === null ? deleteField() : presente,
+      ...(presente === false ? { premiado: false } : {}),
       atualizadoEm: serverTimestamp(),
     });
   }
@@ -1763,26 +1880,28 @@ export default function TrabalhosAdminPage() {
                 </button>
               )}
 
-              <button
-                  type="button"
-                  onClick={imprimirCertificados}
-                  disabled={eventoId === "todos" || gerandoImpressao}
-                  title={
-                    eventoId === "todos"
-                      ? "Escolha o evento no filtro para imprimir os certificados"
-                      : "PDF com os certificados de apresentação (sem o fundo) para imprimir no papel timbrado — só os marcados, se houver"
-                  }
-                  className="flex flex-none items-center justify-center gap-1.5 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
-                >
-                  {gerandoImpressao ? (
-                    <Loader2 className="h-4 w-4 flex-none animate-spin" strokeWidth={1.75} />
-                  ) : (
-                    <Printer className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                  )}
-                  Imprimir certificados (papel timbrado)
-                  {selecionados.size > 0 && ` (${selecionados.size})`}
-              </button>
-              {erroImpressao && (
+              {etapa === "avaliacao" && (
+                <button
+                    type="button"
+                    onClick={imprimirCertificados}
+                    disabled={eventoId === "todos" || gerandoImpressao}
+                    title={
+                      eventoId === "todos"
+                        ? "Escolha o evento no filtro para imprimir os certificados"
+                        : "PDF com os certificados de apresentação (sem o fundo) para imprimir no papel timbrado — só os marcados, se houver"
+                    }
+                    className="flex flex-none items-center justify-center gap-1.5 rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                  >
+                    {gerandoImpressao ? (
+                      <Loader2 className="h-4 w-4 flex-none animate-spin" strokeWidth={1.75} />
+                    ) : (
+                      <Printer className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                    )}
+                    Imprimir certificados (papel timbrado)
+                    {selecionados.size > 0 && ` (${selecionados.size})`}
+                </button>
+              )}
+              {etapa === "avaliacao" && erroImpressao && (
                 <span className="text-xs font-medium text-rose-700">{erroImpressao}</span>
               )}
 
@@ -1837,6 +1956,26 @@ export default function TrabalhosAdminPage() {
                             0 &&
                             ` (${trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length})`}
                         </button>
+                        <button
+                          type="button"
+                          disabled={eventoId === "todos" || gerandoPodio}
+                          onClick={() => {
+                            gerarPodioPorArea();
+                            setMenuLoteAberto(false);
+                          }}
+                          title="PDF com 1º/2º/3º lugar de cada área temática, pra chamar no palco no final do evento"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          {gerandoPodio ? (
+                            <Loader2 className="h-4 w-4 flex-none animate-spin" strokeWidth={1.75} />
+                          ) : (
+                            <Printer className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          )}
+                          Gerar PDF do pódio por área
+                        </button>
+                        {erroPodio && (
+                          <p className="px-3 py-1.5 text-xs font-medium text-rose-700">{erroPodio}</p>
+                        )}
                       </div>
                     </>
                   )}
@@ -1844,6 +1983,111 @@ export default function TrabalhosAdminPage() {
               )}
             </div>
           </div>
+
+          {etapa === "apresentacao" && areasComEmpatePersistente.length > 0 && (
+            <div className="mt-4 flex flex-col gap-4">
+              {areasComEmpatePersistente.map((area) => {
+                const analise = analiseResultadoPorArea.get(area.chave)!;
+                const vagasPodio = Math.min(3, area.pool.length);
+                const posicoesOcupadas = new Set(Object.values(analise.posicoes));
+                const vagasDoGrupo = Array.from({ length: vagasPodio }, (_, i) => i + 1).filter(
+                  (p) => !posicoesOcupadas.has(p),
+                );
+                const idsDoGrupo = Array.from(area.idsEmpatadosDaArea);
+                const escolhas = idsDoGrupo.map((id) => posicaoManualPendente[id]);
+                const todasEscolhidas = escolhas.every((p) => typeof p === "number");
+                const semRepetir = new Set(escolhas).size === escolhas.length;
+                const pronto = todasEscolhidas && semRepetir;
+                const salvando = salvandoDesempateManual === area.chave;
+
+                return (
+                  <div
+                    key={area.chave}
+                    className="rounded-2xl border border-fatec-orange-200 bg-fatec-orange-50/60 p-5"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle
+                        className="mt-0.5 h-5 w-5 flex-none text-fatec-orange-600"
+                        strokeWidth={1.75}
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-fatec-orange-800">
+                          Empate persiste mesmo com a nota do moderador — {area.eventoNome} ·{" "}
+                          {area.areaTematica}
+                        </p>
+                        <p className="mt-0.5 text-sm text-fatec-orange-700/80">
+                          {idsDoGrupo.length} trabalhos com a mesma nota de avaliação e a mesma
+                          nota de apresentação — o cálculo automático não tem mais critério pra
+                          decidir sozinho. Escolha a posição final de cada um antes de enviar.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 overflow-hidden rounded-xl border border-fatec-line bg-white">
+                      {area.pool.map((t) => {
+                        const empatado = area.idsEmpatadosDaArea.has(t.id);
+                        const posicao = analise.posicoes[t.id];
+                        return (
+                          <div
+                            key={t.id}
+                            className={`flex items-center justify-between gap-3 border-b border-fatec-line px-4 py-2.5 last:border-b-0 ${
+                              empatado ? "bg-fatec-sky-50" : ""
+                            }`}
+                          >
+                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-fatec-navy-900">
+                              {tituloExibicao(t.titulo)}
+                            </p>
+                            <span className="w-10 flex-none text-center text-sm font-semibold text-fatec-ink">
+                              {t.notaAvaliador}
+                            </span>
+                            <span className="w-10 flex-none text-center text-sm font-semibold text-fatec-ink">
+                              {t.notaModerador ?? "—"}
+                            </span>
+                            <div className="w-40 flex-none">
+                              {empatado ? (
+                                <select
+                                  value={posicaoManualPendente[t.id] ?? ""}
+                                  onChange={(e) =>
+                                    setPosicaoManualPendente((atual) => ({
+                                      ...atual,
+                                      [t.id]: Number(e.target.value),
+                                    }))
+                                  }
+                                  className="w-full rounded-lg border border-fatec-line bg-white px-2.5 py-1.5 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
+                                >
+                                  <option value="">Escolher posição</option>
+                                  {vagasDoGrupo.map((v) => (
+                                    <option key={v} value={v}>
+                                      {v}º lugar
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : posicao ? (
+                                <span className="text-xs font-semibold text-fatec-navy-900">
+                                  {posicao}º Premiado
+                                </span>
+                              ) : (
+                                <span className="text-xs text-fatec-muted">Aceito</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!pronto || salvando}
+                      onClick={() => salvarDesempateManual(area)}
+                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                    >
+                      {salvando ? "Salvando..." : "Salvar desempate manual"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-4 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
@@ -2040,19 +2284,50 @@ export default function TrabalhosAdminPage() {
                       {etapa === "resultado_final" || etapa === "apresentacao" ? (
                         <td className="px-3 py-2.5 text-center align-top">
                           {t.compareceuApresentacao === true ? (
-                            <span
-                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
-                              title="Presente na apresentação"
-                            >
-                              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                            </span>
+                            perfil?.papel === "admin" ? (
+                              <button
+                                type="button"
+                                onClick={() => corrigirPresenca(t.id, false)}
+                                className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-rose-100 hover:text-rose-700"
+                                title="Presente na apresentação — clique para corrigir pra falta"
+                              >
+                                <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </button>
+                            ) : (
+                              <span
+                                className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+                                title="Presente na apresentação"
+                              >
+                                <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </span>
+                            )
                           ) : t.compareceuApresentacao === false ? (
-                            <span
-                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700"
-                              title="Faltou — perdeu a vaga do pódio"
+                            perfil?.papel === "admin" ? (
+                              <button
+                                type="button"
+                                onClick={() => corrigirPresenca(t.id, null)}
+                                className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700 transition-colors hover:bg-fatec-navy-100 hover:text-fatec-muted"
+                                title="Faltou — perdeu a vaga do pódio — clique para corrigir pra ainda não confirmado"
+                              >
+                                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </button>
+                            ) : (
+                              <span
+                                className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700"
+                                title="Faltou — perdeu a vaga do pódio"
+                              >
+                                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </span>
+                            )
+                          ) : perfil?.papel === "admin" ? (
+                            <button
+                              type="button"
+                              onClick={() => corrigirPresenca(t.id, true)}
+                              className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-fatec-navy-50 text-fatec-muted transition-colors hover:bg-emerald-100 hover:text-emerald-700"
+                              title="Ainda não confirmado pelo moderador — clique para corrigir pra presente"
                             >
-                              <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-                            </span>
+                              —
+                            </button>
                           ) : (
                             <span
                               className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-fatec-navy-50 text-fatec-muted"

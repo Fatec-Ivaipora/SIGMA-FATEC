@@ -248,6 +248,27 @@ export async function baixarReciboPagamento(
   return { ok: true };
 }
 
+/** Pódio por área temática pra chamar no palco (2026-11-11, pedido
+ * explícito do usuário) — ver GET /api/trabalhos/podio. */
+export async function baixarPodioPorArea(
+  user: User,
+  eventoId: string,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`/api/trabalhos/podio?eventoId=${encodeURIComponent(eventoId)}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o pódio." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "podio.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
 /** Etiquetas das pastas (folha Carta, 20 por folha) — ver /api/trabalhos/etiquetas. */
 export async function baixarEtiquetasPastas(
   user: User,

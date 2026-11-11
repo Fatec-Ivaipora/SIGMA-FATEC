@@ -1241,3 +1241,154 @@ export function RelatorioTurmasPDF({
     </Document>
   );
 }
+
+const estiloPodio = StyleSheet.create({
+  page: {
+    fontFamily: "Helvetica",
+    paddingTop: 50,
+    paddingHorizontal: 55,
+    paddingBottom: 60,
+  },
+  cabecalho: estiloAta.cabecalho,
+  logoCabecalho: estiloAta.logoCabecalho,
+  textoCredenciamento: estiloAta.textoCredenciamento,
+  titulo: {
+    fontSize: 20,
+    fontFamily: "Helvetica-Bold",
+    color: cores.navy900,
+    marginBottom: 2,
+  },
+  evento: {
+    fontSize: 13,
+    color: cores.muted,
+    marginBottom: 20,
+  },
+  area: {
+    marginBottom: 20,
+  },
+  areaNome: {
+    fontSize: 14,
+    fontFamily: "Helvetica-Bold",
+    color: cores.navy900,
+    backgroundColor: "#f0f5f8",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+  },
+  linha: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  posicao: {
+    width: 70,
+    fontSize: 13,
+    fontFamily: "Helvetica-Bold",
+  },
+  posicao1: { color: "#8a6d00" },
+  posicao2: { color: "#5b6b78" },
+  posicao3: { color: "#974d1a" },
+  colocadoTexto: { flex: 1 },
+  colocadoTitulo: {
+    fontSize: 13,
+    fontFamily: "Helvetica-Bold",
+    color: cores.ink,
+    lineHeight: 1.3,
+  },
+  colocadoAutores: {
+    fontSize: 10,
+    color: cores.muted,
+    marginTop: 1,
+  },
+  colocadoOrientador: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Oblique",
+    color: cores.muted,
+    marginTop: 1,
+  },
+});
+
+const RUBRICA_POSICAO: Record<number, string> = { 1: "1º LUGAR", 2: "2º LUGAR", 3: "3º LUGAR" };
+const ESTILO_POSICAO: Record<number, Style> = {
+  1: estiloPodio.posicao1,
+  2: estiloPodio.posicao2,
+  3: estiloPodio.posicao3,
+};
+
+/** Pódio por área temática, pra chamar no palco (2026-11-11, pedido
+ * explícito do usuário — "no final do evento podermos imprimir e levar
+ * lá na frente no palco e chamar os premiados de cada área"). 1º/2º/3º
+ * de cada área, nome bem grande (lido em voz alta), nada de nota/status/
+ * resumo — só o essencial pra anunciar. Dados já vêm prontos de
+ * montarPodioPorArea (ver GET /api/trabalhos/podio), que reaproveita
+ * analisarEmpatesPorArea — a MESMA regra de posição de sempre, nunca
+ * recalculada diferente aqui. */
+export function PodioPorAreaPDF({
+  eventoNome,
+  areas,
+}: {
+  eventoNome: string;
+  areas: {
+    areaTematica: string;
+    colocados: { posicao: number; titulo: string; autores: string; orientacao?: string }[];
+  }[];
+}) {
+  return (
+    <Document>
+      <Page size="A4" style={estiloPodio.page}>
+        <View style={estiloPodio.cabecalho}>
+          <Image src={LOGO_PADRAO} style={estiloPodio.logoCabecalho} />
+          <Text style={estiloPodio.textoCredenciamento}>
+            Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+            UNESVI{"\n"}
+            Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+            {"\n"}
+            Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+          </Text>
+        </View>
+
+        <Text style={estiloPodio.titulo}>Pódio por Área Temática</Text>
+        <Text style={estiloPodio.evento}>{eventoNome}</Text>
+
+        {areas.map((area) => (
+          <View key={area.areaTematica} style={estiloPodio.area} wrap={false}>
+            <Text style={estiloPodio.areaNome}>{area.areaTematica.toLocaleUpperCase("pt-BR")}</Text>
+            {area.colocados.map((c) => (
+              <View key={c.posicao} style={estiloPodio.linha}>
+                <Text style={[estiloPodio.posicao, ESTILO_POSICAO[c.posicao] ?? {}]}>
+                  {RUBRICA_POSICAO[c.posicao] ?? `${c.posicao}º LUGAR`}
+                </Text>
+                <View style={estiloPodio.colocadoTexto}>
+                  <Text style={estiloPodio.colocadoTitulo}>{c.titulo.toLocaleUpperCase("pt-BR")}</Text>
+                  <Text style={estiloPodio.colocadoAutores}>Autor(es): {c.autores}</Text>
+                  {!!c.orientacao && (
+                    <Text style={estiloPodio.colocadoOrientador}>Orientador(a): {c.orientacao}</Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        ))}
+
+        <Text
+          fixed
+          style={{
+            position: "absolute",
+            bottom: 24,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontSize: 8,
+            fontFamily: "Helvetica-Bold",
+            color: cores.navy800,
+          }}
+        >
+          Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+          /Paraná{"\n"}www.fatecivaipora.com.br
+        </Text>
+      </Page>
+    </Document>
+  );
+}

@@ -477,6 +477,68 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Botão de certificado restrito à aba Avaliação, PDF do
+  pódio por área pro palco, e correção manual de presença** (3 pedidos
+  explícitos do usuário no mesmo dia). (1) "Imprimir certificados (papel
+  timbrado)" aparecia em todas as etapas — agora só na aba Avaliação
+  (confirmado com o usuário via pergunta direta, resposta literal
+  "Avaliação"). (2) Dentro de "Funções em lote" na aba Resultado Final,
+  novo botão "Gerar PDF do pódio por área" — PDF com 1º/2º/3º lugar de
+  cada área temática, pra imprimir e levar ao palco no encerramento do
+  evento ("chamar os premiados de cada área"). Nova rota
+  `GET /api/trabalhos/podio` (admin/organização) reaproveita
+  `analisarEmpatesPorArea` de sempre, nunca recalcula posição por conta
+  própria; só mostra área já sem ambiguidade nenhuma (grupo ainda em
+  desempate simplesmente não aparece no PDF — resolve na aba Desempate
+  primeiro). Achado real no teste ao vivo: a primeira versão só listava o
+  nome do aluno + colegas, sem o orientador ("faltou o nome de todos os
+  autores e o orientador também") — corrigido pra sempre mostrar
+  "Autor(es): ..." e, quando tiver, "Orientador(a): ..." (nome do
+  orientador + coorientadores, mesma convenção de `nomes` usada em
+  `/api/certificados` e `/declaracoes`). (3) Correção manual de presença
+  na apresentação: um moderador marcou "faltou" por engano num trabalho
+  real da X MAC ("CUIDAR TAMBÉM EXIGE CUIDADO...", autora Sofia Alves de
+  Souza — a professora clicou errado), tirando o trabalho da disputa do
+  pódio sem querer — nesse caso real a apresentação nem tinha acontecido
+  ainda, então o certo não era virar "presente", era voltar pra "ainda não
+  confirmado" (campo apagado). Corrigido o registro na produção e, pra não
+  depender de novo de um script manual quando isso acontecer de novo, o
+  ícone de presença/falta na coluna Apresentação (abas Desempate e
+  Resultado Final) virou clicável só pro admin — cicla pelas 3 opções
+  reais do campo (presente → falta → ainda não confirmado → presente...),
+  não só presente/falta (mesma regra de sempre: falta tira só o
+  `premiado`, nunca o status "aceito").
+
+- **2026-11-11** — **Desempate manual na aba Desempate, pra quando o
+  empate persiste mesmo depois da nota do moderador** (pedido explícito
+  do usuário — achado real: "ano passado mesmo com o desempate teve caso
+  de 10 trabalhos terem nota máxima no desempate"; a nota de apresentação
+  sozinha não é garantia nenhuma de desempatar, principalmente quando o
+  moderador dá nota máxima pra todo mundo). Novo campo opcional
+  `posicaoManual` em `Trabalho` (`src/lib/data/trabalhos.ts`) —
+  `analisarEmpatesPorArea` (`src/lib/analiseEmpate.ts`) resolve um grupo
+  ainda empatado (mesma nota de avaliação E mesma nota do moderador)
+  quando TODO MUNDO do grupo tem `posicaoManual` preenchido E as posições
+  escolhidas batem exatamente com as vagas que esse grupo ocupa — sem
+  pular vaga, sem repetir; qualquer escolha incompleta ou inválida mantém
+  o grupo inteiro em "empatados", nunca resolve pela metade (testado com
+  6 cenários num script descartável antes de subir, incluindo os dois
+  jeitos de dar errado). Na aba Desempate (`src/app/trabalhos/page.tsx`),
+  cada área com empate persistente ganha um painel mostrando a
+  "prévia do resultado final" da área inteira (não só os empatados) —
+  quem já é 1º/2º/3º Premiado, quem é só Aceito, e um seletor de posição
+  só pra quem ainda disputa — pra admin ver de cara se aquele empate
+  importa ou não, antes de mexer em qualquer coisa (confirmado com o
+  usuário: só aparece quando o empate de verdade trava alguma posição do
+  pódio — nunca pros que já empatam fora da zona de prêmio, esses já
+  seguem direto como "Aceito" sem pedir nada). Sem justificativa nenhuma
+  pedida (confirmado explicitamente com o usuário — "não precisa da
+  justificativa"). Testado ao vivo, dados descartáveis: criei um cenário
+  de 4 trabalhos (1 sozinho em 1º, 2 empatados disputando 2º/3º, 1 fora
+  do pódio), escolhi 2º/3º na tela de verdade, salvei, e confirmei no
+  banco que gravou certinho e que o contador de "Só empatados" caiu de 54
+  pra 52 (os 2 resolvidos saíram da lista).
+
 - **2026-11-11** — **Consulta pública: autor(es) e sala em caixa alta**
   (achado real do usuário, ao vivo — "tem nome em caixa alto e outro em
   caixa baixa, deixe padrão tudo em caixa alto"). `GET

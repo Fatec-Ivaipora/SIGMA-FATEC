@@ -148,7 +148,35 @@ export function analisarEmpatesPorArea(
         // avaliação, seja de novo na apresentação) — sempre precisa de
         // desempate pra decidir a ordem exata, mesmo que todo mundo do
         // grupo já coubesse nas vagas que sobraram.
-        grupo.forEach((t) => empatados.push(t.id));
+        //
+        // Desempate manual (2026-11-11, pedido explícito do usuário —
+        // achado real: ano passado teve área com 10 trabalhos empatados
+        // na nota máxima do moderador, o empate persistiu mesmo depois da
+        // apresentação). Admin escolhe a posição final na mão (aba
+        // Desempate); só resolve o grupo quando TODO MUNDO tem
+        // `posicaoManual` preenchido E as posições escolhidas batem
+        // exatamente com as vagas que esse grupo ocupa (sem pular, sem
+        // repetir) — qualquer escolha incompleta ou inválida mantém o
+        // grupo inteiro em `empatados`, nunca resolve pela metade.
+        const vagasDoGrupo = Array.from(
+          { length: grupo.length },
+          (_, i) => preenchidos + 1 + i,
+        );
+        const escolhas = grupo.map((t) => t.posicaoManual);
+        const todosEscolheram = escolhas.every(
+          (p): p is number => typeof p === "number",
+        );
+        const semRepetir = todosEscolheram && new Set(escolhas).size === escolhas.length;
+        const bateComAsVagas =
+          semRepetir && escolhas.every((p) => vagasDoGrupo.includes(p as number));
+        if (bateComAsVagas) {
+          grupo.forEach((t) => {
+            premiadosDiretos.push(t.id);
+            posicoes[t.id] = t.posicaoManual as number;
+          });
+        } else {
+          grupo.forEach((t) => empatados.push(t.id));
+        }
       }
       preenchidos += grupo.length;
     }

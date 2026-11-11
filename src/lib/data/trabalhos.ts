@@ -143,6 +143,14 @@ export type Trabalho = {
   // em src/lib/analiseEmpate.ts, que exclui quem tem isso `false` do
   // cálculo. `undefined` = ainda não chegou a vez de marcar.
   compareceuApresentacao?: boolean;
+  // Desempate manual (2026-11-11, pedido explícito do usuário — achado
+  // real: ano passado uma área teve 10 trabalhos empatados na nota
+  // MÁXIMA do moderador, o empate persistiu mesmo depois da
+  // apresentação). Admin escolhe a posição final na mão, direto na aba
+  // Desempate, só quando o cálculo automático já esgotou os critérios
+  // (mesma nota de avaliação E mesma nota de apresentação) — ver
+  // analisarEmpatesPorArea em src/lib/analiseEmpate.ts.
+  posicaoManual?: number;
   // Controla quando o certificado/declaração desse trabalho aparece pro
   // aluno/avaliador/moderador (2026-08-28) — chegar em "aceito" não libera
   // sozinho; a organização decide o momento clicando "Liberar certificado"
