@@ -477,6 +477,46 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-11** — **Painel de desempate manual (aba Desempate) removido
+  — bug real achado ao vivo** (pedido explícito do usuário — "esse forma
+  de desempata... ta bugado... desative isso"). Achado: quando o grupo
+  empatado era MAIOR que o número de vagas reais ainda abertas no pódio
+  (ex. 4 trabalhos empatados disputando só 2 vagas, porque a 1ª já tinha
+  sido resolvida sem empate), a tela só oferecia as posições realmente
+  abertas (2º/3º) pro seletor, mas a validação exigia TODOS os 4 do
+  grupo preenchidos com valor único — matematicamente impossível de
+  satisfazer com só 2 opções disponíveis, travando o botão "Salvar
+  desempate manual" pra sempre nesse cenário (confirmado: 0 trabalhos em
+  produção têm `posicaoManual` gravado — o botão nunca chegou a
+  habilitar de verdade). Decisão do usuário: desativar esse painel
+  (removido da tela) e, por enquanto, a comissão resolve empate corrigindo
+  a nota do desempate na mão (ver "Admin corrige a nota do
+  desempate/apresentação" acima) e enviando pro resultado final
+  normalmente. `posicaoManual` continua existindo no tipo `Trabalho` e em
+  `analisarEmpatesPorArea` (nunca é mais escrito por lugar nenhum, fica
+  inerte) — não removido do algoritmo pra não mexer no cálculo
+  compartilhado de ranking durante o evento.
+
+- **2026-11-11** — **Filtro por posição (1º/2º/3º) em Resultado Final**
+  (pedido explícito do usuário — "preciso de um filtro em ações para
+  filtro 1,2,3 porque os 3 2 e 1 fica se bagunçando"). Com "Todas as
+  áreas" selecionado, as posições de áreas diferentes ficam intercaladas
+  na tabela — grupo "Todos | 1º (N) | 2º (N) | 3º (N)" ao lado dos
+  outros filtros isola só quem é daquela posição, de qualquer área.
+
+- **2026-11-11** — **Admin corrige a nota do desempate/apresentação na
+  mão** (pedido explícito do usuário — "podemos precisar em alguns caso
+  eu clicar na nota e poder mudar a nota"). Clicar no número da coluna
+  "Nota des" (Resultado Final/Apresentação), só pra admin, abre um campo
+  editável ali mesmo — Enter ou clicar fora salva, Esc cancela. Valida
+  7-21 (soma dos 7 critérios de apresentação, 1 a 3 cada) só no client —
+  firestore.rules já libera admin a atualizar trabalhos sem checar valor
+  nenhum, então essa faixa é só pra evitar digitar besteira sem querer,
+  não é uma trava de segurança nova. Não mexe em
+  `notasCriteriosApresentacao` (detalhamento por critério fica
+  desatualizado de propósito — nada mais no sistema lê esse
+  detalhamento).
+
 - **2026-11-11** — **Nota av e nota des ordenam cada uma sozinha agora**
   (pedido explícito do usuário — "hoje se eu filtro por av ele mostra do
   maior pro menor e vice versa, mas eu quero... filtrar o des por nota

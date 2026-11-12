@@ -18,7 +18,6 @@ import {
   Users,
   Printer,
   Loader2,
-  AlertTriangle,
 } from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -411,6 +410,14 @@ export default function TrabalhosAdminPage() {
   const [presencaFiltro, setPresencaFiltro] = useState<"todos" | "presente" | "falta">(
     "todos",
   );
+  // Filtro por posição do pódio (2026-11-11, pedido explícito do usuário —
+  // "preciso de um filtro em ações para filtro 1,2,3 porque os 3 2 e 1
+  // fica se bagunçando"): com "Todas as áreas" selecionado, as posições de
+  // áreas diferentes ficam intercaladas na tabela — esse filtro isola só
+  // quem é 1º, só 2º ou só 3º, de qualquer área, pra não precisar catar
+  // linha por linha. Só faz sentido em Resultado Final (única aba com a
+  // coluna Ações mostrando a posição premiada).
+  const [posicaoFiltro, setPosicaoFiltro] = useState<"todos" | 1 | 2 | 3>("todos");
 
   // Ordenação por nota (2026-09-11, pedido explícito) — clicar no cabeçalho
   // alterna maior→menor / menor→maior; null = ordem padrão (como veio do
@@ -663,78 +670,6 @@ export default function TrabalhosAdminPage() {
   // aqui). Confirmado com o usuário: no máximo 1 grupo preso por área,
   // porque `vagasPodio` nunca passa de 3 (não cabe 2 grupos de 2+ dentro
   // de só 3 vagas).
-  type AreaComEmpatePersistente = {
-    chave: string;
-    eventoNome: string;
-    areaTematica: string;
-    // Pool inteiro da área (mesmo filtro do analiseResultadoPorArea),
-    // ordenado por nota — é a "prévia do resultado final" que o admin
-    // precisa ver pra entender se o empate decide alguma posição.
-    pool: Trabalho[];
-    idsEmpatadosDaArea: Set<string>;
-  };
-  const areasComEmpatePersistente = useMemo((): AreaComEmpatePersistente[] => {
-    const resultado: AreaComEmpatePersistente[] = [];
-    for (const [chave, analise] of analiseResultadoPorArea) {
-      if (analise.empatados.length === 0) continue;
-      const idsEmpatadosDaArea = new Set(analise.empatados);
-      const pool = trabalhos.filter(
-        (t) =>
-          STATUS_JA_AVALIADO.includes(t.status) &&
-          typeof t.notaAvaliador === "number" &&
-          t.compareceuApresentacao !== false &&
-          `${t.eventoId}::${t.areaTematica}` === chave,
-      );
-      if (eventoId !== "todos" && pool[0]?.eventoId !== eventoId) continue;
-      const todosComNotaModerador = pool
-        .filter((t) => idsEmpatadosDaArea.has(t.id))
-        .every((t) => typeof t.notaModerador === "number");
-      if (!todosComNotaModerador) continue;
-      pool.sort((a, b) => {
-        const diffAv = (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0);
-        if (diffAv !== 0) return diffAv;
-        return (b.notaModerador ?? 0) - (a.notaModerador ?? 0);
-      });
-      const eventoNome = eventos.find((e) => e.id === pool[0]?.eventoId)?.nome ?? "";
-      resultado.push({
-        chave,
-        eventoNome,
-        areaTematica: pool[0]?.areaTematica ?? "",
-        pool,
-        idsEmpatadosDaArea,
-      });
-    }
-    return resultado;
-  }, [analiseResultadoPorArea, trabalhos, eventos, eventoId]);
-
-  const [posicaoManualPendente, setPosicaoManualPendente] = useState<Record<string, number>>({});
-  const [salvandoDesempateManual, setSalvandoDesempateManual] = useState<string | null>(null);
-
-  async function salvarDesempateManual(area: AreaComEmpatePersistente) {
-    const idsDoGrupo = Array.from(area.idsEmpatadosDaArea);
-    const escolhas = idsDoGrupo.map((id) => posicaoManualPendente[id]);
-    if (escolhas.some((p) => typeof p !== "number")) return;
-    if (new Set(escolhas).size !== escolhas.length) return;
-    setSalvandoDesempateManual(area.chave);
-    try {
-      const batch = writeBatch(db);
-      idsDoGrupo.forEach((id, i) => {
-        batch.update(doc(db, "trabalhos", id), {
-          posicaoManual: escolhas[i],
-          atualizadoEm: serverTimestamp(),
-        });
-      });
-      await batch.commit();
-      setPosicaoManualPendente((atual) => {
-        const novo = { ...atual };
-        idsDoGrupo.forEach((id) => delete novo[id]);
-        return novo;
-      });
-    } finally {
-      setSalvandoDesempateManual(null);
-    }
-  }
-
   // Base sem o filtro de presença ainda — serve tanto pra contar quantos
   // vieram/faltaram (badge do filtro abaixo) quanto como ponto de partida
   // de trabalhosFiltrados, pra não duplicar a mesma lista de condições
@@ -765,19 +700,35 @@ export default function TrabalhosAdminPage() {
     return { presentes, faltas };
   }, [trabalhosAntesDaPresenca]);
 
-  const trabalhosFiltrados = useMemo(() => {
-    if (
-      presencaFiltro === "todos" ||
-      (etapa !== "apresentacao" && etapa !== "resultado_final")
-    ) {
-      return trabalhosAntesDaPresenca;
+  // Contagem pro filtro de posição (ver posicaoFiltro acima) — mesma base
+  // de trabalhosAntesDaPresenca, sem considerar o filtro de presença (cada
+  // filtro conta sobre o contexto geral, não um em cima do outro).
+  const contagemPosicao = useMemo(() => {
+    const contagem = { 1: 0, 2: 0, 3: 0 };
+    for (const t of trabalhosAntesDaPresenca) {
+      const posicao = posicaoPremiado.get(t.id);
+      if (posicao === 1 || posicao === 2 || posicao === 3) contagem[posicao]++;
     }
-    return trabalhosAntesDaPresenca.filter((t) =>
-      presencaFiltro === "presente"
-        ? t.compareceuApresentacao === true
-        : t.compareceuApresentacao === false,
-    );
-  }, [trabalhosAntesDaPresenca, presencaFiltro, etapa]);
+    return contagem;
+  }, [trabalhosAntesDaPresenca, posicaoPremiado]);
+
+  const trabalhosFiltrados = useMemo(() => {
+    let lista = trabalhosAntesDaPresenca;
+    if (
+      presencaFiltro !== "todos" &&
+      (etapa === "apresentacao" || etapa === "resultado_final")
+    ) {
+      lista = lista.filter((t) =>
+        presencaFiltro === "presente"
+          ? t.compareceuApresentacao === true
+          : t.compareceuApresentacao === false,
+      );
+    }
+    if (posicaoFiltro !== "todos" && etapa === "resultado_final") {
+      lista = lista.filter((t) => posicaoPremiado.get(t.id) === posicaoFiltro);
+    }
+    return lista;
+  }, [trabalhosAntesDaPresenca, presencaFiltro, posicaoFiltro, etapa, posicaoPremiado]);
 
   // Lista exibida na tabela — igual a trabalhosFiltrados, só que reordenada
   // por nota quando o usuário clica no cabeçalho (ver direcaoOrdenacaoNota
@@ -1312,6 +1263,41 @@ export default function TrabalhosAdminPage() {
       ...(presente === false ? { premiado: false } : {}),
       atualizadoEm: serverTimestamp(),
     });
+  }
+
+  // Correção manual da nota do desempate/apresentação (2026-11-11, pedido
+  // explícito do usuário — "podemos precisar em alguns caso eu clicar na
+  // nota e poder mudar a nota"). Exclusivo do admin. Só troca o número
+  // (`notaModerador`) — não mexe em `notasCriteriosApresentacao` (o
+  // detalhamento por critério fica desatualizado de propósito; nada mais
+  // no sistema lê esse detalhamento pra ranking/certificado, só a tela do
+  // próprio moderador). Faixa 7-21 porque são 7 critérios de 1 a 3 cada
+  // (ver CRITERIOS_APRESENTACAO em avaliador/trabalhos/page.tsx) — só
+  // validado aqui no client; firestore.rules libera admin pra atualizar
+  // trabalhos sem checar valor nenhum (mesma regra de sempre pro papel
+  // admin), então essa faixa é só pra não deixar digitar qualquer coisa
+  // sem querer, não é uma trava de segurança.
+  const [editandoNotaDes, setEditandoNotaDes] = useState<string | null>(null);
+  const [valorNotaDesEditado, setValorNotaDesEditado] = useState("");
+  const [erroNotaDes, setErroNotaDes] = useState<string | null>(null);
+
+  function abrirEdicaoNotaDes(t: Trabalho) {
+    setEditandoNotaDes(t.id);
+    setValorNotaDesEditado(t.notaModerador != null ? String(t.notaModerador) : "");
+    setErroNotaDes(null);
+  }
+
+  async function salvarNotaDesManual(id: string) {
+    const valor = Number(valorNotaDesEditado);
+    if (!Number.isInteger(valor) || valor < 7 || valor > 21) {
+      setErroNotaDes("Precisa ser um número inteiro de 7 a 21.");
+      return;
+    }
+    await updateDoc(doc(db, "trabalhos", id), {
+      notaModerador: valor,
+      atualizadoEm: serverTimestamp(),
+    });
+    setEditandoNotaDes(null);
   }
 
   // Libera todo mundo que já está aceito na aba Resultado Final (respeitando
@@ -1901,6 +1887,48 @@ export default function TrabalhosAdminPage() {
                   </button>
                 </div>
               )}
+
+              {etapa === "resultado_final" && (
+                <div className="flex items-center gap-1 rounded-xl border border-fatec-line bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setPosicaoFiltro("todos")}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      posicaoFiltro === "todos"
+                        ? "bg-fatec-navy-900 text-white"
+                        : "text-fatec-navy-900 hover:bg-fatec-navy-50"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {([1, 2, 3] as const).map((posicao) => (
+                    <button
+                      key={posicao}
+                      type="button"
+                      onClick={() =>
+                        setPosicaoFiltro((v) => (v === posicao ? "todos" : posicao))
+                      }
+                      title={`Só quem é ${posicao}º Premiado, de qualquer área`}
+                      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                        posicaoFiltro === posicao
+                          ? CORES_POSICAO_PODIO[posicao]
+                          : "text-fatec-navy-900 hover:bg-fatec-navy-50"
+                      }`}
+                    >
+                      {posicao}º
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+                          posicaoFiltro === posicao
+                            ? "bg-white/60"
+                            : "bg-fatec-navy-100 text-fatec-navy-800"
+                        }`}
+                      >
+                        {contagemPosicao[posicao]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -2131,111 +2159,6 @@ export default function TrabalhosAdminPage() {
             </div>
           </div>
 
-          {etapa === "apresentacao" && areasComEmpatePersistente.length > 0 && (
-            <div className="mt-4 flex flex-col gap-4">
-              {areasComEmpatePersistente.map((area) => {
-                const analise = analiseResultadoPorArea.get(area.chave)!;
-                const vagasPodio = Math.min(3, area.pool.length);
-                const posicoesOcupadas = new Set(Object.values(analise.posicoes));
-                const vagasDoGrupo = Array.from({ length: vagasPodio }, (_, i) => i + 1).filter(
-                  (p) => !posicoesOcupadas.has(p),
-                );
-                const idsDoGrupo = Array.from(area.idsEmpatadosDaArea);
-                const escolhas = idsDoGrupo.map((id) => posicaoManualPendente[id]);
-                const todasEscolhidas = escolhas.every((p) => typeof p === "number");
-                const semRepetir = new Set(escolhas).size === escolhas.length;
-                const pronto = todasEscolhidas && semRepetir;
-                const salvando = salvandoDesempateManual === area.chave;
-
-                return (
-                  <div
-                    key={area.chave}
-                    className="rounded-2xl border border-fatec-orange-200 bg-fatec-orange-50/60 p-5"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <AlertTriangle
-                        className="mt-0.5 h-5 w-5 flex-none text-fatec-orange-600"
-                        strokeWidth={1.75}
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-fatec-orange-800">
-                          Empate persiste mesmo com a nota do moderador — {area.eventoNome} ·{" "}
-                          {area.areaTematica}
-                        </p>
-                        <p className="mt-0.5 text-sm text-fatec-orange-700/80">
-                          {idsDoGrupo.length} trabalhos com a mesma nota de avaliação e a mesma
-                          nota de apresentação — o cálculo automático não tem mais critério pra
-                          decidir sozinho. Escolha a posição final de cada um antes de enviar.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 overflow-hidden rounded-xl border border-fatec-line bg-white">
-                      {area.pool.map((t) => {
-                        const empatado = area.idsEmpatadosDaArea.has(t.id);
-                        const posicao = analise.posicoes[t.id];
-                        return (
-                          <div
-                            key={t.id}
-                            className={`flex items-center justify-between gap-3 border-b border-fatec-line px-4 py-2.5 last:border-b-0 ${
-                              empatado ? "bg-fatec-sky-50" : ""
-                            }`}
-                          >
-                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-fatec-navy-900">
-                              {tituloExibicao(t.titulo)}
-                            </p>
-                            <span className="w-10 flex-none text-center text-sm font-semibold text-fatec-ink">
-                              {t.notaAvaliador}
-                            </span>
-                            <span className="w-10 flex-none text-center text-sm font-semibold text-fatec-ink">
-                              {t.notaModerador ?? "—"}
-                            </span>
-                            <div className="w-40 flex-none">
-                              {empatado ? (
-                                <select
-                                  value={posicaoManualPendente[t.id] ?? ""}
-                                  onChange={(e) =>
-                                    setPosicaoManualPendente((atual) => ({
-                                      ...atual,
-                                      [t.id]: Number(e.target.value),
-                                    }))
-                                  }
-                                  className="w-full rounded-lg border border-fatec-line bg-white px-2.5 py-1.5 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600"
-                                >
-                                  <option value="">Escolher posição</option>
-                                  {vagasDoGrupo.map((v) => (
-                                    <option key={v} value={v}>
-                                      {v}º lugar
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : posicao ? (
-                                <span className="text-xs font-semibold text-fatec-navy-900">
-                                  {posicao}º Premiado
-                                </span>
-                              ) : (
-                                <span className="text-xs text-fatec-muted">Aceito</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={!pronto || salvando}
-                      onClick={() => salvarDesempateManual(area)}
-                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
-                    >
-                      {salvando ? "Salvando..." : "Salvar desempate manual"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           <div className="mt-4 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
@@ -2424,7 +2347,40 @@ export default function TrabalhosAdminPage() {
                             {t.notaAvaliador ?? "—"}
                           </td>
                           <td className="px-3 py-2.5 text-center align-top font-semibold text-fatec-navy-900">
-                            {t.notaModerador ?? "—"}
+                            {editandoNotaDes === t.id ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={7}
+                                  max={21}
+                                  autoFocus
+                                  value={valorNotaDesEditado}
+                                  onChange={(e) => setValorNotaDesEditado(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") salvarNotaDesManual(t.id);
+                                    if (e.key === "Escape") setEditandoNotaDes(null);
+                                  }}
+                                  onBlur={() => salvarNotaDesManual(t.id)}
+                                  className="w-14 rounded-lg border border-fatec-sky-600 px-1.5 py-0.5 text-center text-sm font-semibold text-fatec-navy-900 outline-none"
+                                />
+                                {erroNotaDes && (
+                                  <span className="whitespace-nowrap text-[11px] font-medium text-rose-600">
+                                    {erroNotaDes}
+                                  </span>
+                                )}
+                              </div>
+                            ) : perfil?.papel === "admin" ? (
+                              <button
+                                type="button"
+                                onClick={() => abrirEdicaoNotaDes(t)}
+                                title="Clique pra corrigir manualmente a nota do desempate"
+                                className="rounded-lg px-1.5 py-0.5 transition-colors hover:bg-fatec-navy-50"
+                              >
+                                {t.notaModerador ?? "—"}
+                              </button>
+                            ) : (
+                              t.notaModerador ?? "—"
+                            )}
                           </td>
                         </>
                       )}
