@@ -80,6 +80,12 @@ export type Evento = {
   // Taxa de inscrição em reais (2026-08-26). Ausente/0 = evento gratuito,
   // fluxo de uma etapa só (comportamento anterior a essa feature).
   valorInscricao?: number;
+  // Pasta do Google Drive com as fotos do evento (2026-11-12) — a galeria
+  // pública /fotos/{eventoId} copia dela as fotos novas sozinha (ver
+  // src/lib/galeriaFotos.ts). Precisa estar "qualquer pessoa com o link".
+  galeriaDriveFolderId?: string;
+  // Logo do evento no topo da galeria de fotos (caminho em /public ou URL).
+  galeriaLogo?: string;
   // Dados pro certificado (2026-08-27) — data em que o evento acontece de
   // fato (diferente do período de inscrições/avaliação acima), carga
   // horária e os dois nomes que assinam o certificado de apresentação/
