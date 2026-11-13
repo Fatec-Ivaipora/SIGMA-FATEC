@@ -477,6 +477,197 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-13** — **Premiados por área na home pública** (pedido
+  explícito da comissão — "no final quando o evento acaba eu possa clicar
+  em mostrar os premiados... pra eles poderem ver e prestigiar"). Novo
+  interruptor em Eventos → ⋮ Mais opções → "Mostrar premiados na home"
+  (`eventos/{id}.premiadosPublicosAtivo`, só aparece em eventos com
+  trabalho/área temática — **é específico da MAC**, não de todo evento,
+  por isso fica dentro do `!simples` junto de "Áreas temáticas", não
+  solto pra qualquer tipo de evento). Liga e a home ganha uma seção
+  "Parabéns aos premiados" logo depois do herói/carrossel — mesma regra de
+  posição do pódio/Resultado Final (`analisarEmpatesPorArea`, nunca
+  recalculada diferente), nova rota pública `GET /api/premiados/publico`
+  (sem login, mesmo espírito de `/api/ensalamento/consulta` e
+  `/api/certificados/grupo/busca`). Desliga e a seção some da home na
+  hora — sem o campo ligado em nenhum evento, a seção nem renderiza. Virou
+  carrossel (ajuste no mesmo dia, pedido explícito — "ficou muito grande,
+  poderia ser um carrossel passando área por área"): 1 área por slide, com
+  nome do evento (destacado, grande) + data por extenso com o ano + nome
+  da área sempre dentro do próprio slide, não num cabeçalho fixo que não
+  muda (pedido explícito: "tem que especificar de que evento está vindo" /
+  "X MAC ficou muito pequeno e colocar nome do evento e a data do evento e
+  o ano"). Mesmo padrão de troca automática/pausa no hover-foco do
+  carrossel de eventos em destaque, achatando todas as áreas de todos os
+  eventos ligados numa lista só de slides. Ajuste fino (mesmo dia, pedido
+  explícito — "pode ser parabéns ao trabalhos premiados na X Mostra
+  Acadêmica Científica (X MAC) em baixo a data e sem eles estar dentro
+  desse quadrado, aumente os trabalhos também"): o título virou uma frase
+  só por slide ("Parabéns aos trabalhos premiados na {evento}", com a data
+  embaixo), tirado o cartão/moldura em volta da lista de colocados (fica
+  solto na seção branca, não mais dentro de um quadrado com borda), e o
+  título/autores de cada trabalho aumentaram de tamanho.
+
+- **2026-11-13** — **Seção de premiados: tentou navy de várias formas,
+  usuário pediu pra tirar o azul de vez, voltou pro branco** (mesmo dia, 4
+  rodadas). Pedido original: "fundo azul com efeitos de luz... uma
+  textura". 1ª tentativa (navy liso) ficou ruim porque a seção de cima
+  (herói/carrossel de destaque) já termina em navy — 2 blocos navy colados
+  sem transição. 2ª tentativa foi degradê branco→navy + logo da Fatec e
+  ícone do SIGMA como marca d'água + 4 quadrados girando devagar
+  (`sigma-anim-spin-slow`/`-reverse`, keyframes novas em `globals.css`) —
+  usuário achou ruim de novo ("ficou muito ruim, refaça"); sem acesso
+  visual à página renderizada daqui, em vez de arriscar mais uma tentativa
+  às cegas, perguntei a direção (`AskUserQuestion`) e ele escolheu
+  simplificar pro mesmo navy liso do herói/CTA (3ª tentativa). Resposta
+  final, objetiva — "remova esse azul tá muito ruim": seção voltou a ser
+  branca (`bg-white`), igual era antes de qualquer efeito — título/trabalho
+  em `text-fatec-navy-900`, pill da área e selo de posição em
+  `bg-fatec-navy-50`, setas do carrossel com `border-fatec-line`. As
+  keyframes `sigma-anim-spin-slow`/`-reverse` (sem uso desde a 3ª rodada)
+  foram removidas de `globals.css`. **Logo da própria MAC continua sem
+  existir em `public/`** (só tem `logo-medfatec.png`, de outro evento) —
+  fica pra quando o usuário mandar o arquivo, se ainda quiser usá-la.
+
+- **2026-11-13** — **Páginas de certificados ganham o visual da home**
+  (pedido explícito do usuário — "acho que a página de certificado tá
+  muito seca sem nada, melhore ela, traga esse estilo da home pra ela,
+  traga o menu também"). `/certificados` (lista de eventos com mural
+  ativo) e `/certificados/{eventoId}` (busca pública) estavam soltas,
+  sem cabeçalho, com um "SIGMA · nome do evento" cru no topo. Agora as
+  duas usam `SiteHeader` (menu igual ao da home) + herói navy com manchas
+  em deriva (`sigma-anim-drift`/`-slow`) + `WaveDivider` na transição pro
+  conteúdo + resultados entrando com `Reveal`, igual à home. Na página de
+  busca, a caixa de busca foi pra dentro do próprio herói (input branco
+  flutuando sobre o navy) em vez de ficar solta numa página cinza; o
+  estado "mural indisponível" também ganhou o `SiteHeader`, pra nunca
+  mostrar uma página sem menu nenhum.
+
+- **2026-11-13** — **Home pública ganha movimento e curvas** (pedido
+  explícito do usuário — "essa página inicial tá muito crua, vamos dar
+  um movimento pra ela, curvas"), além de corrigir o bug real que
+  motivou o pedido: o selo "Avaliadores e moderadores" usava
+  `text-fatec-sky-200`, cor que não existe (só `sky-600`/`sky-100` são
+  tokens reais) — saía preto no fundo navy. Em vez de só trocar a cor,
+  removido o selo (era um "eyebrow" acima do título — mesmo problema já
+  existia em "Ajuda"/"Como funciona"/"Local", removido dos 4 de uma vez,
+  o título já carrega o contexto sozinho). Novo: `Reveal`
+  (`src/components/Reveal.tsx`) — entrada ao rolar até a seção (uma vez
+  só, nunca reanima), aplicada em Ajuda/CTA/Como funciona/Local, NÃO no
+  herói (já visível ao carregar, não precisa de entrada). `WaveDivider`
+  (`src/components/WaveDivider.tsx`) — curva SVG entre seções navy→clara
+  (herói/carrossel→Ajuda, CTA→Como funciona), a parte visual mais direta
+  do pedido "curvas". Deriva ambiente lenta (`sigma-anim-drift`/`-slow`
+  em `globals.css`, só `transform`, sem reflow) nas manchas decorativas
+  que já existiam no herói — mesmo efeito agora na seção CTA e nos slides
+  sem imagem do carrossel. Tudo com `prefers-reduced-motion` respeitado.
+
+- **2026-11-13** — **Faixa "Seja avaliador(a)" da home, de tímida pra
+  convite de verdade** (pedido explícito do usuário — "ficou muito
+  pequena, tímida ali, deveria ser maior, convidar as pessoas mesmo").
+  Virou do mesmo tamanho/estilo do herói (blur decorativo, título grande
+  "Venha fazer parte de projetos incríveis", botão pill laranja) em vez
+  de uma tarja fininha de uma linha. Botão ganhou uma legenda embaixo —
+  "Leva menos de 2 minutos" — pedido explícito também.
+
+- **2026-11-13** — **Link "Certificados" no header público + reforma do
+  layout do header** (pedido explícito do usuário — "coloca na home",
+  depois "a logo não foi mais pra esquerda... faça mais", "centraliza os
+  menus"). Item novo no menu do site (desktop e mobile, `SiteHeader`), ao
+  lado de Editais/Declarações, mandando pra `/certificados` (mural de
+  apresentação/premiação). Header virou 3 colunas de verdade — logo
+  (esquerda) | menus (`flex-1 justify-center`, meio) | botão "Acessar"
+  (direita) — antes "Acessar" morava dentro do próprio `<nav>`, preso
+  colado nos outros links lá na ponta direita; largura máxima do header
+  subiu de `max-w-7xl` pra `max-w-[1600px]` (mesmo teto do banner da
+  home) e o padding lateral caiu, pra logo/botão realmente chegarem mais
+  perto da borda em monitor largo. `whitespace-nowrap` nos itens do menu
+  (achado: "Seja avaliador(a)" quebrava linha com o item novo apertando o
+  espaço). E removido o aviso "Nenhum evento em destaque no momento" da
+  home quando não tem evento em destaque.
+
+- **2026-11-13** — **Badge mostra pessoas, não trabalhos; numeração em
+  lote respeita pagamento** (2 pedidos explícitos do usuário). (1) O
+  botão "Emitir certificados individuais" mostrava a contagem de
+  trabalhos (292) — agora mostra quantos certificados vão ser criados de
+  verdade, 1 por pessoa (aluno + cada colega). (2) "a regra de se não
+  pagou não gera o certificado individual" — `/api/certificados/numerar-
+  trabalhos` agora pula quem não pagou a inscrição (mesma checagem de
+  sempre do autoatendimento, só que em lote), e mostra depois quantos
+  ficaram de fora por isso. Testado contra os dados reais da X MAC (só
+  leitura): dos 1049 ligados a algum trabalho aceito, 907 pagaram (esses
+  seriam numerados) e 142 não.
+
+- **2026-11-13** — **Número de registro por pessoa, numerado em lote antes
+  de qualquer download** (pedido explícito do usuário — "número por
+  pessoa e não podemos fazer... quando o cara baixa aí gera o número,
+  porque igual o da medicina precisamos gerar a ata e avisar qual foi o
+  último número usado"). Antes a chave era por TRABALHO
+  (`{trabalhoId}_aluno`) — virou por pessoa
+  (`{trabalhoId}_aluno_{uid}`), já que agora cada um baixa o próprio
+  documento com o próprio nome (ver entrada abaixo). Nova rota
+  `POST /api/certificados/numerar-trabalhos` (mesmo espírito de
+  `/api/certificados/liberar`, que já fazia isso pra evento "simples" —
+  o caso da Semana de Medicina citado pelo usuário) — numera todo mundo
+  de uma vez (aluno + cada colega, ordem de envio) quando clica "Emitir
+  certificados individuais", e mostra na hora o primeiro e o último
+  número usado, pra avisar quem continua a sequência depois. Idempotente,
+  seguro rodar de novo (quem já tinha número mantém). O autoatendimento
+  (`GET /api/certificados?papel=aluno`) só LÊ o número já atribuído,
+  nunca mais cria um novo na hora do download — se não tiver número
+  ainda, erro claro pedindo pra rodar a numeração nessa tela de novo.
+  Testado contra os dados reais da X MAC (sem gravar nada, só conferência):
+  292 trabalhos aceitos → 1049 pessoas seriam numeradas.
+
+- **2026-11-13** — **3 certificados em vez de 1, decisão da comissão**
+  (pedido explícito do usuário — "são 3 certificados, 2 gerados de forma
+  pública... o de premiação é diferente do de apresentação"). Antes o
+  botão "Emitir certificados" (agora **"Emitir certificados individuais"**)
+  gerava um documento citando o trabalho/título, compartilhado por todo o
+  grupo. Virou 3 documentos com papel próprio:
+  1. **Certificado de participação** (individual, self-service de
+     sempre) — voltou a ser só participação + carga horária (reaproveita
+     `DeclaracaoPDF`, mesmo padrão de avaliador/moderador/monitor), sem
+     citar trabalho/título — isso virou exclusividade dos outros 2. Nome é
+     o de quem está baixando (cada colega baixa o próprio), não o grupo
+     inteiro junto.
+  2. **Certificado de apresentação** (grupo, público) — cita o
+     trabalho/título e lista todo o grupo + orientador.
+  3. **Certificado de premiação** (grupo, público) — título "CERTIFICADO
+     DE RECONHECIMENTO", cita a posição e a área temática (linguagem do
+     edital 6.6), não é só trocar uma palavra do de apresentação.
+  Os 2 públicos saem de **"Emitir certificados públicos"** (Resultado
+  Final → Funções em lote) — liga um mural sem login em
+  `/certificados/{eventoId}` (busca por nome/título, acha também pelo
+  nome do orientador — "muitos não têm conta no sigma"). PDF gerado na
+  hora do clique, nunca pré-gerado/armazenado — sempre reflete o estado
+  atual, sem arquivo nenhum pra re-subir depois de um ajuste. Sem número
+  de registro nos 2 públicos (ainda não definido com a comissão). Entrada
+  fácil pra quem não tem conta: link "Procurar certificado... sem login"
+  na tela de login, manda pra `/certificados` (lista os eventos com mural
+  aberto, mesmo espírito de /editais).
+
+- **2026-11-11** — **`?area=` em `/api/trabalhos/podio`** (pedido
+  explícito do usuário — "imprima os vencedores por área em pdf
+  separados"). Filtro opcional pra gerar o PDF do pódio de uma área só,
+  em vez de todas juntas — usado pra gerar 5 PDFs separados (um por
+  área já com 1º/2º/3º resolvidos) direto na pasta de exemplos, sem
+  nenhuma lógica nova de ranking (mesma rota de sempre, só filtrando o
+  resultado já calculado).
+
+- **2026-11-11** — **Painel de empate persistente volta, sem o seletor de
+  posição** (pedido explícito do usuário, logo depois de eu remover o
+  painel inteiro — "preciso que eles fiquem em empatados para eu poder
+  definir a nota e depois enviar"). Achado: a tabela principal, com "Só
+  empatados" ligado, some com cada trabalho assim que a nota dele deixa
+  de empatar — a comissão não conseguia ver o grupo inteiro enquanto
+  ajustava um por um. O painel volta mostrando o POOL INTEIRO da área
+  (não só quem ainda empata), com a nota do desempate editável direto
+  ali (reaproveita a correção manual de nota já existente) — a posição
+  final (1º/2º/3º Premiado ou Aceito) recalcula sozinha conforme a
+  comissão ajusta os números, sem precisar de um seletor de posição
+  (esse continua removido, era a parte bugada).
+
 - **2026-11-11** — **Painel de desempate manual (aba Desempate) removido
   — bug real achado ao vivo** (pedido explícito do usuário — "esse forma
   de desempata... ta bugado... desative isso"). Achado: quando o grupo

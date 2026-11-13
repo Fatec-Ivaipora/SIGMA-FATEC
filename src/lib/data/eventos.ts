@@ -235,6 +235,21 @@ export type Evento = {
   // `/api/ensalamento/consulta`) não devolve nenhum dado, só avisa que
   // está indisponível — nunca expõe nome/sala/horário de ninguém à toa.
   consultaPublicaAtiva?: boolean;
+  // Mural público de certificados de apresentação/premiação (2026-11-13,
+  // pedido explícito do usuário, decisão com o chefe da comissão — mesmo
+  // espírito de consultaPublicaAtiva acima, mas pros certificados em grupo
+  // (`/certificados/{eventoId}`, API em `/api/certificados/grupo/*`).
+  // Declaração de participação individual (self-service de sempre, ver
+  // /api/certificados) não depende disso — continua igual.
+  certificadosGrupoPublicosAtivo?: boolean;
+  // Premiados por área na home pública (2026-11-13, pedido explícito da
+  // comissão, específico de eventos com premiação como a MAC — "no final
+  // quando o evento acaba eu possa clicar em mostrar os premiados... pra
+  // eles poderem ver e prestigiar"). Liga/desliga em Eventos → ⋮ Mais
+  // opções → "Mostrar premiados na home". Sem isso (ausente/false), o
+  // evento nem aparece na seção "Premiados" da home
+  // (`/api/premiados/publico`) — some assim que desligado.
+  premiadosPublicosAtivo?: boolean;
   // Modelo do evento (2026-09-22, pedido da comissão — nem todo evento tem
   // trabalho acadêmico, ex. palestra/curso/workshop). Ausente = modelo de
   // hoje (trabalho, avaliação, ensalamento — todos os campos acima). Nesse

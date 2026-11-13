@@ -156,6 +156,29 @@ body {
   transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Deriva ambiente das manchas decorativas da home pública (2026-11-13,
+   pedido explícito do usuário — "essa página inicial tá muito crua, vamos
+   dar um movimento pra ela"). Só transform (compositor, sem reflow);
+   -slow começa em -7s pra nunca ficar em fase com a rápida — sem isso, as
+   duas manchas de uma mesma seção "respiram" juntas e parecem uma coisa
+   só piscando, não duas formas independentes. */
+@keyframes sigma-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(18px, -22px);
+  }
+}
+.sigma-anim-drift {
+  animation: sigma-drift 16s ease-in-out infinite;
+}
+.sigma-anim-drift-slow {
+  animation: sigma-drift 22s ease-in-out infinite;
+  animation-delay: -7s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sigma-anim-pop {
     animation: none;
@@ -167,5 +190,9 @@ body {
   }
   .sigma-liquid-fill {
     transition: none;
+  }
+  .sigma-anim-drift,
+  .sigma-anim-drift-slow {
+    animation: none;
   }
 }

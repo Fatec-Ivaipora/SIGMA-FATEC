@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
-import {
-  CertificadoApresentacaoPDF,
-  DeclaracaoPDF,
-} from "@/lib/certificadosPdf";
+import { DeclaracaoPDF } from "@/lib/certificadosPdf";
 import { periodosDoEvento, presencaMinimaDoEvento } from "@/lib/periodosPresenca";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 import { obterNumeroRegistro, numeroRegistroExistente } from "@/lib/registroCertificados";
-import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 type Papel = "aluno" | "avaliador" | "moderador" | "orientador" | "monitor" | "participante";
 
@@ -23,8 +19,8 @@ function slug(texto: string): string {
 
 // papel não entra mais nessa checagem (2026-09-29) — mesma regra pra
 // qualquer papel, só precisa ter pelo menos 1 assinante escolhido. Ver
-// CertificadoApresentacaoPDF/DeclaracaoPDF em src/lib/certificadosPdf.tsx,
-// que já sabem renderizar com qualquer quantidade de assinaturas.
+// DeclaracaoPDF em src/lib/certificadosPdf.tsx, que já sabe renderizar com
+// qualquer quantidade de assinaturas.
 function faltandoDadosEvento(evento: FirebaseFirestore.DocumentData): string[] {
   const faltando: string[] = [];
   if (!evento.dataRealizacao) faltando.push("data de realização");
@@ -264,39 +260,65 @@ export async function GET(request: Request) {
       );
     }
 
-    const numero = await obterNumeroRegistro(
-      `${trabalhoId}_aluno`,
-      trabalho.eventoId as string,
-      (evento.numeroRegistroInicial as number | undefined) ?? 1,
-      trabalho.alunoNome as string,
-    );
+    // Certificado de PARTICIPAÇÃO (2026-11-13, pedido explícito do usuário —
+    // "emitir certificado teria que ser o certificado de participação do
+    // evento com as horas que a pessoa ganhou... isso vai de cada pessoa
+    // que pagou, esse é o certificado individual"). Deixou de citar o
+    // trabalho/título — isso virou exclusividade do mural público
+    // (/api/certificados/grupo/apresentacao|premiacao). Nome é o de QUEM
+    // está baixando, não o grupo inteiro junto (cada colega baixa o
+    // próprio, como qualquer outro papel aqui) — cai no alunoNome só se o
+    // uid não bater com ninguém (staff baixando por fora, ver `ehStaff`
+    // acima).
+    const participantesUids = (trabalho.participantesUids ?? []) as string[];
+    const participantesNomes = (trabalho.participantesNomes ?? []) as string[];
+    const indiceColega = participantesUids.indexOf(uid);
+    const nomeDeQuemBaixa =
+      uid === trabalho.alunoUid
+        ? (trabalho.alunoNome as string)
+        : (indiceColega >= 0 ? participantesNomes[indiceColega] : undefined) ??
+          (trabalho.alunoNome as string);
 
-    const nomes = [
-      trabalho.alunoNome as string,
-      ...((trabalho.participantesNomes ?? []) as string[]),
-    ];
-    if (trabalho.nomeOrientador) nomes.push(trabalho.nomeOrientador as string);
-    // Coorientadores logo depois do orientador (2026-10-27).
-    nomes.push(...((trabalho.nomesCoorientadores ?? []) as string[]));
+    // Número POR PESSOA, não por trabalho (2026-11-13, pedido explícito do
+    // usuário — "não podemos fazer... quando o cara baixa aí gera o
+    // número, porque... precisamos gerar a ata e avisar qual foi o último
+    // número usado"). Só LÊ (nunca cria aqui) — a numeração em lote roda
+    // ANTES, toda de uma vez, em POST /api/certificados/numerar-trabalhos
+    // (chamada junto com "Emitir certificados individuais" em
+    // trabalhos/page.tsx), pra sequência nunca depender de alguém clicar
+    // em baixar. Staff (ehStaff) pode gerar sem número ainda atribuído —
+    // é só uma prévia pra conferir o documento, não precisa estar na ata.
+    const chaveRegistro = `${trabalhoId}_aluno_${uid}`;
+    const numero = await numeroRegistroExistente(chaveRegistro);
+    if (numero === null && !ehStaff) {
+      return NextResponse.json(
+        {
+          erro:
+            "Seu certificado ainda não foi numerado — peça pro admin rodar \"Emitir certificados individuais\" de novo.",
+        },
+        { status: 400 },
+      );
+    }
 
-    const premiado = trabalho.premiado === true;
+    const hoje = new Date().toISOString().slice(0, 10);
     const buffer = await renderToBuffer(
-      CertificadoApresentacaoPDF({
-        nomes,
+      DeclaracaoPDF({
+        nome: nomeDeQuemBaixa,
+        papel: "aluno",
         eventoNome: evento.nome as string,
         dataRealizacao: evento.dataRealizacao as string,
-        tituloTrabalho: tituloExibicao(trabalho.titulo as string),
-        registroNumero: numero,
+        cargaHoraria: evento.cargaHoraria as number,
         assinantes: resolverAssinantes(evento),
-        premiado,
+        dataAssinatura: hoje,
+        logoCabecalhoId: evento.logoCertificadoId as string | undefined,
+        registroNumero: numero ?? undefined,
       }),
     );
 
-    const prefixoArquivo = premiado ? "certificado" : "declaracao";
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${prefixoArquivo}-${slug(trabalho.alunoNome as string)}.pdf"`,
+        "Content-Disposition": `attachment; filename="declaracao-${slug(nomeDeQuemBaixa)}.pdf"`,
       },
     });
   }

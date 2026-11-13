@@ -295,6 +295,7 @@ function CardEventoAdmin({
   totalTrabalhos,
   onMarcarDestaque,
   onAlternarAceitaExternos,
+  onAlternarPremiadosPublicos,
   onAbrirInscritos,
   onInscricaoExtra,
   onConfigurarEvento,
@@ -310,6 +311,7 @@ function CardEventoAdmin({
   totalTrabalhos: number;
   onMarcarDestaque: () => void;
   onAlternarAceitaExternos: () => void;
+  onAlternarPremiadosPublicos: () => void;
   onAbrirInscritos: () => void;
   onInscricaoExtra: () => void;
   onConfigurarEvento: () => void;
@@ -485,7 +487,17 @@ function CardEventoAdmin({
               onClick: onAlternarAceitaExternos,
             },
             ...(!simples
-              ? [{ icone: Tag, cor: "navy" as const, label: "Áreas temáticas", href: "/areas-tematicas" }]
+              ? [
+                  { icone: Tag, cor: "navy" as const, label: "Áreas temáticas", href: "/areas-tematicas" },
+                  {
+                    icone: Award,
+                    cor: "navy" as const,
+                    label: evento.premiadosPublicosAtivo
+                      ? "Ocultar premiados na home"
+                      : "Mostrar premiados na home",
+                    onClick: onAlternarPremiadosPublicos,
+                  },
+                ]
               : []),
             ...(onAbrirEdubox
               ? [
@@ -1377,6 +1389,17 @@ export default function EventosPage() {
     await updateDoc(doc(db, "eventos", eventoId), { aceitaExternos: !atual });
   }
 
+  // Mostrar premiados por área na home pública (2026-11-13, pedido
+  // explícito da comissão — "no final quando o evento acaba eu possa
+  // clicar em mostrar os premiados... pra eles poderem ver e prestigiar").
+  // Interruptor igual ao de destaque/certificados públicos: liga e já
+  // aparece na home (ver /api/premiados/publico), desliga e some na hora.
+  async function alternarPremiadosPublicos(evento: Evento) {
+    await updateDoc(doc(db, "eventos", evento.id), {
+      premiadosPublicosAtivo: !evento.premiadosPublicosAtivo,
+    });
+  }
+
   // Encerrar/reabrir evento (2026-09-10, pedido do usuário) — interruptor
   // manual reversível: desliga banner de destaque, inscrição nova (rota
   // /api/asaas/interesse) e envio de trabalho (firestore.rules) de uma vez,
@@ -1533,6 +1556,7 @@ export default function EventosPage() {
                 onAlternarAceitaExternos={() =>
                   alternarAceitaExternos(evento.id, !!evento.aceitaExternos)
                 }
+                onAlternarPremiadosPublicos={() => alternarPremiadosPublicos(evento)}
                 onAbrirInscritos={() => setModalInscritosId(evento.id)}
                 onInscricaoExtra={() => setModalInscricaoExtraId(evento.id)}
                 onConfigurarEvento={() => abrirModalConfig(evento)}

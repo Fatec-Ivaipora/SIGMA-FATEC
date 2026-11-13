@@ -21,7 +21,8 @@ function slug(texto: string): string {
  * diferente aqui), por isso só mostra posição de quem já está
  * SEM AMBIGUIDADE nenhuma (`posicoes`); um grupo ainda em desempate não
  * ganha posição nenhuma e simplesmente não aparece — o admin resolve na
- * aba Desempate antes de gerar esse PDF pro palco. */
+ * aba Desempate antes de gerar esse PDF pro palco. `?area=` (2026-11-11)
+ * filtra pra só uma área — usado pra gerar um PDF separado por categoria. */
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -34,6 +35,10 @@ export async function GET(request: Request) {
     const db = getAdminDb();
     const url = new URL(request.url);
     const eventoId = url.searchParams.get("eventoId");
+    // Filtro opcional por área (2026-11-11, pedido explícito do usuário —
+    // "imprima os vencedores por área em pdf separados") — sem ele, mantém
+    // o comportamento de sempre (todas as áreas resolvidas num PDF só).
+    const areaFiltro = url.searchParams.get("area");
     if (!eventoId) {
       return NextResponse.json({ erro: "eventoId é obrigatório." }, { status: 400 });
     }
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
     const analise = analisarEmpatesPorArea(pool);
     const porId = new Map(trabalhos.map((t) => [t.id, t]));
 
-    const areas = Array.from(analise.entries())
+    let areas = Array.from(analise.entries())
       .map(([, info]) => {
         const colocados = Object.entries(info.posicoes)
           .map(([id, posicao]) => {
@@ -90,20 +95,31 @@ export async function GET(request: Request) {
       .filter((a): a is NonNullable<typeof a> => a !== null)
       .sort((a, b) => a.areaTematica.localeCompare(b.areaTematica, "pt-BR"));
 
+    if (areaFiltro) {
+      areas = areas.filter((a) => a.areaTematica === areaFiltro);
+    }
+
     if (areas.length === 0) {
       return NextResponse.json(
-        { erro: "Nenhuma área com pódio resolvido ainda (sem empate pendente)." },
+        {
+          erro: areaFiltro
+            ? "Essa área ainda não tem pódio resolvido (sem empate pendente)."
+            : "Nenhuma área com pódio resolvido ainda (sem empate pendente).",
+        },
         { status: 404 },
       );
     }
 
+    const nomeArquivo = areaFiltro
+      ? `podio-${slug(areaFiltro)}`
+      : `podio-${slug(evento.nome as string)}`;
     const buffer = await renderToBuffer(
       PodioPorAreaPDF({ eventoNome: (evento.nome as string).toLocaleUpperCase("pt-BR"), areas }),
     );
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="podio-${slug(evento.nome as string)}.pdf"`,
+        "Content-Disposition": `attachment; filename="${nomeArquivo}.pdf"`,
         "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });

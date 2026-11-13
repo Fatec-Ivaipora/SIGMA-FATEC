@@ -24,7 +24,8 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
   const [aberto, setAberto] = useState(false);
   const pathname = usePathname();
 
-  const itemNav = "text-base font-semibold text-white/85 transition-colors hover:text-white md:text-lg";
+  const itemNav =
+    "whitespace-nowrap text-base font-semibold text-white/85 transition-colors hover:text-white md:text-lg";
 
   // Clique numa âncora da home (2026-10-19, achado real: "quando clico em
   // tutorial não desce") — o Link do Next não dispara o scroll até o
@@ -44,7 +45,7 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-fatec-navy-900">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-12 md:py-6">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-x-6 px-5 py-5 md:px-6 md:py-6">
         {/* Par de logos (2026-09-19, pedido do usuário — quer que fique
             claro que o SIGMA é parte da Fatec, sitewide, não só numa seção
             específica). Fatec vem primeiro (2026-09-19, "a Fatec vem antes
@@ -63,7 +64,11 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
           <LogoLockup className="h-16 w-auto md:h-20" variant="branco" />
         </Link>
 
-        <nav className="hidden items-center gap-10 md:flex">
+        {/* Menus centralizados no espaço entre a logo e "Acessar" (2026-11-13,
+          * pedido explícito do usuário — "centraliza os menus"), não mais
+          * grudados no botão à direita. `flex-1` pra ocupar o espaço do
+          * meio, `justify-center` pra centralizar o conteúdo nele. */}
+        <nav className="hidden flex-1 items-center justify-center gap-6 md:flex xl:gap-8">
           <Link href="/" className={itemNav}>
             Início
           </Link>
@@ -80,20 +85,28 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
             Editais
           </Link>
           <DeclaracoesMenu variant="desktop" />
+          {/* Mural de certificados de apresentação/premiação (2026-11-13,
+            * pedido explícito do usuário — "coloca na home"). Mesmo espírito
+            * de Editais: link simples, a escolha do evento acontece dentro
+            * de /certificados mesmo (lista os eventos com mural ativo). */}
+          <Link href="/certificados" className={itemNav}>
+            Certificados
+          </Link>
           <Link href="/#ajuda" onClick={irParaAncora("ajuda")} className={itemNav}>
             Ajuda
           </Link>
           <Link href="/seja-avaliador" className={itemNav}>
             Seja avaliador(a)
           </Link>
-          <Link
-            href="/login"
-            className="flex items-center gap-2 rounded-lg bg-fatec-sky-600 px-5 py-2.5 text-base font-semibold text-white transition-colors hover:bg-fatec-sky-600/85"
-          >
-            Acessar
-            <ArrowRight className="h-5 w-5" strokeWidth={2.25} />
-          </Link>
         </nav>
+
+        <Link
+          href="/login"
+          className="hidden flex-none items-center gap-2 rounded-lg bg-fatec-sky-600 px-5 py-2.5 text-base font-semibold text-white transition-colors hover:bg-fatec-sky-600/85 md:flex"
+        >
+          Acessar
+          <ArrowRight className="h-5 w-5" strokeWidth={2.25} />
+        </Link>
 
         <button
           type="button"
@@ -133,6 +146,13 @@ export function SiteHeader({ mostrarEvento }: { mostrarEvento: boolean }) {
               Editais
             </Link>
             <DeclaracoesMenu variant="mobile" onNavegar={() => setAberto(false)} />
+            <Link
+              href="/certificados"
+              onClick={() => setAberto(false)}
+              className="rounded-lg px-3 py-3 text-base font-semibold text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Certificados
+            </Link>
             <Link
               href="/#ajuda"
               onClick={irParaAncora("ajuda")}

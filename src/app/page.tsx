@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
   CalendarDays,
-  CalendarOff,
   ChevronLeft,
+  Clock,
   ChevronRight,
   GraduationCap,
   Mail,
@@ -22,6 +23,8 @@ import { db } from "@/lib/firebase";
 import { Logo } from "@/components/Logo";
 import { FlowCarousel } from "@/components/FlowCarousel";
 import { SiteHeader } from "@/components/SiteHeader";
+import { Reveal } from "@/components/Reveal";
+import { WaveDivider } from "@/components/WaveDivider";
 
 const CONTATOS = {
   instagram: "https://www.instagram.com/fatec.ivaipora/",
@@ -75,6 +78,64 @@ type EventoDestaque = {
 const INTERVALO_CARROSSEL_MS = 6000;
 
 type VideoAjuda = { id: string; titulo: string };
+
+type ColocadoPremiado = {
+  posicao: number;
+  titulo: string;
+  autores: string;
+  orientacao: string;
+};
+
+type AreaPremiada = { areaTematica: string; colocados: ColocadoPremiado[] };
+
+type EventoPremiados = {
+  eventoId: string;
+  eventoNome: string;
+  dataRealizacao?: string;
+  dataRealizacaoFim?: string;
+  areas: AreaPremiada[];
+};
+
+type SlidePremiado = {
+  eventoNome: string;
+  dataRealizacao?: string;
+  dataRealizacaoFim?: string;
+  areaTematica: string;
+  colocados: ColocadoPremiado[];
+};
+
+// Pódio por área exposto na home (2026-11-13, pedido explícito da comissão
+// — "no final quando o evento acaba eu possa clicar em mostrar os
+// premiados... pra eles poderem ver e prestigiar"). Cor por posição em vez
+// de reaproveitar o laranja da marca (já é o botão de CTA da página
+// inteira — usar nela também ia confundir "prêmio" com "ação principal").
+const ESTILO_POSICAO: Record<number, string> = {
+  1: "bg-amber-100 text-amber-700",
+  2: "bg-slate-100 text-slate-600",
+  3: "bg-orange-100 text-orange-800",
+};
+
+const MESES_PT = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** Data do evento por extenso, com o ano sempre visível (2026-11-13,
+ * pedido explícito do usuário — "X MAC ficou muito pequeno e colocar nome
+ * do evento e a data do evento e o ano"). Mesmo espírito de
+ * formatarPeriodoRealizacao (src/lib/certificadosPdf.tsx), mas não dá pra
+ * importar aquele módulo aqui — ele puxa `@react-pdf/renderer` e `node:fs`,
+ * coisa de servidor, não de página pública client-side. */
+function formatarDataEvento(inicio?: string, fim?: string): string {
+  if (!inicio) return "";
+  const [anoI, mesI, diaI] = inicio.split("-").map(Number);
+  if (!fim || fim === inicio) return `${diaI} de ${MESES_PT[mesI - 1]} de ${anoI}`;
+  const [anoF, mesF, diaF] = fim.split("-").map(Number);
+  if (anoF === anoI && mesF === mesI) {
+    return `${diaI} e ${diaF} de ${MESES_PT[mesI - 1]} de ${anoI}`;
+  }
+  return `${diaI} de ${MESES_PT[mesI - 1]} a ${diaF} de ${MESES_PT[mesF - 1]} de ${anoF}`;
+}
 
 /** Vídeo tutorial com capa própria (2026-10-19, pedido do usuário: "coloque
  * a capa do vídeo a logo do sigma com a fatec", depois trocado pra "deixe
@@ -173,6 +234,20 @@ export default function HomePage() {
   const [slideAtual, setSlideAtual] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [videoAberto, setVideoAberto] = useState<VideoAjuda | null>(null);
+  const [eventosPremiados, setEventosPremiados] = useState<EventoPremiados[]>([]);
+  const [slidePremiado, setSlidePremiado] = useState(0);
+  const [pausadoPremiado, setPausadoPremiado] = useState(false);
+
+  // Premiados por área (2026-11-13) — rota pública própria em vez de
+  // listener direto no Firestore: a regra de posição exige recalcular
+  // empate por área (analisarEmpatesPorArea), e as regras de segurança de
+  // `trabalhos` não liberam leitura pública dessa coleção de qualquer jeito.
+  useEffect(() => {
+    fetch("/api/premiados/publico")
+      .then((r) => r.json())
+      .then((dados) => setEventosPremiados(dados.eventos ?? []))
+      .catch(() => setEventosPremiados([]));
+  }, []);
 
   // Vários eventos em destaque ao mesmo tempo (2026-09-24, antes era um só —
   // RN-10). Evento encerrado fica de fora mesmo marcado como destaque:
@@ -215,6 +290,36 @@ export default function HomePage() {
 
   const temDestaque = totalSlides > 0;
 
+  // Carrossel de premiados, 1 área por slide (2026-11-13, pedido explícito
+  // do usuário — "ficou muito grande, poderia ser um carrossel passando
+  // área por área"). Mesmo padrão de troca/pausa do carrossel de eventos
+  // em destaque acima, só que achatado: todas as áreas de todos os eventos
+  // com o interruptor ligado viram uma lista só de slides.
+  const slidesPremiados: SlidePremiado[] = eventosPremiados.flatMap((evento) =>
+    evento.areas.map((area) => ({
+      eventoNome: evento.eventoNome,
+      dataRealizacao: evento.dataRealizacao,
+      dataRealizacaoFim: evento.dataRealizacaoFim,
+      areaTematica: area.areaTematica,
+      colocados: area.colocados,
+    })),
+  );
+  const totalSlidesPremiados = slidesPremiados.length;
+  const indiceVisivelPremiado = slidePremiado < totalSlidesPremiados ? slidePremiado : 0;
+
+  useEffect(() => {
+    if (totalSlidesPremiados < 2 || pausadoPremiado) return;
+    const timer = setTimeout(
+      () => setSlidePremiado((indiceVisivelPremiado + 1) % totalSlidesPremiados),
+      INTERVALO_CARROSSEL_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [totalSlidesPremiados, pausadoPremiado, indiceVisivelPremiado]);
+
+  function irParaPremiado(delta: number) {
+    setSlidePremiado((indiceVisivelPremiado + delta + totalSlidesPremiados) % totalSlidesPremiados);
+  }
+
   return (
     <main className="flex flex-1 flex-col">
       <SiteHeader mostrarEvento={temDestaque} />
@@ -224,14 +329,14 @@ export default function HomePage() {
           mas sem evento nenhum a página não pode ficar vazia logo após o
           cabeçalho). */}
       {!temDestaque && (
-        <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-20 pt-16 md:px-12 md:pb-24 md:pt-20">
+        <section className="relative overflow-hidden bg-fatec-navy-900 px-6 pb-24 pt-16 md:px-12 md:pb-32 md:pt-20">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
+            className="sigma-anim-drift pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fatec-sky-600/20 blur-3xl"
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute -bottom-32 left-0 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
+            className="sigma-anim-drift-slow pointer-events-none absolute -bottom-32 left-0 h-80 w-80 rounded-full bg-fatec-orange-500/10 blur-3xl"
           />
 
           <div className="relative mx-auto flex max-w-3xl flex-col items-start gap-6">
@@ -263,19 +368,9 @@ export default function HomePage() {
               </a>
             </div>
           </div>
-        </section>
-      )}
 
-      {/* Mini aviso (2026-09-19, pedido do usuário) — só some pra quando um
-          evento virar destaque de novo; enquanto isso, deixa claro que a
-          ausência do banner é esperada, não um bug/tela quebrada. */}
-      {!temDestaque && (
-        <div className="border-b border-fatec-line bg-fatec-navy-50 px-6 py-4 md:px-12">
-          <p className="mx-auto flex max-w-3xl items-center gap-2 text-sm text-fatec-muted">
-            <CalendarOff className="h-4 w-4 flex-none" strokeWidth={1.75} />
-            Nenhum evento em destaque no momento — fique de olho, novidades em breve.
-          </p>
-        </div>
+          <WaveDivider fill="#ffffff" className="absolute inset-x-0 bottom-0" />
+        </section>
       )}
 
       {/* RF-29 / RN-11: evento em destaque, marcado manualmente pela organização.
@@ -362,8 +457,8 @@ export default function HomePage() {
                           aria-hidden
                           className="relative h-full w-full bg-gradient-to-br from-fatec-navy-700 via-fatec-navy-900 to-fatec-sky-700"
                         >
-                          <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-                          <div className="absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl" />
+                          <div className="sigma-anim-drift absolute -right-16 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+                          <div className="sigma-anim-drift-slow absolute -bottom-24 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/20 blur-3xl" />
                         </div>
                       )}
                     </div>
@@ -449,6 +544,133 @@ export default function HomePage() {
               ))}
             </div>
           )}
+
+          <WaveDivider fill="#ffffff" />
+        </section>
+      )}
+
+      {/* Premiados por área (2026-11-13, pedido explícito da comissão —
+          específico de eventos com premiação como a MAC, não de todo
+          evento: "no final quando o evento acaba eu possa clicar em
+          mostrar os premiados... pra eles poderem ver e prestigiar"). Some
+          inteira da home quando nenhum evento tem o interruptor ligado
+          (Eventos → ⋮ Mais opções → "Mostrar premiados na home").
+          Carrossel 1 área por slide (pedido explícito: "ficou muito
+          grande, poderia ser um carrossel passando área por área") — nome
+          do evento e data sempre visíveis dentro do próprio slide (pedido
+          explícito: "tem que especificar de que evento está vindo" / "X
+          MAC ficou muito pequeno e colocar nome do evento e a data do
+          evento e o ano"), não num cabeçalho fixo que não muda com o
+          slide. Mesmo padrão de troca/pausa do carrossel de eventos em
+          destaque, só que num card branco em vez de foto full-bleed. */}
+      {totalSlidesPremiados > 0 && (
+        <section
+          id="premiados"
+          aria-roledescription={totalSlidesPremiados > 1 ? "carrossel" : undefined}
+          aria-label="Premiados por área"
+          onMouseEnter={() => setPausadoPremiado(true)}
+          onMouseLeave={() => setPausadoPremiado(false)}
+          onFocus={(e) => {
+            if (e.target.matches(":focus-visible")) setPausadoPremiado(true);
+          }}
+          onBlur={() => setPausadoPremiado(false)}
+          className="scroll-mt-20 bg-white px-6 py-16 md:px-12 md:py-20"
+        >
+          {/* Fundo branco (2026-11-13) — depois de 3 rodadas tentando navy
+              (liso, degradê, com logos/textura) e o usuário pedir pra
+              remover o azul de vez ("remova esse azul tá muito ruim"),
+              volta pro branco simples de antes. */}
+          <div className="mx-auto max-w-2xl">
+            <Reveal className="flex justify-center">
+              <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
+                <Award className="h-6 w-6" strokeWidth={1.75} />
+              </span>
+            </Reveal>
+
+            <div className="relative mt-6 grid">
+              {slidesPremiados.map((slide, i) => {
+                const ativo = i === indiceVisivelPremiado;
+                return (
+                  <div
+                    key={`${slide.eventoNome}-${slide.areaTematica}`}
+                    aria-hidden={!ativo}
+                    inert={!ativo}
+                    aria-roledescription={totalSlidesPremiados > 1 ? "slide" : undefined}
+                    aria-label={
+                      totalSlidesPremiados > 1 ? `${i + 1} de ${totalSlidesPremiados}` : undefined
+                    }
+                    className={`[grid-area:1/1] transition-opacity duration-700 motion-reduce:transition-none ${
+                      ativo ? "opacity-100" : "pointer-events-none opacity-0"
+                    }`}
+                  >
+                    <div className="text-center">
+                      <h3 className="text-2xl font-extrabold leading-tight tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
+                        Parabéns aos trabalhos premiados na {slide.eventoNome}
+                      </h3>
+                      {slide.dataRealizacao && (
+                        <p className="mt-2 text-sm text-fatec-muted">
+                          {formatarDataEvento(slide.dataRealizacao, slide.dataRealizacaoFim)}
+                        </p>
+                      )}
+                      <p className="mx-auto mt-5 inline-flex items-center rounded-full bg-fatec-navy-50 px-3.5 py-1.5 text-xs font-semibold text-fatec-navy-800">
+                        {slide.areaTematica}
+                      </p>
+                      <div className="mx-auto mt-6 flex max-w-xl flex-col gap-4 text-left">
+                        {slide.colocados.map((c) => (
+                          <div key={c.posicao} className="flex items-start gap-3.5">
+                            <span
+                              className={`flex-none rounded-full px-3 py-1 text-sm font-bold ${
+                                ESTILO_POSICAO[c.posicao] ?? "bg-fatec-navy-50 text-fatec-navy-800"
+                              }`}
+                            >
+                              {c.posicao}º
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-base font-semibold leading-snug text-fatec-navy-900 md:text-lg">
+                                {c.titulo}
+                              </p>
+                              <p className="mt-0.5 text-sm text-fatec-muted">{c.autores}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {totalSlidesPremiados > 1 && (
+              <div className="mt-6 flex items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => irParaPremiado(-1)}
+                  aria-label="Área anterior"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                >
+                  <ChevronLeft className="h-4.5 w-4.5" strokeWidth={2} />
+                </button>
+                <div aria-hidden className="flex gap-2">
+                  {slidesPremiados.map((slide, i) => (
+                    <span
+                      key={`${slide.eventoNome}-${slide.areaTematica}`}
+                      className={`h-2 rounded-full transition-all duration-500 motion-reduce:transition-none ${
+                        i === indiceVisivelPremiado ? "w-6 bg-fatec-orange-500" : "w-2 bg-fatec-navy-100"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => irParaPremiado(1)}
+                  aria-label="Próxima área"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-fatec-line text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                >
+                  <ChevronRight className="h-4.5 w-4.5" strokeWidth={2} />
+                </button>
+              </div>
+            )}
+          </div>
         </section>
       )}
 
@@ -463,16 +685,17 @@ export default function HomePage() {
           pedido explícito, depois confirmado "quero na horizontal". */}
       <section id="ajuda" className="scroll-mt-20 bg-white px-6 py-16 md:px-12 md:py-20">
         <div className="mx-auto max-w-6xl">
-          <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
-            Ajuda
-          </span>
-          <h2 className="mt-2 text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
-            Vídeos pra te ajudar a usar o SIGMA
-          </h2>
+          <Reveal>
+            <h2 className="text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-3xl">
+              Vídeos pra te ajudar a usar o SIGMA
+            </h2>
+          </Reveal>
 
           <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
-            {VIDEOS_AJUDA.map((video) => (
-              <VideoTutorial key={video.id} video={video} onAbrir={() => setVideoAberto(video)} />
+            {VIDEOS_AJUDA.map((video, i) => (
+              <Reveal key={video.id} delay={i * 100}>
+                <VideoTutorial video={video} onAbrir={() => setVideoAberto(video)} />
+              </Reveal>
             ))}
           </div>
 
@@ -493,33 +716,58 @@ export default function HomePage() {
 
       {/* CTA "Seja avaliador(a)/moderador(a)" (2026-10-28, pedido explícito
           do usuário — hoje o convite pra avaliador/moderador é feito um a
-          um pelo WhatsApp, "às vezes não conhecemos a pessoa"). Faixa
-          estreita entre "Ajuda" e "Como funciona", mesmo espírito da faixa
-          de localização mais abaixo: uma chamada só, sem competir com o
-          botão laranja principal da página (que é "Acessar" no header). */}
-      <section className="bg-fatec-navy-900 px-6 py-10 md:px-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-white/10 text-white">
-              <GraduationCap className="h-5 w-5" strokeWidth={1.75} />
+          um pelo WhatsApp, "às vezes não conhecemos a pessoa"). Faixa entre
+          "Ajuda" e "Como funciona" — aumentada (2026-11-13, pedido explícito
+          do usuário: "ficou muito pequena, tímida... deveria convidar as
+          pessoas mesmo") de uma tarja fininha pra um convite de verdade,
+          mesma linguagem visual do herói lá em cima (blur decorativo +
+          título grande + botão pill) — ainda sem competir com o "Acessar"
+          do header, que continua sendo o único botão sky da página. Sem
+          selo/eyebrow acima do título (2026-11-13) — o ícone some do selo e
+          o contexto "avaliador(a)/moderador(a)" já está no corpo do texto;
+          um selo ali só repetia o que o título e o parágrafo já dizem. */}
+      <section className="relative overflow-hidden bg-fatec-navy-900 px-6 py-16 md:px-12 md:py-24">
+        <div
+          aria-hidden
+          className="sigma-anim-drift pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-fatec-sky-600/20 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="sigma-anim-drift-slow pointer-events-none absolute -bottom-28 left-0 h-72 w-72 rounded-full bg-fatec-orange-500/10 blur-3xl"
+        />
+        <Reveal className="relative mx-auto flex max-w-5xl flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
+          <div className="flex max-w-xl flex-col gap-3">
+            <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-white/10 text-white">
+              <GraduationCap className="h-6 w-6" strokeWidth={1.75} />
             </span>
-            <div>
-              <p className="text-base font-semibold text-white">
-                Quer ser avaliador(a) ou moderador(a) nos nossos eventos?
-              </p>
-              <p className="mt-1 text-sm text-white/70">
-                Deixe seus dados que a comissão científica entra em contato.
-              </p>
-            </div>
+            <h2 className="mt-1 text-2xl font-extrabold leading-[1.15] tracking-[-0.02em] text-white md:text-4xl">
+              Venha fazer parte de projetos incríveis.
+            </h2>
+            <p className="text-base leading-relaxed text-white/80 md:text-lg">
+              Avalie ou modere trabalhos acadêmicos nos nossos eventos e ajude
+              a formar a próxima geração de pesquisadores da região. Deixe
+              seus dados que a comissão científica entra em contato.
+            </p>
           </div>
-          <Link
-            href="/seja-avaliador"
-            className="flex flex-none items-center gap-2 rounded-lg bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
-          >
-            Quero participar
-            <ArrowRight className="h-4 w-4" strokeWidth={2.25} />
-          </Link>
-        </div>
+          <div className="flex flex-none flex-col items-start gap-2.5 md:items-center">
+            <Link
+              href="/seja-avaliador"
+              className="group inline-flex items-center gap-2 rounded-full bg-fatec-orange-500 px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-fatec-orange-500/25 transition-transform hover:-translate-y-0.5 hover:bg-fatec-orange-600"
+            >
+              Quero participar
+              <ArrowRight
+                className="h-4.5 w-4.5 transition-transform group-hover:translate-x-0.5"
+                strokeWidth={2}
+              />
+            </Link>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-white/70">
+              <Clock className="h-3.5 w-3.5 flex-none" strokeWidth={1.75} />
+              Leva menos de 2 minutos
+            </span>
+          </div>
+        </Reveal>
+
+        <WaveDivider fill="#f0f5f8" className="absolute inset-x-0 bottom-0" />
       </section>
 
       <section
@@ -527,25 +775,21 @@ export default function HomePage() {
         className="flex-1 bg-fatec-navy-50 px-6 py-20 md:px-12 md:py-28"
       >
         <div className="mx-auto max-w-4xl">
-          <div className="mb-12 max-w-2xl">
-            <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
-              Como funciona
-            </span>
-            <h2 className="mt-2 text-3xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-4xl">
+          <Reveal className="mb-12 max-w-2xl">
+            <h2 className="text-3xl font-bold tracking-[-0.01em] text-fatec-navy-900 md:text-4xl">
               Da inscrição à certificação, em quatro etapas.
             </h2>
-          </div>
+          </Reveal>
 
-          <FlowCarousel />
+          <Reveal delay={100}>
+            <FlowCarousel />
+          </Reveal>
         </div>
       </section>
 
       <section className="bg-white px-6 py-16 md:px-12 md:py-20">
-        <div className="mx-auto grid max-w-5xl grid-cols-1 items-center gap-10 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-0 md:divide-x md:divide-fatec-line">
+        <Reveal className="mx-auto grid max-w-5xl grid-cols-1 items-center gap-10 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:gap-0 md:divide-x md:divide-fatec-line">
           <div className="flex flex-col gap-3 md:pr-10">
-            <span className="text-sm font-semibold uppercase tracking-[-0.01em] text-fatec-sky-600">
-              Local
-            </span>
             <h2 className="text-2xl font-bold tracking-[-0.01em] text-fatec-navy-900">
               Fatec Ivaiporã
             </h2>
@@ -563,7 +807,7 @@ export default function HomePage() {
               className="h-80 w-full rounded-2xl border border-fatec-line md:h-[420px]"
             />
           </div>
-        </div>
+        </Reveal>
       </section>
 
       <footer className="border-t border-fatec-line bg-fatec-navy-900 px-6 py-14 md:px-12 md:py-16">

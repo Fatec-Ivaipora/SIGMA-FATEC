@@ -149,6 +149,17 @@ export default function LoginPage() {
       <p className="mt-3 text-center text-xs text-fatec-muted">
         Contas de avaliador são criadas pela organização.
       </p>
+
+      {/* Mural de certificados (2026-11-13, pedido explícito do usuário —
+        * "essa consulta... tem que estar em um lugar fácil, acho melhor na
+        * tela de login em algum menu"). Pensado pra quem não tem/não
+        * lembra a senha e pra orientador, que nem tem conta. */}
+      <Link
+        href="/certificados"
+        className="mt-3 block text-center text-sm font-medium text-fatec-sky-600 hover:text-fatec-navy-800"
+      >
+        Procurar certificado de apresentação/premiação sem login
+      </Link>
     </AuthSplitLayout>
   );
 }

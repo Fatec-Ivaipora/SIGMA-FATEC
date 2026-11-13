@@ -335,6 +335,132 @@ export function CertificadosApresentacaoImpressaoPDF({
   );
 }
 
+/** Certificado de apresentação em grupo — mural público (2026-11-13, pedido
+ * explícito do usuário, decisão da comissão: "as declarações de
+ * participação... serão liberadas no sigma deles [individual, sem mudança
+ * nenhuma — ver DeclaracaoPDF/CertificadoApresentacaoPDF acima]. já o
+ * certificado de apresentação e de premiação serão feitos de forma
+ * diferente... certificado pra o GRUPO de cada um desses"). Componente
+ * próprio, SEPARADO de CertificadoApresentacaoPDF — nunca reaproveitado
+ * direto pra não arriscar o fluxo individual já em produção (esse aqui
+ * nunca carrega `registroNumero`: "ainda não tenho os números, por hora
+ * vamos só construir e organizar" — sem linha de registro nenhuma,
+ * diferente do individual). Ver GET /api/certificados/grupo/apresentacao. */
+export function CertificadoGrupoApresentacaoPDF({
+  nomes,
+  eventoNome,
+  dataRealizacao,
+  tituloTrabalho,
+  assinantes,
+}: {
+  nomes: string[];
+  eventoNome: string;
+  dataRealizacao: string;
+  tituloTrabalho: string;
+  assinantes: AssinanteCertificado[];
+}) {
+  const plural = nomes.length > 1;
+  return (
+    <Document>
+      <Page size="A4" orientation="landscape" style={estiloApresentacao.page}>
+        <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
+        <View style={estiloApresentacao.conteudo}>
+          <Text style={estiloApresentacao.rotulo}>Declaramos que</Text>
+          <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes.map((n) => n.toUpperCase()))}</Text>
+          <Text style={estiloApresentacao.corpo}>
+            {plural ? "participaram" : "participou"} da{" "}
+            <Text style={estiloApresentacao.negrito}>{eventoNome}</Text>, promovida
+            pela FATEC - Faculdade de Tecnologia do Vale do Ivaí, realizada no
+            dia {formatarDataExtenso(dataRealizacao)}, em Ivaiporã – PR,
+            apresentando o trabalho intitulado{"\n"}“
+            <Text style={estiloApresentacao.negrito}>{tituloTrabalho}</Text>”.
+          </Text>
+          <Text style={estiloApresentacao.data}>
+            Ivaiporã, {formatarDataExtenso(dataRealizacao)}.
+          </Text>
+          <View style={estiloApresentacao.assinaturas}>
+            {assinantes.map((a) => (
+              <BlocoAssinatura
+                key={a.id}
+                imagem={IMAGEM_POR_ASSINANTE[a.id]}
+                nome={a.nome}
+                cargo={a.cargo}
+                estilos={estiloApresentacao}
+              />
+            ))}
+          </View>
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
+/** Certificado de PREMIAÇÃO em grupo — mural público, mesmo contexto de
+ * CertificadoGrupoApresentacaoPDF acima, mas achado real do usuário
+ * (2026-11-13): "o de premiação é diferente do de apresentação" — não é só
+ * trocar uma palavra (como premiado/não-premiado já fazia no certificado
+ * individual antigo), é um certificado com identidade própria: título
+ * "CERTIFICADO DE RECONHECIMENTO" e texto citando a POSIÇÃO e a ÁREA
+ * TEMÁTICA, linguagem do edital 6.6 ("os três trabalhos mais bem
+ * pontuados... em cada categoria, serão premiados com certificado de
+ * reconhecimento"). Sem registroNumero, mesmo motivo do de apresentação. */
+export function CertificadoGrupoPremiacaoPDF({
+  nomes,
+  eventoNome,
+  dataRealizacao,
+  tituloTrabalho,
+  areaTematica,
+  posicao,
+  assinantes,
+}: {
+  nomes: string[];
+  eventoNome: string;
+  dataRealizacao: string;
+  tituloTrabalho: string;
+  areaTematica: string;
+  posicao: number;
+  assinantes: AssinanteCertificado[];
+}) {
+  const plural = nomes.length > 1;
+  const RUBRICA_POSICAO: Record<number, string> = { 1: "1º lugar", 2: "2º lugar", 3: "3º lugar" };
+  return (
+    <Document>
+      <Page size="A4" orientation="landscape" style={estiloApresentacao.page}>
+        <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
+        <View style={estiloApresentacao.conteudo}>
+          <Text style={estiloApresentacao.rotulo}>CERTIFICADO DE RECONHECIMENTO</Text>
+          <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes.map((n) => n.toUpperCase()))}</Text>
+          <Text style={estiloApresentacao.corpo}>
+            {plural ? "foram premiados" : "foi premiado(a)"} com o{" "}
+            <Text style={estiloApresentacao.negrito}>
+              {RUBRICA_POSICAO[posicao] ?? `${posicao}º lugar`}
+            </Text>{" "}
+            na categoria <Text style={estiloApresentacao.negrito}>{areaTematica.toLocaleUpperCase("pt-BR")}</Text>
+            {" "}da <Text style={estiloApresentacao.negrito}>{eventoNome}</Text>, promovida pela FATEC
+            - Faculdade de Tecnologia do Vale do Ivaí, realizada no dia{" "}
+            {formatarDataExtenso(dataRealizacao)}, em Ivaiporã – PR, com o trabalho intitulado
+            {"\n"}“<Text style={estiloApresentacao.negrito}>{tituloTrabalho}</Text>”.
+          </Text>
+          <Text style={estiloApresentacao.data}>
+            Ivaiporã, {formatarDataExtenso(dataRealizacao)}.
+          </Text>
+          <View style={estiloApresentacao.assinaturas}>
+            {assinantes.map((a) => (
+              <BlocoAssinatura
+                key={a.id}
+                imagem={IMAGEM_POR_ASSINANTE[a.id]}
+                nome={a.nome}
+                cargo={a.cargo}
+                estilos={estiloApresentacao}
+              />
+            ))}
+          </View>
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
 function PaginaApresentacao({
   nomes,
   eventoNome,
@@ -389,7 +515,7 @@ function PaginaApresentacao({
 }
 
 const PAPEL_TEXTO: Record<
-  "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante",
+  "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante" | "aluno",
   string
 > = {
   avaliador: "avaliador(a) dos trabalhos",
@@ -401,6 +527,15 @@ const PAPEL_TEXTO: Record<
   // Certificado de participação (2026-09-22) — evento "simples", sem
   // trabalho por trás, só a inscrição paga (ou gratuita) da pessoa.
   participante: "participante",
+  // Aluno/autor de trabalho (2026-11-13, pedido explícito do usuário —
+  // "emitir certificado teria que ser o certificado de participação do
+  // evento com as horas que a pessoa ganhou... isso vai de cada pessoa que
+  // pagou, esse é o certificado individual"). Antes usava
+  // CertificadoApresentacaoPDF (cita o trabalho/título) pra isso — essa
+  // parte virou exclusividade do mural público (CertificadoGrupoApresenta-
+  // çãoPDF/CertificadoGrupoPremiacaoPDF), então o individual volta a ser
+  // só participação + carga horária, igual qualquer outro papel aqui.
+  aluno: "autor(a) de trabalho científico",
 };
 
 const estiloDeclaracao = StyleSheet.create({
@@ -561,7 +696,7 @@ export function DeclaracaoPDF({
   registroNumero,
 }: {
   nome: string;
-  papel: "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante";
+  papel: "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante" | "aluno";
   eventoNome: string;
   dataRealizacao: string;
   // Opcional (2026-09-30) — só vem preenchido pra evento "simples" de mais

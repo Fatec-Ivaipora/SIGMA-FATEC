@@ -123,7 +123,7 @@ export function DeclaracoesMenu({
         type="button"
         onClick={() => setAberto((v) => !v)}
         aria-expanded={aberto}
-        className="flex items-center gap-1 text-base font-semibold text-white/85 transition-colors hover:text-white md:text-lg"
+        className="flex items-center gap-1 whitespace-nowrap text-base font-semibold text-white/85 transition-colors hover:text-white md:text-lg"
       >
         Declarações
         <ChevronDown

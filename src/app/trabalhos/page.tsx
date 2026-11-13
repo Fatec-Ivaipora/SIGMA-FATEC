@@ -18,6 +18,7 @@ import {
   Users,
   Printer,
   Loader2,
+  Megaphone,
 } from "lucide-react";
 import { serverTimestamp, writeBatch, doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -661,15 +662,62 @@ export default function TrabalhosAdminPage() {
     return posicoes;
   }, [analiseResultadoPorArea]);
 
-  // Desempate manual (2026-11-11, pedido explícito do usuário — achado
+  // Empate que persiste mesmo com a nota do moderador (2026-11-11, achado
   // real: "ano passado mesmo com o desempate teve caso de 10 trabalhos
-  // terem nota máxima no desempate"). Só entra aqui quando o empate
-  // PERSISTE depois da nota do moderador — todo mundo do grupo empatado
-  // já com `notaModerador` (quem ainda espera nota continua só como
-  // "Aguardando nota do moderador" na tabela de sempre, não aparece
-  // aqui). Confirmado com o usuário: no máximo 1 grupo preso por área,
-  // porque `vagasPodio` nunca passa de 3 (não cabe 2 grupos de 2+ dentro
-  // de só 3 vagas).
+  // terem nota máxima no desempate"). Painel dedicado — removido o
+  // seletor de posição manual (travava sempre que o grupo empatado era
+  // maior que as vagas reais abertas, ver INFO.md) e substituído por
+  // edição direta da nota (reaproveita abrirEdicaoNotaDes/
+  // salvarNotaDesManual, a mesma correção manual que já existe na tabela
+  // principal) — a comissão ajusta a nota de cada um até os valores não
+  // empatarem mais, e `analisarEmpatesPorArea` resolve a posição sozinho,
+  // sem precisar de um campo `posicaoManual` separado. Mostra o POOL
+  // INTEIRO da área (não só os empatados) — pedido explícito do usuário
+  // (2026-11-11, "preciso que eles fiquem em empatados para eu poder
+  // definir a nota e depois enviar") — se só mostrasse os empatados, cada
+  // trabalho sumiria da tela assim que a nota dele parasse de empatar,
+  // antes da comissão terminar de ajustar o grupo inteiro.
+  type AreaComEmpatePersistente = {
+    chave: string;
+    eventoNome: string;
+    areaTematica: string;
+    pool: Trabalho[];
+    idsEmpatadosDaArea: Set<string>;
+  };
+  const areasComEmpatePersistente = useMemo((): AreaComEmpatePersistente[] => {
+    const resultado: AreaComEmpatePersistente[] = [];
+    for (const [chave, analise] of analiseResultadoPorArea) {
+      if (analise.empatados.length === 0) continue;
+      const idsEmpatadosDaArea = new Set(analise.empatados);
+      const pool = trabalhos.filter(
+        (t) =>
+          STATUS_JA_AVALIADO.includes(t.status) &&
+          typeof t.notaAvaliador === "number" &&
+          t.compareceuApresentacao !== false &&
+          `${t.eventoId}::${t.areaTematica}` === chave,
+      );
+      if (eventoId !== "todos" && pool[0]?.eventoId !== eventoId) continue;
+      const todosComNotaModerador = pool
+        .filter((t) => idsEmpatadosDaArea.has(t.id))
+        .every((t) => typeof t.notaModerador === "number");
+      if (!todosComNotaModerador) continue;
+      pool.sort((a, b) => {
+        const diffAv = (b.notaAvaliador ?? 0) - (a.notaAvaliador ?? 0);
+        if (diffAv !== 0) return diffAv;
+        return (b.notaModerador ?? 0) - (a.notaModerador ?? 0);
+      });
+      const eventoNome = eventos.find((e) => e.id === pool[0]?.eventoId)?.nome ?? "";
+      resultado.push({
+        chave,
+        eventoNome,
+        areaTematica: pool[0]?.areaTematica ?? "",
+        pool,
+        idsEmpatadosDaArea,
+      });
+    }
+    return resultado;
+  }, [analiseResultadoPorArea, trabalhos, eventos, eventoId]);
+
   // Base sem o filtro de presença ainda — serve tanto pra contar quantos
   // vieram/faltaram (badge do filtro abaixo) quanto como ponto de partida
   // de trabalhosFiltrados, pra não duplicar a mesma lista de condições
@@ -1047,6 +1095,33 @@ export default function TrabalhosAdminPage() {
     setGerandoPodio(false);
   }
 
+  // Mural público de certificados de apresentação/premiação (2026-11-13,
+  // pedido explícito do usuário, decisão com o chefe da comissão: "ter um
+  // lugar pra postar igual do edital... subimos todos lá e deixamos
+  // exposto pra eles"). Em vez de gerar e subir centenas de arquivos na
+  // mão, o PDF de cada trabalho é gerado na hora que alguém clica (ver
+  // GET /api/certificados/grupo/apresentacao|premiacao) — sempre reflete
+  // o estado atual (nota corrigida, posição recalculada etc.), sem
+  // arquivo nenhum pra re-subir depois de qualquer ajuste. Esse botão só
+  // ativa/desativa o mural (mesmo padrão de "Consulta pública" em
+  // Ensalamento); link fica em /certificados/{eventoId}.
+  const [modalCertificadosPublicos, setModalCertificadosPublicos] = useState(false);
+  const [alternandoCertificadosPublicos, setAlternandoCertificadosPublicos] = useState(false);
+  const [copiouLinkCertificados, setCopiouLinkCertificados] = useState(false);
+  const urlCertificadosPublicos =
+    typeof window !== "undefined" && eventoId !== "todos"
+      ? `${window.location.origin}/certificados/${eventoId}`
+      : "";
+  async function alternarCertificadosPublicos(ativar: boolean) {
+    if (eventoId === "todos") return;
+    setAlternandoCertificadosPublicos(true);
+    try {
+      await updateDoc(doc(db, "eventos", eventoId), { certificadosGrupoPublicosAtivo: ativar });
+    } finally {
+      setAlternandoCertificadosPublicos(false);
+    }
+  }
+
   // "Liberar certificados" age sobre tudo que está aceito e ainda não foi
   // liberado, dentro dos filtros ativos — sem precisar selecionar nada.
   const trabalhosPendentesDeLiberacao = useMemo(
@@ -1057,6 +1132,20 @@ export default function TrabalhosAdminPage() {
   const monitoresPendentesDeLiberacao = useMemo(
     () => monitoresDoEventoAtual.filter((m) => !m.certificadoLiberado),
     [monitoresDoEventoAtual],
+  );
+
+  // Quantas PESSOAS vão ganhar certificado individual, não quantos
+  // trabalhos (2026-11-13, pedido explícito do usuário — "quero que lá
+  // apareça quantos certificados vão ser criados individualmente, porque
+  // lá está 292 [contando trabalho] no momento"). Cada trabalho vira 1
+  // certificado por integrante (aluno + cada colega), não 1 só.
+  const pessoasPendentesDeLiberacao = useMemo(
+    () =>
+      trabalhosPendentesDeLiberacao.reduce(
+        (soma, t) => soma + 1 + (t.participantesUids?.length ?? 0),
+        0,
+      ) + monitoresPendentesDeLiberacao.length,
+    [trabalhosPendentesDeLiberacao, monitoresPendentesDeLiberacao],
   );
 
   // Checkbox de seleção também aparece no Resultado Final (2026-08-31) —
@@ -1305,6 +1394,19 @@ export default function TrabalhosAdminPage() {
   // (pedido do usuário, 2026-08-28). Libera junto os monitores do evento
   // selecionado (2026-09-01) — eles não têm trabalho nenhum, então entram
   // por fora dessa lista.
+  // Resultado da numeração em lote (2026-11-13, pedido explícito do
+  // usuário — "precisamos gerar a ata e avisar qual foi o último número
+  // usado para eles poderem continuar", mesmo caso da Semana de
+  // Medicina). Fica na tela até fechar — é informação que precisa ser
+  // copiada pra avisar quem continua a numeração depois.
+  const [resultadoNumeracao, setResultadoNumeracao] = useState<{
+    totalPessoas: number;
+    naoPagos: number;
+    primeiroNumero: number | null;
+    ultimoNumero: number | null;
+  } | null>(null);
+  const [erroNumeracao, setErroNumeracao] = useState<string | null>(null);
+
   async function liberarTodosCertificados() {
     const batch = writeBatch(db);
     for (const t of trabalhosPendentesDeLiberacao) {
@@ -1319,6 +1421,24 @@ export default function TrabalhosAdminPage() {
       });
     }
     await batch.commit();
+
+    // Numera todo mundo (por pessoa, não por trabalho) na hora — nunca
+    // mais na hora do download (ver /api/certificados/numerar-trabalhos).
+    // Só faz sentido com um evento específico escolhido (número é por
+    // evento); idempotente, seguro clicar de novo depois (quem já tem
+    // número mantém).
+    if (!user || eventoId === "todos") return;
+    setErroNumeracao(null);
+    setResultadoNumeracao(null);
+    const idToken = await user.getIdToken();
+    const r = await fetch("/api/certificados/numerar-trabalhos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ eventoId }),
+    });
+    const corpo = await r.json();
+    if (!r.ok) setErroNumeracao(corpo.erro ?? "Não foi possível numerar os certificados individuais.");
+    else setResultadoNumeracao(corpo);
   }
 
   // Resolve de uma vez toda área que NÃO tem empate na fronteira do top 3
@@ -2126,10 +2246,24 @@ export default function TrabalhosAdminPage() {
                           className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
                         >
                           <Award className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                          Emitir certificados
-                          {trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length >
-                            0 &&
-                            ` (${trabalhosPendentesDeLiberacao.length + monitoresPendentesDeLiberacao.length})`}
+                          Emitir certificados individuais
+                          {pessoasPendentesDeLiberacao > 0 && ` (${pessoasPendentesDeLiberacao})`}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={eventoId === "todos"}
+                          onClick={() => {
+                            setModalCertificadosPublicos(true);
+                            setMenuLoteAberto(false);
+                          }}
+                          title="Mural público (sem login) com os certificados de apresentação e de premiação de cada trabalho"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted disabled:hover:bg-transparent"
+                        >
+                          <Megaphone className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                          Emitir certificados públicos
+                          {eventoSelecionado?.certificadosGrupoPublicosAtivo && (
+                            <span className="ml-auto h-1.5 w-1.5 flex-none rounded-full bg-emerald-500" />
+                          )}
                         </button>
                         <button
                           type="button"
@@ -2158,6 +2292,104 @@ export default function TrabalhosAdminPage() {
               )}
             </div>
           </div>
+
+          {etapa === "apresentacao" && areasComEmpatePersistente.length > 0 && (
+            <div className="mt-4 flex flex-col gap-4">
+              {areasComEmpatePersistente.map((area) => {
+                const analise = analiseResultadoPorArea.get(area.chave)!;
+                return (
+                  <div
+                    key={area.chave}
+                    className="rounded-2xl border border-fatec-orange-200 bg-fatec-orange-50/60 p-5"
+                  >
+                    <p className="text-sm font-semibold text-fatec-orange-800">
+                      Empate persiste mesmo com a nota do moderador — {area.eventoNome} ·{" "}
+                      {area.areaTematica}
+                    </p>
+                    <p className="mt-0.5 text-sm text-fatec-orange-700/80">
+                      Ajuste a nota do desempate de cada um até ninguém mais empatar — a posição
+                      final é recalculada sozinha. Clique na nota pra editar.
+                    </p>
+
+                    <div className="mt-3 overflow-hidden rounded-xl border border-fatec-line bg-white">
+                      {area.pool.map((t) => {
+                        const empatado = area.idsEmpatadosDaArea.has(t.id);
+                        const posicao = analise.posicoes[t.id];
+                        return (
+                          <div
+                            key={t.id}
+                            className={`flex items-center justify-between gap-3 border-b border-fatec-line px-4 py-2.5 last:border-b-0 ${
+                              empatado ? "bg-fatec-sky-50" : ""
+                            }`}
+                          >
+                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-fatec-navy-900">
+                              {tituloExibicao(t.titulo)}
+                            </p>
+                            <span className="w-10 flex-none text-center text-sm font-semibold text-fatec-ink">
+                              {t.notaAvaliador}
+                            </span>
+                            <div className="w-14 flex-none text-center">
+                              {editandoNotaDes === t.id ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={7}
+                                    max={21}
+                                    autoFocus
+                                    value={valorNotaDesEditado}
+                                    onChange={(e) => setValorNotaDesEditado(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") salvarNotaDesManual(t.id);
+                                      if (e.key === "Escape") setEditandoNotaDes(null);
+                                    }}
+                                    onBlur={() => salvarNotaDesManual(t.id)}
+                                    className="w-14 rounded-lg border border-fatec-sky-600 px-1.5 py-0.5 text-center text-sm font-semibold text-fatec-navy-900 outline-none"
+                                  />
+                                  {erroNotaDes && (
+                                    <span className="whitespace-nowrap text-[11px] font-medium text-rose-600">
+                                      {erroNotaDes}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : perfil?.papel === "admin" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => abrirEdicaoNotaDes(t)}
+                                  title="Clique pra corrigir manualmente a nota do desempate"
+                                  className="rounded-lg px-1.5 py-0.5 text-sm font-semibold text-fatec-ink transition-colors hover:bg-fatec-navy-50"
+                                >
+                                  {t.notaModerador ?? "—"}
+                                </button>
+                              ) : (
+                                <span className="text-sm font-semibold text-fatec-ink">
+                                  {t.notaModerador ?? "—"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="w-28 flex-none text-right">
+                              {empatado ? (
+                                <span className="text-xs font-semibold text-fatec-sky-700">
+                                  Empatado
+                                </span>
+                              ) : posicao ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${CORES_POSICAO_PODIO[posicao] ?? ""}`}
+                                >
+                                  {posicao}º Premiado
+                                </span>
+                              ) : (
+                                <span className="text-xs text-fatec-muted">Aceito</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-4 overflow-hidden rounded-2xl border border-fatec-line bg-white">
             <div className="overflow-x-auto">
@@ -3061,6 +3293,99 @@ export default function TrabalhosAdminPage() {
                 </button>
               )}
             </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={modalCertificadosPublicos}
+        onClose={() => setModalCertificadosPublicos(false)}
+        title="Emitir certificados públicos"
+      >
+        <p className="text-sm text-fatec-ink">
+          Mural sem login, igual o de Editais — a pessoa busca pelo nome ou
+          título do trabalho e baixa o certificado de apresentação e/ou de
+          premiação na hora. Não precisa gerar nem subir nada: assim que o
+          trabalho fica &quot;Aceito&quot;/premiado, já aparece lá.
+        </p>
+        <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-fatec-line px-4 py-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-fatec-navy-900">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                eventoSelecionado?.certificadosGrupoPublicosAtivo ? "bg-emerald-500" : "bg-fatec-muted"
+              }`}
+            />
+            {eventoSelecionado?.certificadosGrupoPublicosAtivo ? "Ativo" : "Desativado"}
+          </span>
+          <button
+            type="button"
+            onClick={() => alternarCertificadosPublicos(!eventoSelecionado?.certificadosGrupoPublicosAtivo)}
+            disabled={alternandoCertificadosPublicos}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              eventoSelecionado?.certificadosGrupoPublicosAtivo
+                ? "border border-fatec-line text-fatec-navy-900 hover:bg-fatec-navy-50"
+                : "bg-fatec-orange-500 text-white shadow-md shadow-fatec-orange-500/25 hover:bg-fatec-orange-600"
+            }`}
+          >
+            {alternandoCertificadosPublicos
+              ? "Salvando..."
+              : eventoSelecionado?.certificadosGrupoPublicosAtivo
+                ? "Desativar"
+                : "Ativar"}
+          </button>
+        </div>
+
+        {eventoSelecionado?.certificadosGrupoPublicosAtivo && (
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              readOnly
+              value={urlCertificadosPublicos}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 truncate rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs text-fatec-ink outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(urlCertificadosPublicos);
+                setCopiouLinkCertificados(true);
+                setTimeout(() => setCopiouLinkCertificados(false), 2000);
+              }}
+              className="flex-none rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+            >
+              {copiouLinkCertificados ? "Copiado!" : "Copiar link"}
+            </button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!resultadoNumeracao || !!erroNumeracao}
+        onClose={() => {
+          setResultadoNumeracao(null);
+          setErroNumeracao(null);
+        }}
+        title="Numeração dos certificados individuais"
+      >
+        {erroNumeracao && <p className="text-sm text-rose-700">{erroNumeracao}</p>}
+        {resultadoNumeracao && (
+          <>
+            <p className="text-sm text-fatec-ink">
+              {resultadoNumeracao.totalPessoas} pessoa(s) numerada(s) — quem já tinha número de
+              antes manteve o mesmo, só quem era novo ganhou agora.
+            </p>
+            {resultadoNumeracao.naoPagos > 0 && (
+              <p className="mt-1 text-sm text-fatec-muted">
+                {resultadoNumeracao.naoPagos} pessoa(s) ficaram de fora por ainda não terem
+                pago a inscrição.
+              </p>
+            )}
+            {resultadoNumeracao.primeiroNumero !== null && (
+              <p className="mt-3 rounded-xl bg-fatec-navy-50 px-4 py-3 text-sm font-semibold text-fatec-navy-900">
+                Números de {resultadoNumeracao.primeiroNumero} até{" "}
+                {resultadoNumeracao.ultimoNumero} — esse último é o que avisa pro próximo
+                evento continuar a sequência.
+              </p>
+            )}
           </>
         )}
       </Modal>
