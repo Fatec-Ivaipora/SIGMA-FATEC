@@ -477,6 +477,30 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **TCC: certificado de banca** (6ª e última fase do plano
+  de implementação do novo tipo de evento "Apresentação de TCC"). Novo
+  `CertificadoBancaTCCPDF` em `certificadosPdf.tsx` — redação copiada quase
+  ao pé da letra do modelo real (`Certificados 2026.pdf`, pasta de exemplos
+  da Professora responsável): "A Faculdade de Tecnologia do Vale do Ivaí
+  certifica que os(as) professores(as): [3 membros] – Membro da Banca
+  Avaliadora / participaram como membros da banca avaliadora do Trabalho de
+  Conclusão de Curso (TCC) intitulado '[título]', apresentado por [aluno],
+  sob orientação de [orientador]... do Curso de Graduação em [curso]" —
+  reaproveita o visual de `estiloDeclaracao`/`PaginaDeclaracao` (mesmo
+  cabeçalho/rodapé/assinatura de sempre), só a redação do corpo é nova (não
+  existe papel "banca de TCC" em `PAPEL_TEXTO`, por isso não reaproveita
+  `DeclaracaoPDF` direto). Rota nova `/api/certificados/banca-tcc`,
+  autenticada (diferente do mural público de MAC — TCC ainda não tem
+  equivalente a `certificadosGrupoPublicosAtivo`): aluno, orientador,
+  qualquer um dos 2 avaliadores da banca, ou admin/organização do evento
+  podem baixar. Botão "Certificado da banca" aparece em dois lugares pra
+  trabalho `tcc_aprovado`: aba Resultado de `/trabalhos` (admin) e "Minhas
+  bancas" em `/avaliador/banca` (pros próprios membros da banca). Isso
+  fecha as 6 fases do plano original — o tipo de evento "Apresentação de
+  TCC" está funcionalmente completo de ponta a ponta (inscrição → banca →
+  avaliação → resultado → certificado), ainda sem nenhum teste real contra
+  produção.
+
 - **2026-11-16** — **TCC: rubrica de 7 critérios com peso, nota final e
   aprovação** (5ª fase do plano). `CriterioDef` ganha `peso?: number`
   (ausente/sempre 1 pros critérios de MAC, que continuam exatamente iguais

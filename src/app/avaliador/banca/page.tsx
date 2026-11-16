@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarCheck, Check } from "lucide-react";
+import { CalendarCheck, Check, Download } from "lucide-react";
+import type { User } from "firebase/auth";
 import { Sidebar } from "@/components/Sidebar";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
+import { baixarCertificadoBancaTCC } from "@/lib/baixarCertificado";
 import {
   diasDoIntervalo,
   salvarMinhaDisponibilidade,
@@ -211,7 +213,7 @@ export default function BancaDisponibilidadePage() {
 
               <MinhasBancasView
                 trabalhos={trabalhos.filter((t) => t.eventoId === evento.id)}
-                uid={user?.uid}
+                user={user}
                 meuNome={perfil.nome}
               />
             </div>
@@ -231,17 +233,32 @@ export default function BancaDisponibilidadePage() {
  * das duas coisas no mesmo evento. */
 function MinhasBancasView({
   trabalhos,
-  uid,
+  user,
   meuNome,
 }: {
   trabalhos: Trabalho[];
-  uid: string | undefined;
+  user: User | null | undefined;
   meuNome: string;
 }) {
+  const uid = user?.uid;
   const minhasBancas = trabalhos.filter(
     (t) => t.bancaData && (t.orientadorUid === uid || t.bancaAvaliadores?.some((a) => a.uid === uid)),
   );
   const [avaliandoId, setAvaliandoId] = useState<string | null>(null);
+  const [baixandoId, setBaixandoId] = useState<string | null>(null);
+  const [erroBaixar, setErroBaixar] = useState<string | null>(null);
+
+  async function baixarCertificado(trabalhoId: string) {
+    if (!user) return;
+    setErroBaixar(null);
+    setBaixandoId(trabalhoId);
+    try {
+      const resultado = await baixarCertificadoBancaTCC(user, trabalhoId);
+      if (!resultado.ok) setErroBaixar(resultado.erro);
+    } finally {
+      setBaixandoId(null);
+    }
+  }
 
   if (minhasBancas.length === 0) return null;
 
@@ -260,19 +277,32 @@ function MinhasBancasView({
                     {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
-                {jaAvaliei ? (
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    Nota lançada
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAvaliandoId(avaliandoId === t.id ? null : t.id)}
-                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
-                  >
-                    {avaliandoId === t.id ? "Fechar" : "Dar nota"}
-                  </button>
-                )}
+                <div className="flex flex-none items-center gap-2">
+                  {t.status === "tcc_aprovado" && (
+                    <button
+                      type="button"
+                      onClick={() => baixarCertificado(t.id)}
+                      disabled={baixandoId === t.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                    >
+                      <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      {baixandoId === t.id ? "Gerando..." : "Certificado"}
+                    </button>
+                  )}
+                  {jaAvaliei ? (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Nota lançada
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAvaliandoId(avaliandoId === t.id ? null : t.id)}
+                      className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                    >
+                      {avaliandoId === t.id ? "Fechar" : "Dar nota"}
+                    </button>
+                  )}
+                </div>
               </div>
               {avaliandoId === t.id && !jaAvaliei && uid && (
                 <FormularioNotaBanca
@@ -286,6 +316,7 @@ function MinhasBancasView({
           );
         })}
       </div>
+      {erroBaixar && <p className="text-sm text-rose-600">{erroBaixar}</p>}
     </div>
   );
 }

@@ -19,7 +19,9 @@ import {
   Printer,
   Loader2,
   Megaphone,
+  Download,
 } from "lucide-react";
+import type { User } from "firebase/auth";
 import { serverTimestamp, writeBatch, doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
@@ -50,7 +52,11 @@ import {
   notificarAlteracaoAdmin,
 } from "@/lib/notificarEmail";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
-import { baixarCertificadosImpressao, baixarPodioPorArea } from "@/lib/baixarCertificado";
+import {
+  baixarCertificadosImpressao,
+  baixarPodioPorArea,
+  baixarCertificadoBancaTCC,
+} from "@/lib/baixarCertificado";
 import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
 import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
@@ -416,14 +422,30 @@ const STATUS_POR_ETAPA_TCC: Record<EtapaTCC, TrabalhoStatus[]> = {
 function TrabalhosTCCView({
   evento,
   trabalhosDoEvento,
+  user,
   onDecidirResultado,
 }: {
   evento: Evento;
   trabalhosDoEvento: Trabalho[];
+  user: User | null | undefined;
   onDecidirResultado: (trabalho: Trabalho, aprovado: boolean) => void;
 }) {
   const [etapa, setEtapa] = useState<EtapaTCC>("inscricao");
   const [busca, setBusca] = useState("");
+  const [baixandoId, setBaixandoId] = useState<string | null>(null);
+  const [erroBaixar, setErroBaixar] = useState<string | null>(null);
+
+  async function handleBaixarCertificado(trabalhoId: string) {
+    if (!user) return;
+    setErroBaixar(null);
+    setBaixandoId(trabalhoId);
+    try {
+      const resultado = await baixarCertificadoBancaTCC(user, trabalhoId);
+      if (!resultado.ok) setErroBaixar(resultado.erro);
+    } finally {
+      setBaixandoId(null);
+    }
+  }
 
   const contagem = (e: EtapaTCC) =>
     trabalhosDoEvento.filter((t) => STATUS_POR_ETAPA_TCC[e].includes(t.status)).length;
@@ -526,6 +548,17 @@ function TrabalhosTCCView({
                   Nota final: {t.notaFinalBanca.toFixed(1)}
                 </span>
               )}
+              {etapa === "resultado" && t.status === "tcc_aprovado" && (
+                <button
+                  type="button"
+                  onClick={() => handleBaixarCertificado(t.id)}
+                  disabled={baixandoId === t.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {baixandoId === t.id ? "Gerando..." : "Certificado da banca"}
+                </button>
+              )}
               {etapa === "avaliacao" && (t.notasBanca?.length ?? 0) === 3 && (
                 <>
                   <button
@@ -554,6 +587,7 @@ function TrabalhosTCCView({
           </p>
         )}
       </div>
+      {erroBaixar && <p className="mt-2 text-sm text-rose-600">{erroBaixar}</p>}
       {evento.cursoRestrito && (
         <p className="mt-4 text-xs text-fatec-muted">
           Evento restrito ao curso de {evento.cursoRestrito}.
@@ -1972,6 +2006,7 @@ export default function TrabalhosAdminPage() {
           <TrabalhosTCCView
             evento={eventoSelecionado}
             trabalhosDoEvento={trabalhos.filter((t) => t.eventoId === eventoSelecionado.id)}
+            user={user}
             onDecidirResultado={decidirResultadoTCC}
           />
         </div>

@@ -269,6 +269,26 @@ export async function baixarPodioPorArea(
   return { ok: true };
 }
 
+/** Certificado de banca de TCC (2026-11-16) — ver /api/certificados/banca-tcc. */
+export async function baixarCertificadoBancaTCC(
+  user: User,
+  trabalhoId: string,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`/api/certificados/banca-tcc?trabalhoId=${encodeURIComponent(trabalhoId)}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o certificado." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "banca-tcc.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
 /** Etiquetas das pastas (folha Carta, 20 por folha) — ver /api/trabalhos/etiquetas. */
 export async function baixarEtiquetasPastas(
   user: User,

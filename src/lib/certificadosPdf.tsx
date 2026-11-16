@@ -857,6 +857,116 @@ export function DeclaracoesEmLotePDF({ declaracoes }: { declaracoes: DadosDeclar
   );
 }
 
+export type DadosCertificadoBancaTCC = {
+  // Os 3 membros da banca (orientador + 2 avaliadores), na ordem que devem
+  // aparecer — a aplicação decide a ordem, esse componente só imprime.
+  banca: { nome: string }[];
+  tituloTrabalho: string;
+  alunoNomes: string[];
+  nomeOrientador: string;
+  curso: string;
+  assinantes: AssinanteCertificado[];
+  dataAssinatura: string;
+  logoCabecalhoId?: string;
+};
+
+/** Certificado de banca de TCC (2026-11-16, pedido explícito do usuário) —
+ * redação copiada quase ao pé da letra do modelo real
+ * (`Certificados 2026.pdf`, pasta de exemplos da Professora responsável):
+ * "A Faculdade de Tecnologia do Vale do Ivaí certifica que os(as)
+ * professores(as): [3 membros] – Membro da Banca Avaliadora / participaram
+ * como membros da banca avaliadora do Trabalho de Conclusão de Curso (TCC)
+ * intitulado: '[título]', apresentado por [aluno(s)], sob orientação de
+ * [orientador] – Professor(a) Orientador(a), do Curso de Graduação em
+ * [curso]." Reaproveita o MESMO visual de `estiloDeclaracao`/
+ * `PaginaDeclaracao` acima (cabeçalho com logo + credenciamento, rodapé,
+ * bloco de assinatura) — a redação do corpo é inteiramente própria, por
+ * isso não reaproveita `DeclaracaoPDF` nem `PAPEL_TEXTO` (não existe um
+ * papel "banca de TCC" genérico, é sempre os 3 nomes + a frase inteira). */
+function PaginaCertificadoBancaTCC({
+  banca,
+  tituloTrabalho,
+  alunoNomes,
+  nomeOrientador,
+  curso,
+  assinantes,
+  dataAssinatura,
+  logoCabecalhoId,
+}: DadosCertificadoBancaTCC) {
+  const logoDoEvento = logoCabecalhoId ? LOGO_CABECALHO[logoCabecalhoId] : undefined;
+  return (
+    <Page size="A4" wrap={false} style={estiloDeclaracao.page}>
+      <View style={estiloDeclaracao.cabecalho}>
+        {logoDoEvento ? (
+          <Image src={logoDoEvento} style={estiloDeclaracao.logoCabecalho} />
+        ) : (
+          <Image src={LOGO_PADRAO} style={estiloDeclaracao.logoCabecalhoPadrao} />
+        )}
+        <Text style={estiloDeclaracao.textoCredenciamento}>
+          Mantida pela União de Ensino Superior do Vale do Ivaí Ltda -
+          UNESVI{"\n"}
+          Credenciamento EaD - Portaria n° 874 de 28 de novembro de 2025
+          {"\n"}
+          Recredenciamento - Portaria n° 878 de 28 de novembro de 2025
+        </Text>
+      </View>
+
+      <Text style={estiloDeclaracao.titulo}>DECLARAÇÃO</Text>
+
+      <Text style={estiloDeclaracao.corpo}>
+        A Faculdade de Tecnologia do Vale do Ivaí certifica que os(as)
+        professores(as):{"\n\n"}
+        {banca
+          .map((b) => `${b.nome.toUpperCase()} – Membro da Banca Avaliadora`)
+          .join("\n")}
+        {"\n\n"}
+        participaram como membros da banca avaliadora do Trabalho de
+        Conclusão de Curso (TCC) intitulado:{" "}
+        <Text style={estiloDeclaracao.negrito}>“{tituloTrabalho}”</Text>,
+        apresentado por{" "}
+        <Text style={estiloDeclaracao.negrito}>
+          {juntarNomes(alunoNomes.map((n) => n.toUpperCase()))}
+        </Text>
+        , sob orientação de{"\n"}
+        <Text style={estiloDeclaracao.negrito}>
+          {nomeOrientador.toUpperCase()}
+        </Text>{" "}
+        – Professor(a) Orientador(a), do Curso de Graduação em{" "}
+        <Text style={estiloDeclaracao.negrito}>{curso.toLocaleUpperCase("pt-BR")}</Text>.
+      </Text>
+
+      <Text style={estiloDeclaracao.data}>
+        Ivaiporã, {formatarDataExtenso(dataAssinatura)}.
+      </Text>
+
+      <View style={estiloDeclaracao.assinaturas}>
+        {assinantes.map((a) => (
+          <BlocoAssinatura
+            key={a.id}
+            imagem={IMAGEM_POR_ASSINANTE[a.id]}
+            nome={a.nome}
+            cargo={a.cargo}
+            estilos={estiloDeclaracao}
+          />
+        ))}
+      </View>
+
+      <Text style={estiloDeclaracao.rodape}>
+        Avenida Brasil, 45 - Fone (43) 3472-0201 - CEP 86870-000 - Ivaiporã
+        /Paraná{"\n"}www.fatecivaipora.com.br
+      </Text>
+    </Page>
+  );
+}
+
+export function CertificadoBancaTCCPDF(dados: DadosCertificadoBancaTCC) {
+  return (
+    <Document>
+      <PaginaCertificadoBancaTCC {...dados} />
+    </Document>
+  );
+}
+
 const estiloAta = StyleSheet.create({
   page: {
     fontFamily: "Helvetica",
