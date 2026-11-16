@@ -1401,6 +1401,7 @@ export default function TrabalhosAdminPage() {
   // copiada pra avisar quem continua a numeração depois.
   const [resultadoNumeracao, setResultadoNumeracao] = useState<{
     totalPessoas: number;
+    totalPremiacoes: number;
     naoPagos: number;
     primeiroNumero: number | null;
     ultimoNumero: number | null;
@@ -3364,7 +3365,7 @@ export default function TrabalhosAdminPage() {
           setResultadoNumeracao(null);
           setErroNumeracao(null);
         }}
-        title="Numeração dos certificados individuais"
+        title="Numeração dos certificados individuais e de premiação"
       >
         {erroNumeracao && <p className="text-sm text-rose-700">{erroNumeracao}</p>}
         {resultadoNumeracao && (
@@ -3373,6 +3374,11 @@ export default function TrabalhosAdminPage() {
               {resultadoNumeracao.totalPessoas} pessoa(s) numerada(s) — quem já tinha número de
               antes manteve o mesmo, só quem era novo ganhou agora.
             </p>
+            {resultadoNumeracao.totalPremiacoes > 0 && (
+              <p className="mt-1 text-sm text-fatec-ink">
+                {resultadoNumeracao.totalPremiacoes} certificado(s) de premiação numerado(s).
+              </p>
+            )}
             {resultadoNumeracao.naoPagos > 0 && (
               <p className="mt-1 text-sm text-fatec-muted">
                 {resultadoNumeracao.naoPagos} pessoa(s) ficaram de fora por ainda não terem

@@ -477,6 +477,54 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **Certificado de premiação numerado, contador avançado
+  pra 22079, validação de id nas rotas públicas** (pedido explícito do
+  usuário, confirmado com a secretaria — "podemos usar do número 22079
+  para frente, então podemos gerar os certificados individuais e
+  preencher os de premiação que tá sem número também"). Três coisas:
+  1. **Contador avançado**: `contadores/certificados_{eventoId da X MAC}`
+     estava em 22025 (continuação natural dos 299 registros antigos —
+     21726 a 22024). A secretaria confirmou que o livro físico da ata já
+     avançou até 22078 por fora (outras declarações self-service de
+     avaliador/moderador/orientador/monitor consomem o mesmo contador) —
+     avançado pra 22079 antes de numerar qualquer coisa nova, nunca pra
+     trás.
+  2. **Numeração do certificado de premiação**: esse certificado nunca
+     tinha número nenhum (documento novo, sem histórico pra puxar, ao
+     contrário do de apresentação). `POST
+     /api/certificados/numerar-trabalhos` agora numera, na MESMA chamada e
+     no MESMO contador que a numeração individual (é uma ata só, não duas
+     sequências), 1 número por trabalho premiado (chave
+     `{trabalhoId}_premiacao`) — sem checar pagamento (premiação é do
+     grupo, não da inscrição de quem baixa). `GET
+     /api/certificados/grupo/premiacao` só LÊ esse número
+     (`numeroRegistroExistente`), igual o de apresentação — nunca cria um
+     novo na hora do download. Rodado pra X MAC: 899 pessoas + 26
+     certificados de premiação numerados, de 22079 até 23003 (142 pessoas
+     ficaram de fora por não terem pago). **Falta gerar a ata** com esse
+     intervalo — lembrete explícito do usuário, próximo passo pendente.
+  3. **Índice do Firestore que faltava**: a consulta de
+     `numerar-trabalhos` (`trabalhos` por `eventoId`+`status`, ordenado por
+     `enviadoEm`) nunca tinha rodado de verdade contra produção — faltava
+     um índice composto, e a rota só devolvia "erro interno" genérico.
+     Criado e implantado (`firebase deploy --only firestore:indexes`);
+     `firestore.indexes.json` (novo, referenciado em `firebase.json`) virou
+     espelho fiel dos 5 índices que já existiam em produção, pra não ter
+     mais esse tipo de surpresa nem risco de alguém rodar um deploy que
+     apague índice por engano.
+  Além disso, validação de id (`idFirestoreValido`, novo
+  `src/lib/idPublico.ts`) nas 3 rotas públicas de certificados em grupo —
+  pedido explícito à parte do usuário ("se precavenha de injeção já que é
+  uma parte do site que fica exposta e vai no banco de dados"): rejeita
+  `eventoId`/`trabalhoId` fora do formato esperado com 400, antes de
+  qualquer consulta ao Firestore.
+
+- **2026-11-16** — **Carga horária da X MAC corrigida pra 4h** (confirmado
+  com a organização da MAC — estava 10h, valor errado de configuração
+  inicial, não vinha do edital: o edital 056/2026 não especifica carga
+  horária nenhuma). Correção direto no Firestore (`eventos/{id}.cargaHoraria`),
+  sem mudança de código.
+
 - **2026-11-16** — **"Certificamos" em vez de "Declaramos" no certificado de
   apresentação em grupo** (confirmado com a secretaria — "estamos certinhos
   gerando os 3 certificados [premiação, apresentação em grupo e os

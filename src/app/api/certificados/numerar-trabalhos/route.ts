@@ -21,7 +21,17 @@ import { obterNumerosRegistroEmLote } from "@/lib/registroCertificados";
  * não pagou (se o evento tiver taxa) NÃO numera — "a regra de se não
  * pagou não gera o certificado individual" (2026-11-13, pedido explícito
  * do usuário) — mesma checagem de sempre do autoatendimento
- * (inscricoesEvento.status === "pago"), só que em lote, não por pessoa. */
+ * (inscricoesEvento.status === "pago"), só que em lote, não por pessoa.
+ *
+ * Numeração do certificado de PREMIAÇÃO em grupo (2026-11-16, pedido
+ * explícito do usuário — "podemos gerar os certificados individuais e
+ * preencher os de premiação que tá sem número também"). 1 número por
+ * TRABALHO premiado (chave `{trabalhoId}_premiacao`, diferente da chave
+ * por pessoa acima), na MESMA chamada e no MESMO contador — é uma ata só,
+ * não duas sequências separadas. Sem checar pagamento (premiação é do
+ * grupo/trabalho, não da inscrição individual de quem baixa). Lido depois
+ * por GET /api/certificados/grupo/premiacao via `numeroRegistroExistente`
+ * (só leitura, nunca cria um novo ali). */
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -84,6 +94,7 @@ export async function POST(request: Request) {
 
     const itens: { chave: string; nome: string }[] = [];
     let naoPagos = 0;
+    let totalPremiacoes = 0;
     for (const doc of trabalhosSnap.docs) {
       const t = doc.data();
       if (pagou(t.alunoUid as string)) {
@@ -101,6 +112,11 @@ export async function POST(request: Request) {
           naoPagos++;
         }
       });
+
+      if (t.premiado === true) {
+        itens.push({ chave: `${doc.id}_premiacao`, nome: `${t.alunoNome as string} (premiação)` });
+        totalPremiacoes++;
+      }
     }
 
     const numeroInicial = (evento.numeroRegistroInicial as number | undefined) ?? 1;
@@ -112,7 +128,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      totalPessoas: itens.length,
+      totalPessoas: itens.length - totalPremiacoes,
+      totalPremiacoes,
       naoPagos,
       primeiroNumero,
       ultimoNumero,

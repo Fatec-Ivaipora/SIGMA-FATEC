@@ -428,7 +428,15 @@ export function CertificadoGrupoApresentacaoPDF({
  * "CERTIFICADO DE RECONHECIMENTO" e texto citando a POSIÇÃO e a ÁREA
  * TEMÁTICA, linguagem do edital 6.6 ("os três trabalhos mais bem
  * pontuados... em cada categoria, serão premiados com certificado de
- * reconhecimento"). Sem registroNumero, mesmo motivo do de apresentação. */
+ * reconhecimento").
+ *
+ * `registroNumero` (2026-11-16, pedido explícito do usuário — "preencher
+ * os de premiação que tá sem número também"). Esse aqui nunca teve número
+ * nenhum antes (diferente do de apresentação, que já tinha "número de ata"
+ * de um print anterior) — por isso é numerado do zero, em lote, junto da
+ * numeração individual (ver POST /api/certificados/numerar-trabalhos,
+ * chave `{trabalhoId}_premiacao`), nunca na hora do download (mesma regra
+ * de sempre: número vem de lote, GET .../premiacao só LÊ). */
 export function CertificadoGrupoPremiacaoPDF({
   nomes,
   eventoNome,
@@ -437,6 +445,7 @@ export function CertificadoGrupoPremiacaoPDF({
   areaTematica,
   posicao,
   assinantes,
+  registroNumero,
 }: {
   nomes: string[];
   eventoNome: string;
@@ -445,6 +454,7 @@ export function CertificadoGrupoPremiacaoPDF({
   areaTematica: string;
   posicao: number;
   assinantes: AssinanteCertificado[];
+  registroNumero?: number;
 }) {
   const plural = nomes.length > 1;
   const RUBRICA_POSICAO: Record<number, string> = { 1: "1º lugar", 2: "2º lugar", 3: "3º lugar" };
@@ -481,6 +491,11 @@ export function CertificadoGrupoPremiacaoPDF({
             ))}
           </View>
         </View>
+        {registroNumero !== undefined && (
+          <Text fixed style={estiloApresentacao.registro}>
+            REGISTRO SOB O N° {registroNumero}, LIVRO N° 01
+          </Text>
+        )}
       </Page>
     </Document>
   );

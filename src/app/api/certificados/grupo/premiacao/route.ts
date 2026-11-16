@@ -6,6 +6,8 @@ import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinan
 import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 import type { Trabalho } from "@/lib/data/trabalhos";
+import { idFirestoreValido } from "@/lib/idPublico";
+import { numeroRegistroExistente } from "@/lib/registroCertificados";
 
 function slug(texto: string): string {
   return texto
@@ -22,14 +24,21 @@ function slug(texto: string): string {
  * Público igual a .../apresentacao; exige além do trabalho "aceito", que
  * `premiado === true`. A posição (1º/2º/3º) reaproveita
  * analisarEmpatesPorArea, a MESMA fonte de sempre — nunca recalculada
- * diferente aqui. Sem número de registro, mesmo motivo do de
- * apresentação. */
+ * diferente aqui.
+ *
+ * Número de registro (2026-11-16, pedido explícito do usuário — "preencher
+ * os de premiação que tá sem número também") — SÓ LÊ
+ * (`numeroRegistroExistente`, chave `{trabalhoId}_premiacao`), nunca cria
+ * um novo aqui; é atribuído em lote por
+ * POST /api/certificados/numerar-trabalhos, junto da numeração
+ * individual. Trabalho ainda não numerado continua sem número, igual o
+ * de apresentação. */
 export async function GET(request: Request) {
   try {
     const db = getAdminDb();
     const url = new URL(request.url);
     const trabalhoId = url.searchParams.get("trabalhoId");
-    if (!trabalhoId) {
+    if (!idFirestoreValido(trabalhoId)) {
       return NextResponse.json({ erro: "trabalhoId é obrigatório." }, { status: 400 });
     }
 
@@ -83,6 +92,8 @@ export async function GET(request: Request) {
     if (trabalho.nomeOrientador) nomes.push(trabalho.nomeOrientador as string);
     nomes.push(...((trabalho.nomesCoorientadores ?? []) as string[]));
 
+    const registroNumero = await numeroRegistroExistente(`${trabalhoId}_premiacao`);
+
     const buffer = await renderToBuffer(
       CertificadoGrupoPremiacaoPDF({
         nomes,
@@ -92,6 +103,7 @@ export async function GET(request: Request) {
         areaTematica: trabalho.areaTematica as string,
         posicao,
         assinantes,
+        registroNumero: registroNumero ?? undefined,
       }),
     );
     return new NextResponse(new Uint8Array(buffer), {

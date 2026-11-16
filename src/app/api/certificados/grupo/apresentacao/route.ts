@@ -5,6 +5,7 @@ import { CertificadoGrupoApresentacaoPDF } from "@/lib/certificadosPdf";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
 import { numeroRegistroExistente } from "@/lib/registroCertificados";
+import { idFirestoreValido } from "@/lib/idPublico";
 
 function slug(texto: string): string {
   return texto
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
     const db = getAdminDb();
     const url = new URL(request.url);
     const trabalhoId = url.searchParams.get("trabalhoId");
-    if (!trabalhoId) {
+    if (!idFirestoreValido(trabalhoId)) {
       return NextResponse.json({ erro: "trabalhoId é obrigatório." }, { status: 400 });
     }
 
