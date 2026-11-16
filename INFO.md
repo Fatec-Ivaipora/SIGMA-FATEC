@@ -477,6 +477,19 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **"Acadêmico completo" renomeado pra "Evento MAC" na tela
+  de criar evento** (pedido explícito do usuário — "esse evento ficou
+  muito específico, não tem mais como usar ele pra outra coisa. Então
+  quando precisarmos de outro evento vamos criando tipos"). Renomeação de
+  texto/variável só — `tipoForm` (estado local do wizard em
+  `eventos/page.tsx`) trocou o literal `"academico"` por `"mac"`, e o
+  card trocou "Acadêmico completo" por "Evento MAC" (descrição também
+  ajustada, pra não ficar circular dizendo "MAC... como a X MAC"). No
+  banco não muda nada — continua sendo o "ausente" de `evento.tipo?:
+  "simples"` (só "simples" é um literal de verdade hoje), documentado
+  agora em `src/lib/data/eventos.ts` que o próximo tipo de evento que
+  surgir vira um literal novo nesse union, do jeito que "simples" já é.
+
 - **2026-11-16** — **`DeclaracoesEmLotePDF` — várias declarações num PDF só,
   uma página por pessoa** (pedido explícito do usuário — "tinha que ter
   sido igual o de 2025, por grupo avaliador, e lá dentro todos os PDFs,

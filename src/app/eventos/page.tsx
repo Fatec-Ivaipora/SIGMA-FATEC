@@ -89,7 +89,7 @@ const FASES_CRIAR = [
   { numero: 3, label: "Inscrições e submissão" },
   { numero: 4, label: "Certificado e valores" },
   // Só evento "simples" (2026-10-08, pedido explícito do usuário) — evento
-  // "académico" não tem Ensalamento de presença por QR, tem avaliação de
+  // "mac" não tem Ensalamento de presença por QR, tem avaliação de
   // trabalho, então não precisa desse passo.
   { numero: 5, label: "Ensalamento" },
 ] as const;
@@ -104,10 +104,10 @@ function PassosCriarEvento({
   tipoForm,
 }: {
   fase: 1 | 2 | 3 | 4 | 5;
-  tipoForm: "academico" | "simples" | null;
+  tipoForm: "mac" | "simples" | null;
 }) {
   // Evento simples pula "Áreas temáticas" mas ganha "Ensalamento"; evento
-  // académico é o oposto (2026-09-22, estendido em 2026-10-08) — indicador
+  // MAC é o oposto (2026-09-22, estendido em 2026-10-08) — indicador
   // visual acompanha, senão fica um passo sobrando que nunca é visitado.
   const fasesVisiveis =
     tipoForm === "simples"
@@ -695,7 +695,7 @@ export default function EventosPage() {
   // pula a fase "Áreas temáticas" (só existe pra trabalho acadêmico). null
   // só antes de escolher; o footer trata isso como "não avança" (mesma
   // ideia de nome vazio na fase 1).
-  const [tipoForm, setTipoForm] = useState<"academico" | "simples" | null>(null);
+  const [tipoForm, setTipoForm] = useState<"mac" | "simples" | null>(null);
   const [modalInscritosId, setModalInscritosId] = useState<string | null>(null);
   const [modalInscricaoExtraId, setModalInscricaoExtraId] = useState<string | null>(null);
   const [modalMonitoresId, setModalMonitoresId] = useState<string | null>(null);
@@ -1416,7 +1416,7 @@ export default function EventosPage() {
   async function criarEvento() {
     if (
       !nome.trim() ||
-      (tipoForm === "academico" && areasTematicasForm.length === 0) ||
+      (tipoForm === "mac" && areasTematicasForm.length === 0) ||
       !valorValido
     )
       return;
@@ -1447,7 +1447,7 @@ export default function EventosPage() {
         modalidadesApresentacao: modalidadesApresentacaoForm,
         // areasTematicas fica de fora por completo pra evento simples
         // (2026-09-22) — não tem trabalho, então não tem área temática.
-        ...(tipoForm === "academico"
+        ...(tipoForm === "mac"
           ? {
               areasTematicas: areasTematicasForm,
               ...(areasComplexasForm.length > 0
@@ -1599,7 +1599,7 @@ export default function EventosPage() {
             <button
               type="button"
               onClick={() => {
-                setTipoForm("academico");
+                setTipoForm("mac");
                 setFaseCriar(1);
               }}
               className="flex flex-col items-start gap-2 rounded-xl border border-fatec-line bg-white p-5 text-left transition-colors hover:border-fatec-sky-600 hover:bg-fatec-navy-50"
@@ -1607,10 +1607,11 @@ export default function EventosPage() {
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
                 <FileStack className="h-5 w-5" strokeWidth={1.75} />
               </span>
-              <span className="font-semibold text-fatec-navy-900">Acadêmico completo</span>
+              <span className="font-semibold text-fatec-navy-900">Evento MAC</span>
               <span className="text-xs text-fatec-muted">
-                Submissão de trabalho, avaliação, notas, ensalamento e
-                certificado de apresentação — como a X MAC.
+                Submissão de trabalho, avaliação, notas, ensalamento,
+                apresentação e premiação — o modelo da Mostra Acadêmica
+                Científica.
               </span>
             </button>
             <button
@@ -1857,7 +1858,7 @@ export default function EventosPage() {
             </label>
           </div>
 
-          {tipoForm === "academico" && (
+          {tipoForm === "mac" && (
           <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
@@ -1902,7 +1903,7 @@ export default function EventosPage() {
             </span>
           </label>
 
-          {tipoForm === "academico" && (
+          {tipoForm === "mac" && (
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-fatec-navy-900">
               Modalidades de apresentação
@@ -2140,7 +2141,7 @@ export default function EventosPage() {
               (Áreas temáticas) quando o evento é simples, senão fica um
               passo vazio no meio do caminho; a última fase visitável
               também muda por tipo — simples ganha a fase 5 (Ensalamento),
-              académico pára na 4 (não tem Ensalamento de presença por
+              MAC pára na 4 (não tem Ensalamento de presença por
               QR). */}
           {faseCriar > 0 && (
           <div className="mt-1 flex items-center justify-between border-t border-fatec-line pt-5">
@@ -2188,7 +2189,7 @@ export default function EventosPage() {
                 onClick={criarEvento}
                 disabled={
                   !nome.trim() ||
-                  (tipoForm === "academico" && areasTematicasForm.length === 0) ||
+                  (tipoForm === "mac" && areasTematicasForm.length === 0) ||
                   !valorValido ||
                   criando
                 }

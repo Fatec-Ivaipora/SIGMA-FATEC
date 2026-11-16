@@ -252,9 +252,17 @@ export type Evento = {
   premiadosPublicosAtivo?: boolean;
   // Modelo do evento (2026-09-22, pedido da comissão — nem todo evento tem
   // trabalho acadêmico, ex. palestra/curso/workshop). Ausente = modelo de
-  // hoje (trabalho, avaliação, ensalamento — todos os campos acima). Nesse
-  // caso, aluno só se inscreve/paga (fluxo já genérico de inscricoesEvento)
-  // e recebe um certificado de participação — nenhum dos campos de trabalho
+  // hoje (trabalho, avaliação, ensalamento — todos os campos acima),
+  // chamado de "Evento MAC" na tela de criação (2026-11-16, renomeado de
+  // "Acadêmico completo" — pedido explícito do usuário: "esse evento ficou
+  // muito específico, não tem mais como usar ele pra outra coisa. Então
+  // quando precisarmos de outro evento vamos criando tipos"). Continua sem
+  // valor próprio no banco (só "simples" é um literal de verdade) — é só a
+  // UI/wizard que chama esse "ausente" de "mac" (ver tipoForm em
+  // eventos/page.tsx); o dia que precisar de um 3º modelo de evento, esse
+  // union ganha mais um literal de verdade igual "simples". Nesse caso,
+  // aluno só se inscreve/paga (fluxo já genérico de inscricoesEvento) e
+  // recebe um certificado de participação — nenhum dos campos de trabalho
   // acima é preenchido. Ver /trabalhos (mostra lista de inscritos em vez das
   // abas de avaliação) e /api/certificados?papel=participante.
   tipo?: "simples";
