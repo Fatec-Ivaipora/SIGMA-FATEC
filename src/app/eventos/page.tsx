@@ -59,6 +59,7 @@ import { ASSINANTES_CERTIFICADO } from "@/lib/assinantesCertificado";
 import { diasDoEvento } from "@/lib/certificadoDias";
 import { baixarAta, baixarListaPresenca } from "@/lib/baixarCertificado";
 import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
+import { CURSOS_FATEC } from "@/lib/cursos";
 
 function formatarData(iso: string): string {
   if (!iso) return "";
@@ -85,12 +86,13 @@ function horasPorDiaAprox(cargaHorariaStr: string, dias: number): string | null 
 
 const FASES_CRIAR = [
   { numero: 1, label: "Básico" },
+  // Só evento MAC (2026-11-16: e não TCC, que não tem área temática nenhuma).
   { numero: 2, label: "Áreas temáticas" },
   { numero: 3, label: "Inscrições e submissão" },
   { numero: 4, label: "Certificado e valores" },
   // Só evento "simples" (2026-10-08, pedido explícito do usuário) — evento
-  // "mac" não tem Ensalamento de presença por QR, tem avaliação de
-  // trabalho, então não precisa desse passo.
+  // MAC/TCC não tem Ensalamento de presença por QR aqui (MAC/TCC têm seus
+  // próprios ensalamentos fora desse wizard, ver aba /ensalamento).
   { numero: 5, label: "Ensalamento" },
 ] as const;
 
@@ -104,15 +106,20 @@ function PassosCriarEvento({
   tipoForm,
 }: {
   fase: 1 | 2 | 3 | 4 | 5;
-  tipoForm: "mac" | "simples" | null;
+  tipoForm: "mac" | "simples" | "tcc" | null;
 }) {
   // Evento simples pula "Áreas temáticas" mas ganha "Ensalamento"; evento
-  // MAC é o oposto (2026-09-22, estendido em 2026-10-08) — indicador
-  // visual acompanha, senão fica um passo sobrando que nunca é visitado.
+  // MAC é o oposto (2026-09-22, estendido em 2026-10-08); evento TCC
+  // (2026-11-16) pula os dois — nem área temática (não existe no TCC) nem
+  // esse Ensalamento de QR (TCC tem o próprio ensalamento de banca, fora do
+  // wizard) — indicador visual acompanha, senão fica um passo sobrando que
+  // nunca é visitado.
   const fasesVisiveis =
     tipoForm === "simples"
       ? FASES_CRIAR.filter((f) => f.numero !== 2)
-      : FASES_CRIAR.filter((f) => f.numero !== 5);
+      : tipoForm === "tcc"
+        ? FASES_CRIAR.filter((f) => f.numero !== 2 && f.numero !== 5)
+        : FASES_CRIAR.filter((f) => f.numero !== 5);
   return (
     <div className="mb-1 flex items-center gap-2">
       {fasesVisiveis.map((f) => (
@@ -695,7 +702,7 @@ export default function EventosPage() {
   // pula a fase "Áreas temáticas" (só existe pra trabalho acadêmico). null
   // só antes de escolher; o footer trata isso como "não avança" (mesma
   // ideia de nome vazio na fase 1).
-  const [tipoForm, setTipoForm] = useState<"mac" | "simples" | null>(null);
+  const [tipoForm, setTipoForm] = useState<"mac" | "simples" | "tcc" | null>(null);
   const [modalInscritosId, setModalInscritosId] = useState<string | null>(null);
   const [modalInscricaoExtraId, setModalInscricaoExtraId] = useState<string | null>(null);
   const [modalMonitoresId, setModalMonitoresId] = useState<string | null>(null);
@@ -739,6 +746,10 @@ export default function EventosPage() {
   const [minimoPeriodos, setMinimoPeriodos] = useState("");
   const [labelsPeriodos, setLabelsPeriodos] = useState<string[]>([]);
   const [assinantesCertificadoIds, setAssinantesCertificadoIds] = useState<string[]>([]);
+  // Curso ao qual a inscrição do evento TCC fica restrita (2026-11-16,
+  // pedido explícito do usuário) — só preenchido/exigido quando
+  // tipoForm === "tcc" (ver criarEvento e o botão "Criar evento" abaixo).
+  const [cursoRestritoForm, setCursoRestritoForm] = useState("");
   const [criando, setCriando] = useState(false);
 
   // Configurações do evento (2026-09-09) — editar nome/descrição/datas de
@@ -953,6 +964,7 @@ export default function EventosPage() {
     setMinimoPeriodos("");
     setLabelsPeriodos([]);
     setAssinantesCertificadoIds([]);
+    setCursoRestritoForm("");
     setFaseCriar(0);
     setTipoForm(null);
   }
@@ -1417,6 +1429,7 @@ export default function EventosPage() {
     if (
       !nome.trim() ||
       (tipoForm === "mac" && areasTematicasForm.length === 0) ||
+      (tipoForm === "tcc" && !cursoRestritoForm) ||
       !valorValido
     )
       return;
@@ -1441,12 +1454,19 @@ export default function EventosPage() {
         ...(fimEnvioTrabalho ? { fimEnvioTrabalho } : {}),
         destaque: destaqueNoForm,
         aceitaExternos: aceitaExternosNoForm,
-        ...(tipoForm === "simples" ? { tipo: "simples" as const } : {}),
+        ...(tipoForm === "simples"
+          ? { tipo: "simples" as const }
+          : tipoForm === "tcc"
+            ? { tipo: "tcc" as const, cursoRestrito: cursoRestritoForm }
+            : {}),
         // Lista vazia gravada de propósito (2026-09-24) — ver o mesmo
         // comentário em salvarConfig: ausente = "as duas" (evento antigo).
-        modalidadesApresentacao: modalidadesApresentacaoForm,
-        // areasTematicas fica de fora por completo pra evento simples
-        // (2026-09-22) — não tem trabalho, então não tem área temática.
+        // TCC não tem modalidade de apresentação nenhuma (2026-11-16) — nem
+        // esse campo existe pra esse tipo, por isso a guarda.
+        ...(tipoForm !== "tcc" ? { modalidadesApresentacao: modalidadesApresentacaoForm } : {}),
+        // areasTematicas fica de fora por completo pra evento simples/TCC
+        // (2026-09-22, estendido 2026-11-16) — nenhum dos dois tem trabalho
+        // com área temática.
         ...(tipoForm === "mac"
           ? {
               areasTematicas: areasTematicasForm,
@@ -1466,7 +1486,9 @@ export default function EventosPage() {
           ? { prazoEdicaoTrabalho: Timestamp.fromDate(new Date(`${fimInscricoes}T23:55:00`)) }
           : {}),
         ...(dataRealizacao ? { dataRealizacao } : {}),
-        ...(tipoForm === "simples" && dataRealizacaoFim ? { dataRealizacaoFim } : {}),
+        ...((tipoForm === "simples" || tipoForm === "tcc") && dataRealizacaoFim
+          ? { dataRealizacaoFim }
+          : {}),
         ...(cargaHoraria.trim() ? { cargaHoraria: Number(cargaHoraria) } : {}),
         ...(tipoForm === "simples" && modoPresenca === "periodo" && labelsPeriodos.length > 0
           ? { periodosPresenca: labelsPeriodos.length }
@@ -1629,6 +1651,25 @@ export default function EventosPage() {
               <span className="text-xs text-fatec-muted">
                 Só inscrição, pagamento e certificado de participação — pra
                 palestra, curso ou workshop, sem trabalho acadêmico.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTipoForm("tcc");
+                setFaseCriar(1);
+              }}
+              className="flex flex-col items-start gap-2 rounded-xl border border-fatec-line bg-white p-5 text-left transition-colors hover:border-fatec-sky-600 hover:bg-fatec-navy-50 sm:col-span-2"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
+                <Award className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <span className="font-semibold text-fatec-navy-900">Apresentação de TCC</span>
+              <span className="text-xs text-fatec-muted">
+                Aluno se inscreve com título e orientador, restrito a um
+                curso; banca de defesa (orientador + 2 avaliadores) montada
+                pela disponibilidade de dias de cada um — diferente do
+                ensalamento por sala do Evento MAC.
               </span>
             </button>
           </div>
@@ -1858,7 +1899,7 @@ export default function EventosPage() {
             </label>
           </div>
 
-          {tipoForm === "mac" && (
+          {(tipoForm === "mac" || tipoForm === "tcc") && (
           <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
@@ -1889,6 +1930,31 @@ export default function EventosPage() {
             </span>
           </div>
           </>
+          )}
+
+          {tipoForm === "tcc" && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Curso restrito
+            </span>
+            <span className="text-xs text-fatec-muted">
+              Só alunos desse curso conseguem se inscrever nesse evento — os
+              demais nem veem o card (2026-11-16, pedido explícito do
+              usuário, pra evitar inscrição por engano).
+            </span>
+            <select
+              value={cursoRestritoForm}
+              onChange={(e) => setCursoRestritoForm(e.target.value)}
+              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+            >
+              <option value="">Selecione o curso...</option>
+              {CURSOS_FATEC.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
           )}
 
           <label className="flex items-center gap-2.5">
@@ -1996,7 +2062,9 @@ export default function EventosPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
-                  {tipoForm === "simples" ? "Data de início" : "Data de realização"}
+                  {tipoForm === "simples" || tipoForm === "tcc"
+                    ? "Data de início"
+                    : "Data de realização"}
                 </span>
                 <input
                   type="date"
@@ -2019,7 +2087,7 @@ export default function EventosPage() {
                 />
               </label>
             </div>
-            {tipoForm === "simples" && (
+            {(tipoForm === "simples" || tipoForm === "tcc") && (
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-fatec-navy-900">
                   Data de término (opcional)
@@ -2041,14 +2109,9 @@ export default function EventosPage() {
                   )}
                 </div>
                 <span className="text-xs text-fatec-muted">
-                  Evento de vários dias (ex.: uma semana acadêmica)? Preenche
-                  aqui o último dia — o certificado sai com o período
-                  certinho (&quot;realizado de X a Y&quot;). A carga horária
-                  acima continua sendo o TOTAL do evento — cada inscrito
-                  começa com 0h e ganha proporcionalmente conforme confirma
-                  presença dia
-                  a dia no Ensalamento (ex.: 16h em 3 dias, faltou 1 dia,
-                  recebe ~11h). Deixe em branco pra evento de um dia só.
+                  {tipoForm === "tcc"
+                    ? "Último dia das bancas (ex.: semana de defesas) — essa janela é a mesma usada pra cada avaliador/orientador marcar em que dias pode participar de banca, e pra \"Gerar banca\" no Ensalamento. Deixe em branco pra defesas de um dia só."
+                    : "Evento de vários dias (ex.: uma semana acadêmica)? Preenche aqui o último dia — o certificado sai com o período certinho (\"realizado de X a Y\"). A carga horária acima continua sendo o TOTAL do evento — cada inscrito começa com 0h e ganha proporcionalmente conforme confirma presença dia a dia no Ensalamento (ex.: 16h em 3 dias, faltou 1 dia, recebe ~11h). Deixe em branco pra evento de um dia só."}
                 </span>
               </label>
             )}
@@ -2150,7 +2213,9 @@ export default function EventosPage() {
                 type="button"
                 onClick={() =>
                   setFaseCriar((f) =>
-                    (f === 3 && tipoForm === "simples" ? 1 : f - 1) as 0 | 1 | 2 | 3 | 4 | 5,
+                    (f === 3 && (tipoForm === "simples" || tipoForm === "tcc")
+                      ? 1
+                      : f - 1) as 0 | 1 | 2 | 3 | 4 | 5,
                   )
                 }
                 className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
@@ -2172,7 +2237,9 @@ export default function EventosPage() {
                 type="button"
                 onClick={() =>
                   setFaseCriar((f) =>
-                    (f === 1 && tipoForm === "simples" ? 3 : f + 1) as 0 | 1 | 2 | 3 | 4 | 5,
+                    (f === 1 && (tipoForm === "simples" || tipoForm === "tcc")
+                      ? 3
+                      : f + 1) as 0 | 1 | 2 | 3 | 4 | 5,
                   )
                 }
                 disabled={
@@ -2190,6 +2257,7 @@ export default function EventosPage() {
                 disabled={
                   !nome.trim() ||
                   (tipoForm === "mac" && areasTematicasForm.length === 0) ||
+                  (tipoForm === "tcc" && !cursoRestritoForm) ||
                   !valorValido ||
                   criando
                 }

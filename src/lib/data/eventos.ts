@@ -265,12 +265,29 @@ export type Evento = {
   // recebe um certificado de participação — nenhum dos campos de trabalho
   // acima é preenchido. Ver /trabalhos (mostra lista de inscritos em vez das
   // abas de avaliação) e /api/certificados?papel=participante.
-  tipo?: "simples";
+  // "tcc" (2026-11-16, pedido explícito do usuário) — Apresentação de TCC:
+  // aluno se inscreve com título + orientador (usuário real, não texto
+  // livre), sem área temática/modalidade/resumo. Etapas de Trabalhos
+  // próprias (Inscrição/Avaliação/Resultado, ver STATUS_POR_ETAPA_TCC em
+  // trabalhos/page.tsx) e ensalamento próprio — não é sala×horário, é banca
+  // (2 avaliadores + o orientador) × dia, cruzando a disponibilidade que
+  // cada um marca (ver src/lib/data/bancas.ts). Nenhum campo de
+  // área/modalidade/sala/ensalamento acima é usado quando tipo === "tcc".
+  tipo?: "simples" | "tcc";
   // Certificado de participação liberado manualmente pela organização
   // (2026-09-22) — só usado quando tipo === "simples". Mesmo espírito de
   // Trabalho.certificadoLiberado, só que por evento inteiro (aqui não tem
   // trabalho nenhum pra liberar um por um).
   certificadosLiberados?: boolean;
+  // Curso ao qual a inscrição desse evento fica restrita (2026-11-16, pedido
+  // explícito do usuário — "a ideia é criar um evento com o curso
+  // específico também pra outros cursos não se registrarem sem querer").
+  // Só usado quando tipo === "tcc" (ausente/outros tipos = sem restrição de
+  // curso, comportamento de sempre). Checado tanto em eventosParaAluno()
+  // (esconde o evento pra quem é de outro curso) quanto no servidor, em
+  // /api/asaas/interesse (bloqueia a inscrição mesmo se alguém tentar direto
+  // pela API).
+  cursoRestrito?: string;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */
@@ -308,9 +325,22 @@ export function useEventos(perfil: PerfilUsuario | null | undefined) {
 
 /** Participante externo (sem vínculo com a Fatec) só vê/participa dos
  * eventos marcados aceitaExternos; aluno da Fatec vê todos. Centralizado
- * aqui (2026-09-04) — antes cada tela do aluno repetia esse filtro na mão. */
-export function eventosParaAluno(eventos: Evento[], vinculoFatec: boolean | undefined) {
-  return vinculoFatec === false ? eventos.filter((e) => e.aceitaExternos) : eventos;
+ * aqui (2026-09-04) — antes cada tela do aluno repetia esse filtro na mão.
+ * Também esconde evento de TCC restrito a outro curso (2026-11-16, pedido
+ * explícito do usuário) — aluno do curso certo nem percebe que o filtro
+ * existe, aluno de outro curso simplesmente não vê o card. `curso` vem do
+ * perfil do aluno (PerfilUsuario.curso) — ausente (conta sem curso
+ * preenchido) não é bloqueado aqui, mesmo espírito de "campo ausente = sem
+ * restrição" do resto do app; a trava de verdade é no servidor (ver
+ * /api/asaas/interesse), isso aqui é só pra não nem mostrar o card. */
+export function eventosParaAluno(
+  eventos: Evento[],
+  vinculoFatec: boolean | undefined,
+  curso?: string,
+) {
+  return eventos
+    .filter((e) => vinculoFatec !== false || e.aceitaExternos)
+    .filter((e) => !e.cursoRestrito || !curso || e.cursoRestrito === curso);
 }
 
 /** Pode ENVIAR um trabalho novo agora? Dois motivos pra travar, checados
@@ -360,7 +390,7 @@ export function chegouODiaDoEvento(evento: Evento | undefined): boolean {
 export function useIndicadorEventos(perfil: PerfilUsuario | null | undefined, uid: string | undefined) {
   const { eventos: todosEventos } = useEventosPublicos();
   const { inscricoes } = useMinhasInscricoes(uid);
-  const eventos = eventosParaAluno(todosEventos, perfil?.vinculoFatec);
+  const eventos = eventosParaAluno(todosEventos, perfil?.vinculoFatec, perfil?.curso);
   return eventos.some((e) => !inscricoes.has(e.id));
 }
 

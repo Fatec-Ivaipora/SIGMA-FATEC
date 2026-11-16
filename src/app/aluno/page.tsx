@@ -160,7 +160,7 @@ export default function AlunoPainelPage() {
   }
 
   const eventos = useMemo(
-    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
+    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec, perfil?.curso),
     [todosEventos, perfil],
   );
 

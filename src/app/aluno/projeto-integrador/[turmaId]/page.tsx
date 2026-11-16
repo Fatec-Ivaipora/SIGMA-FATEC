@@ -111,7 +111,7 @@ export default function TurmaAlunoPage() {
   const [modalInscricao, setModalInscricao] = useState(false);
 
   const eventosElegiveis = useMemo(
-    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec),
+    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec, perfil?.curso),
     [todosEventos, perfil],
   );
   const eventoEscolhido = eventosElegiveis.find((e) => e.id === eventoEscolhidoId);

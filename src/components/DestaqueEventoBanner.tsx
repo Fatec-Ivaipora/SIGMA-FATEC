@@ -162,6 +162,44 @@ export function DestaqueEventoBanner({
               <BotaoOutroTrabalho onClick={() => onAbrirTrabalho(destaque.id)} />
             )}
           </div>
+        ) : destaque.tipo === "tcc" ? (
+          // TCC (2026-11-16) — só uma inscrição por aluno (título +
+          // orientador, ver SubmeterTCCModal), sem "outro trabalho" como o
+          // branch de MAC mais abaixo.
+          <div className="flex flex-wrap items-center gap-2">
+            {jaInscrito ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                TCC inscrito
+              </span>
+            ) : dentroDoPrazoEnvio(destaque) ? (
+              <button
+                type="button"
+                onClick={() => onAbrirTrabalho(destaque.id)}
+                className="group/btn inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+              >
+                Inscrever TCC
+                <ArrowRight
+                  className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5"
+                  strokeWidth={2}
+                />
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-4 py-1.5 text-xs font-semibold text-fatec-muted">
+                Inscrição de TCC encerrada
+              </span>
+            )}
+            {pagamentoPendente && (
+              <button
+                type="button"
+                onClick={() => onAbrirInscricao(destaque.id)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                Pagamento pendente — pagar agora
+              </button>
+            )}
+          </div>
         ) : destaque.tipo === "simples" ? (
           // Evento simples (2026-09-22) não tem trabalho nenhum, então não
           // passa pelo branch "jaInscrito && pagamentoPendente" ali em cima

@@ -45,7 +45,16 @@ export type TrabalhoStatus =
   // no ensalamento normalmente, só NÃO concorre a pódio/prêmio nem entra no
   // cálculo de empate (ver STATUS_JA_AVALIADO em src/app/trabalhos/page.tsx
   // — de propósito NÃO inclui esse status).
-  | "revisao_realizada";
+  | "revisao_realizada"
+  // Etapas de evento TCC (2026-11-16, pedido explícito do usuário) — fluxo
+  // próprio, bem mais curto que o de MAC acima: Inscrição → Avaliação →
+  // Resultado (ver ETAPAS_TCC/STATUS_POR_ETAPA_TCC em trabalhos/page.tsx).
+  // Só usados quando evento.tipo === "tcc"; nunca aparecem num trabalho de
+  // evento MAC/simples.
+  | "tcc_inscrito"
+  | "tcc_banca_agendada"
+  | "tcc_aprovado"
+  | "tcc_reprovado";
 
 // Critérios do edital (item 6.1): cada um recebe uma nota de 1 a 5 (item
 // 6.2); notaAvaliador guarda a SOMA dos cinco (5 a 25), usada pra ranquear
@@ -177,6 +186,37 @@ export type Trabalho = {
   // amanhã" pra quem tem esse trabalho em "revisao" — garante que não manda
   // duas vezes. Só escrito pelo servidor, nunca lido pelo client.
   lembretePrazoEnviadoEm?: unknown;
+  // Campos de TCC (2026-11-16, pedido explícito do usuário) — só
+  // preenchidos quando eventoId aponta pra um evento tipo === "tcc". MAC
+  // continua usando nomeOrientador (texto livre) sozinho; TCC também
+  // preenche nomeOrientador (cópia do nome, pra exibir sem precisar
+  // resolver o uid toda hora) MAS a referência de verdade é orientadorUid —
+  // ele é um usuário real do sistema, escolhido via OrientadorPicker,
+  // porque entra na banca (ver src/lib/data/bancas.ts).
+  orientadorUid?: string;
+  // Os 2 avaliadores da banca (sem o orientador, que já está em
+  // orientadorUid/nomeOrientador) — preenchidos por
+  // montarBancaAutomatica/substituirBancaDoEvento ou ajuste manual
+  // (moverBanca), todos em src/lib/data/bancas.ts.
+  bancaAvaliadores?: { uid: string; nome: string }[];
+  // Dia da defesa ("AAAA-MM-DD") escolhido na geração da banca — cruza a
+  // disponibilidade (disponibilidadeBanca) do orientador + 2 avaliadores.
+  bancaData?: string;
+  // Uma entrada por membro da banca que já avaliou (máx. 3: orientador +
+  // os 2 avaliadores) — cada um preenche a própria nota, ninguém sobrescreve
+  // a nota dos outros 2 (ver salvarNotaBanca). `notas` usa as chaves de
+  // CRITERIOS_BANCA_TCC (src/lib/criteriosAvaliacao.ts).
+  notasBanca?: {
+    uid: string;
+    nome: string;
+    papelNaBanca: "orientador" | "avaliador";
+    notas: Record<string, number>;
+    nota: number;
+  }[];
+  // Média das notas em notasBanca, calculada quando as 3 já chegaram — só
+  // aí o trabalho pode sair de "tcc_banca_agendada" pra
+  // "tcc_aprovado"/"tcc_reprovado".
+  notaFinalBanca?: number;
 };
 
 /** Lê trabalhos do Firestore, escopado por papel: admin vê tudo; organizacao só

@@ -68,6 +68,31 @@ const STATUS_META: Record<
     text: "text-cyan-700",
     bg: "bg-cyan-50",
   },
+  // Etapas de TCC (2026-11-16, ver comentário em TrabalhoStatus).
+  tcc_inscrito: {
+    label: "Inscrito",
+    dot: "bg-fatec-sky-600",
+    text: "text-fatec-sky-600",
+    bg: "bg-fatec-sky-100",
+  },
+  tcc_banca_agendada: {
+    label: "Banca agendada",
+    dot: "bg-fatec-navy-700",
+    text: "text-fatec-navy-800",
+    bg: "bg-fatec-navy-100",
+  },
+  tcc_aprovado: {
+    label: "Aprovado",
+    dot: "bg-emerald-600",
+    text: "text-emerald-700",
+    bg: "bg-emerald-50",
+  },
+  tcc_reprovado: {
+    label: "Reprovado",
+    dot: "bg-rose-600",
+    text: "text-rose-700",
+    bg: "bg-rose-50",
+  },
 };
 
 export function StatusBadge({ status }: { status: TrabalhoStatus }) {

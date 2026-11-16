@@ -44,6 +44,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: "Usuário não encontrado." }, { status: 404 });
   }
 
+  // Evento de TCC restrito a um curso (2026-11-16, pedido explícito do
+  // usuário) — o client já esconde o card (ver eventosParaAluno em
+  // src/lib/data/eventos.ts), isso aqui fecha a mesma checagem pra quem
+  // tentar chamar a rota direto.
+  if (evento.cursoRestrito && usuario.curso !== evento.cursoRestrito) {
+    return NextResponse.json(
+      { erro: "Esse evento é restrito ao curso " + evento.cursoRestrito + "." },
+      { status: 403 },
+    );
+  }
+
   const ref = db.doc(`inscricoesEvento/${eventoId}::${uid}`);
   const existente = (await ref.get()).data();
   if (!existente) {

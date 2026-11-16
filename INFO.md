@@ -477,6 +477,57 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **TCC: inscrição do aluno (título + orientador real) e
+  restrição de curso reforçada no servidor** (2ª fase do plano, continuação
+  da entrada anterior). Novo componente `OrientadorPicker` — diferente do
+  `nomeOrientador` texto livre da MAC, aqui o aluno escolhe um usuário real
+  (uid), porque o orientador entra na banca depois. A lista vem de
+  `/api/orientadores?eventoId=` (rota nova, servidor) e não de leitura
+  direta do Firestore no client — `firestore.rules` só deixa um aluno ler o
+  PRÓPRIO doc `usuarios/{uid}` (corrigido no pentest de 2026-09-08), então
+  não dava pra montar essa busca sem um espelho novo ou uma rota; a rota
+  evita criar mais uma coleção espelho. Só mostra orientador já ATRIBUÍDO a
+  esse evento (mesmo mecanismo de atribuição de avaliador/moderador, em
+  Usuários — admin precisa atribuir antes do aluno conseguir escolher).
+  Novo modal `SubmeterTCCModal` (só título + orientador, nada de área/
+  modalidade/resumo/coautor como a MAC) substitui `SubmeterTrabalhoModal`
+  quando `evento.tipo === "tcc"`, em `/aluno/eventos` e no banner de
+  destaque. `Trabalho` ganha os campos de TCC (`orientadorUid`,
+  `bancaAvaliadores`, `bancaData`, `notasBanca`, `notaFinalBanca`) e 4
+  status novos (`tcc_inscrito`/`tcc_banca_agendada`/`tcc_aprovado`/
+  `tcc_reprovado`) em `src/lib/data/trabalhos.ts`. A restrição de curso
+  (campo `cursoRestrito` da entrada anterior) ganhou a checagem que faltava
+  no servidor: `/api/asaas/interesse` agora bloqueia com 403 quem não é do
+  curso certo, fechando a mesma brecha que já existia pra `aceitaExternos`
+  (até aqui só filtrado no client) — só pro caso novo, sem mexer no
+  comportamento de `aceitaExternos` em si.
+
+- **2026-11-16** — **Novo tipo de evento "Apresentação de TCC" — início da
+  implementação (modelo de dados + wizard de criação)** (pedido explícito
+  do usuário, baseado na documentação real da "VI Mostra de TCC 2025" que a
+  Professora responsável preparou — cronograma de bancas, planilha de
+  disponibilidade dos professores, ficha de avaliação de 7 critérios e
+  certificados reais de banca). `evento.tipo` ganha o literal `"tcc"` (em
+  `src/lib/data/eventos.ts`), bem diferente do "Evento MAC": aluno se
+  inscreve só com título + orientador (sem área temática, sem modalidade,
+  sem resumo), e o ensalamento não é sala×horário — é banca (2 avaliadores
+  + o próprio orientador, que SEMPRE entra como 3° membro) × dia, cruzando
+  a disponibilidade que cada um marca (isso ainda não foi implementado,
+  fica pra uma próxima entrada). Novo campo `cursoRestrito?: string` no
+  evento — trava a inscrição a um curso só, pra evitar aluno de outro curso
+  se inscrever sem querer ("a ideia é criar um evento com o curso
+  específico também pra outros cursos não se registrarem sem querer"),
+  checado tanto em `eventosParaAluno()` (esconde o card) quanto no servidor
+  em `/api/asaas/interesse` (bloqueia mesmo se alguém chamar a rota
+  direto — fecha a mesma brecha que já existia pra `aceitaExternos`, só que
+  pro caso novo). Terceiro card "Apresentação de TCC" no wizard de criação
+  de evento, ao lado de "Evento MAC"/"Evento simples", com campo de curso
+  (lista fixa de `src/lib/cursos.ts`) e pulando as fases que não se aplicam
+  (Áreas temáticas, Ensalamento de QR). Plano completo (6 fases: dados+
+  wizard, inscrição+submissão, abas de Trabalhos, disponibilidade+geração
+  de banca, rubrica de avaliação, certificado) salvo e aprovado antes de
+  começar a codar — essa entrada cobre só a 1ª fase.
+
 - **2026-11-16** — **"Acadêmico completo" renomeado pra "Evento MAC" na tela
   de criar evento** (pedido explícito do usuário — "esse evento ficou
   muito específico, não tem mais como usar ele pra outra coisa. Então

@@ -8,6 +8,7 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Sidebar } from "@/components/Sidebar";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
+import { SubmeterTCCModal, type DadosSubmissaoTCC } from "@/components/SubmeterTCCModal";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { DestaqueEventoBanner } from "@/components/DestaqueEventoBanner";
 import { BotaoOutroTrabalho } from "@/components/BotaoOutroTrabalho";
@@ -159,7 +160,31 @@ function CardEvento({
           </>
         ) : (
           <>
-            {evento.tipo === "simples" ? (
+            {evento.tipo === "tcc" ? (
+              // TCC (2026-11-16) — inscrição é só título + orientador (ver
+              // SubmeterTCCModal), sem resumo/área/modalidade; e só UMA
+              // inscrição por aluno faz sentido aqui (diferente de MAC, que
+              // libera "outro trabalho" — TCC é a própria conclusão de
+              // curso do aluno, não um trabalho qualquer).
+              inscrito ? (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  TCC inscrito
+                </span>
+              ) : podeEnviar ? (
+                <button
+                  type="button"
+                  onClick={() => onAbrirTrabalho(evento.id)}
+                  className="w-fit rounded-full bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                >
+                  Inscrever TCC
+                </button>
+              ) : (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fatec-navy-50 px-3 py-1.5 text-xs font-semibold text-fatec-muted">
+                  Inscrição de TCC encerrada
+                </span>
+              )
+            ) : evento.tipo === "simples" ? (
               // Evento simples (2026-09-22) não tem trabalho — chegou até
               // aqui significa que já está inscrito (e pago, se for o
               // caso, tratado no chip de baixo).
@@ -294,7 +319,10 @@ export default function AlunoEventosPage() {
   // continua vendo ele normalmente em "Meus eventos" (tela inicial) e
   // "Trabalhos" — só a descoberta aqui é que trava.
   const eventos = useMemo(
-    () => eventosParaAluno(todosEventos, perfil?.vinculoFatec).filter((e) => !e.encerrado),
+    () =>
+      eventosParaAluno(todosEventos, perfil?.vinculoFatec, perfil?.curso).filter(
+        (e) => !e.encerrado,
+      ),
     [todosEventos, perfil],
   );
 
@@ -353,6 +381,27 @@ export default function AlunoEventosPage() {
     });
     notificarStatusTrabalho(user, ref.id, "submetido");
     dados.participantesUids.forEach((colegaUid) => notificarConviteColega(user, ref.id, colegaUid));
+    setModalEventoId(null);
+  }
+
+  // Inscrição de TCC (2026-11-16) — bem mais simples que enviarTrabalho
+  // acima: sem checagem de duplicado (não tem resumo/coautor pra comparar),
+  // sem convite de colega (TCC não tem coautor). Mesmo status inicial
+  // `tcc_inscrito` lido pela aba Inscrição em trabalhos/page.tsx.
+  async function enviarTCC(dados: DadosSubmissaoTCC) {
+    if (!modalEventoId || !user || !perfil) return;
+    const ref = await addDoc(collection(db, "trabalhos"), {
+      titulo: dados.titulo,
+      orientadorUid: dados.orientadorUid,
+      nomeOrientador: dados.orientadorNome,
+      eventoId: modalEventoId,
+      alunoUid: user.uid,
+      alunoNome: perfil.nome,
+      status: "tcc_inscrito",
+      enviadoEm: serverTimestamp(),
+      atualizadoEm: serverTimestamp(),
+    });
+    notificarStatusTrabalho(user, ref.id, "submetido");
     setModalEventoId(null);
   }
 
@@ -440,21 +489,31 @@ export default function AlunoEventosPage() {
         </div>
       </div>
 
-      {eventoModal && (
-        <SubmeterTrabalhoModal
+      {eventoModal && eventoModal.tipo === "tcc" ? (
+        <SubmeterTCCModal
           open={!!eventoModal}
           eventoId={eventoModal.id}
-          temTaxa={!!eventoModal.valorInscricao}
           eventoNome={eventoModal.nome}
-          areasDisponiveis={eventoModal.areasTematicas ?? []}
-          areasComplexas={eventoModal.areasTematicasComplexas ?? []}
-          modalidadesPermitidas={eventoModal.modalidadesApresentacao}
-          resumoAcademico
-          meuUid={user?.uid}
-          autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           onClose={() => setModalEventoId(null)}
-          onSubmit={enviarTrabalho}
+          onSubmit={enviarTCC}
         />
+      ) : (
+        eventoModal && (
+          <SubmeterTrabalhoModal
+            open={!!eventoModal}
+            eventoId={eventoModal.id}
+            temTaxa={!!eventoModal.valorInscricao}
+            eventoNome={eventoModal.nome}
+            areasDisponiveis={eventoModal.areasTematicas ?? []}
+            areasComplexas={eventoModal.areasTematicasComplexas ?? []}
+            modalidadesPermitidas={eventoModal.modalidadesApresentacao}
+            resumoAcademico
+            meuUid={user?.uid}
+            autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
+            onClose={() => setModalEventoId(null)}
+            onSubmit={enviarTrabalho}
+          />
+        )
       )}
 
       {eventoInscricao && (
