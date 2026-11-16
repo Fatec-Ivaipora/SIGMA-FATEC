@@ -485,10 +485,14 @@ commit que sobe pro git.
   1. **Contador avançado**: `contadores/certificados_{eventoId da X MAC}`
      estava em 22025 (continuação natural dos 299 registros antigos —
      21726 a 22024). A secretaria confirmou que o livro físico da ata já
-     avançou até 22078 por fora (outras declarações self-service de
-     avaliador/moderador/orientador/monitor consomem o mesmo contador) —
-     avançado pra 22079 antes de numerar qualquer coisa nova, nunca pra
-     trás.
+     avançou até 22078 por fora — **correção**: não é avaliador/moderador/
+     orientador/monitor (conferido no código, `/api/certificados/route.ts`
+     — nenhum desses 4 papéis chama `obterNumeroRegistro`/
+     `numeroRegistroExistente`, nunca tiveram número nenhum, "não aparece
+     nos exemplos reais"), é outro documento qualquer do livro físico da
+     instituição, de fora do SIGMA — avançado pra 22079 antes de numerar
+     qualquer coisa nova, nunca pra trás, confiando na palavra da
+     secretaria (dona do livro de verdade), não numa dedução nossa.
   2. **Numeração do certificado de premiação**: esse certificado nunca
      tinha número nenhum (documento novo, sem histórico pra puxar, ao
      contrário do de apresentação). `POST
@@ -499,10 +503,33 @@ commit que sobe pro git.
      grupo, não da inscrição de quem baixa). `GET
      /api/certificados/grupo/premiacao` só LÊ esse número
      (`numeroRegistroExistente`), igual o de apresentação — nunca cria um
-     novo na hora do download. Rodado pra X MAC: 899 pessoas + 26
-     certificados de premiação numerados, de 22079 até 23003 (142 pessoas
-     ficaram de fora por não terem pago). **Falta gerar a ata** com esse
-     intervalo — lembrete explícito do usuário, próximo passo pendente.
+     novo na hora do download. Rodado pra X MAC: **907 pessoas** + 26
+     certificados de premiação numerados, de 22079 até **23011** (142
+     pessoas ficaram de fora por não terem pago). Ata gerada e salva em
+     `Mateus/exemplos/ata-22079-a-23011-X-MAC.pdf` (fora do repositório —
+     rota temporária só pra esse PDF, já apagada; a rota oficial
+     `/api/certificados/ata` continua sem filtro de faixa, pega o evento
+     inteiro).
+  4. **Bug achado rodando o 2 de novo**: `.orderBy("enviadoEm")` no
+     Firestore **exclui silenciosamente** qualquer trabalho sem esse
+     campo — 3 trabalhos da X MAC (inclusive o da Anaysa Maria Gobbo, só
+     descoberto tentando gerar um certificado de exemplo pra ela) ficaram
+     de fora da primeira rodada sem erro nenhum (899 em vez de 907).
+     Corrigido: a ordenação agora é em JS depois de buscar todo mundo
+     (`where` sem `orderBy`), quem não tem a data vai pro fim da lista,
+     nunca mais fica de fora. Rodar a numeração de novo é sempre seguro
+     (idempotente) — por isso o número final subiu de 23003 pra 23011
+     sem reordenar ninguém que já tinha número.
+  5. **"Emitir certificados individuais" nunca tinha sido clicado de
+     verdade pra X MAC** — a numeração rodou direto pela API (script),
+     mas ninguém tinha marcado `certificadoLiberado: true` nos 292
+     trabalhos nem nos 28 monitores (o mesmo "28 certificados de monitor
+     nunca liberados" de uma investigação anterior nesta mesma conversa).
+     Sem isso, nenhum aluno/monitor conseguia baixar nada ainda, mesmo já
+     numerado — corrigido junto (mesma ação do botão, só via script).
+     Gerados e conferidos 4 certificados de exemplo reais (aluno,
+     avaliador, moderador, monitor) em `Mateus/exemplos/exemplo-declaracao-*-4h.pdf`,
+     todos já mostrando a carga horária de 4h.
   3. **Índice do Firestore que faltava**: a consulta de
      `numerar-trabalhos` (`trabalhos` por `eventoId`+`status`, ordenado por
      `enviadoEm`) nunca tinha rodado de verdade contra produção — faltava

@@ -68,13 +68,23 @@ export async function POST(request: Request) {
     }
 
     // Ordem de envio (2026-11-13) — estável e previsível, mesmo espírito do
-    // "ordem de chegada" em /api/certificados/liberar.
+    // "ordem de chegada" em /api/certificados/liberar. Ordenado em JS, não
+    // no Firestore (2026-11-16, achado real: `.orderBy("enviadoEm")` no
+    // Firestore EXCLUI silenciosamente qualquer doc sem esse campo — 3
+    // trabalhos da X MAC não tinham `enviadoEm` e sumiram da numeração sem
+    // erro nenhum, só descobertos tentando gerar um exemplo de declaração
+    // pra um aluno desses). Quem não tem a data vai pro fim da lista, mas
+    // nunca fica de fora.
     const trabalhosSnap = await db
       .collection("trabalhos")
       .where("eventoId", "==", eventoId)
       .where("status", "==", "aceito")
-      .orderBy("enviadoEm", "asc")
       .get();
+    const trabalhosDocs = trabalhosSnap.docs.sort((a, b) => {
+      const ta = (a.data().enviadoEm as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? Infinity;
+      const tb = (b.data().enviadoEm as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? Infinity;
+      return ta - tb;
+    });
 
     // Quem não pagou não numera (2026-11-13, pedido explícito do usuário —
     // "a regra de se não pagou não gera o certificado individual"). Uma
@@ -95,7 +105,7 @@ export async function POST(request: Request) {
     const itens: { chave: string; nome: string }[] = [];
     let naoPagos = 0;
     let totalPremiacoes = 0;
-    for (const doc of trabalhosSnap.docs) {
+    for (const doc of trabalhosDocs) {
       const t = doc.data();
       if (pagou(t.alunoUid as string)) {
         itens.push({ chave: `${doc.id}_aluno_${t.alunoUid}`, nome: t.alunoNome as string });
