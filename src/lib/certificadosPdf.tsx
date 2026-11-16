@@ -342,22 +342,37 @@ export function CertificadosApresentacaoImpressaoPDF({
  * certificado de apresentação e de premiação serão feitos de forma
  * diferente... certificado pra o GRUPO de cada um desses"). Componente
  * próprio, SEPARADO de CertificadoApresentacaoPDF — nunca reaproveitado
- * direto pra não arriscar o fluxo individual já em produção (esse aqui
- * nunca carrega `registroNumero`: "ainda não tenho os números, por hora
- * vamos só construir e organizar" — sem linha de registro nenhuma,
- * diferente do individual). Ver GET /api/certificados/grupo/apresentacao. */
+ * direto pra não arriscar o fluxo individual já em produção.
+ *
+ * `registroNumero` (2026-11-16, corrigindo um erro nosso) — na época da
+ * decisão acima ("ainda não tenho os números, por hora vamos só construir e
+ * organizar") esse certificado saiu sem nenhuma linha de registro. Só que o
+ * colega de equipe já tinha usado `GET /api/certificados/impressao`
+ * ("liberar pra secretaria gerar", 2026-11-04) pra IMPRIMIR em papel
+ * timbrado e ENTREGAR pros alunos da X MAC um certificado de apresentação
+ * com número de registro de verdade (chave antiga `{trabalhoId}_aluno`,
+ * `REGISTRO SOB O N° X, LIVRO N° 01`) — sem avisar que tinha feito isso.
+ * Então "sem número" aqui virou uma mentira: quem já recebeu o papel com um
+ * número e baixasse esse PDF digital via o mural público via em branco,
+ * divergindo do que já tem na mão. Mesmo texto fixo de `PaginaApresentacao`
+ * (`estiloApresentacao.registro`), pra bater exatamente igual ao que já foi
+ * impresso — só aparece quando o trabalho já tinha mesmo um número
+ * (`numeroRegistroExistente`, NUNCA cria um novo aqui: ver GET
+ * /api/certificados/grupo/apresentacao). */
 export function CertificadoGrupoApresentacaoPDF({
   nomes,
   eventoNome,
   dataRealizacao,
   tituloTrabalho,
   assinantes,
+  registroNumero,
 }: {
   nomes: string[];
   eventoNome: string;
   dataRealizacao: string;
   tituloTrabalho: string;
   assinantes: AssinanteCertificado[];
+  registroNumero?: number;
 }) {
   const plural = nomes.length > 1;
   return (
@@ -390,6 +405,11 @@ export function CertificadoGrupoApresentacaoPDF({
             ))}
           </View>
         </View>
+        {registroNumero !== undefined && (
+          <Text fixed style={estiloApresentacao.registro}>
+            REGISTRO SOB O N° {registroNumero}, LIVRO N° 01
+          </Text>
+        )}
       </Page>
     </Document>
   );

@@ -477,6 +477,30 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **Certificado de apresentação em grupo volta a mostrar o
+  número de registro já usado** (corrigindo um erro nosso — "nós tiramos o
+  número que estava lá na numeração do certificado... foi erro nosso porque
+  o colega de equipe fez os certificados de apresentação com um número de
+  ata e não me avisou, então os certificados de apresentação já foi gerado
+  para os alunos com o número correto"). Investigado contra o banco real: o
+  colega tinha usado `GET /api/certificados/impressao` ("liberar pra
+  secretaria gerar", 2026-11-04) pra imprimir em papel timbrado e entregar
+  pros 292 alunos da X MAC um certificado de apresentação com número de
+  registro de verdade — `registrosCertificados/{trabalhoId}_aluno`, números
+  21726 a 22024, `REGISTRO SOB O N° X, LIVRO N° 01` — sem avisar. Quando
+  criamos o mural público (mesmo dia 13/11) decidimos deixar esse
+  certificado SEM número ("ainda não tenho os números, por hora vamos só
+  construir"), sem saber que já existia um de verdade. `CertificadoGrupoApresentacaoPDF`
+  ganhou `registroNumero?` opcional (mesmo texto fixo de `PaginaApresentacao`)
+  e `GET /api/certificados/grupo/apresentacao` passou a consultar
+  `numeroRegistroExistente("{trabalhoId}_aluno")` — SÓ LEITURA, nunca cria um
+  número novo aqui (isso usaria o mesmo contador por evento da numeração por
+  pessoa de "Emitir certificados individuais", uma sequência diferente que
+  não pode se misturar com essa). Resultado: quem já recebeu o papel com um
+  número e baixar esse certificado pelo mural público agora vê o MESMO
+  número; trabalho que o colega nunca imprimiu continua sem número, igual
+  antes.
+
 - **2026-11-13** — **Premiados por área na home pública** (pedido
   explícito da comissão — "no final quando o evento acaba eu possa clicar
   em mostrar os premiados... pra eles poderem ver e prestigiar"). Novo

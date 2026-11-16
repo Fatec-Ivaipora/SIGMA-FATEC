@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { CertificadoGrupoApresentacaoPDF } from "@/lib/certificadosPdf";
 import { ASSINANTES_CERTIFICADO, type AssinanteCertificado } from "@/lib/assinantesCertificado";
 import { tituloExibicao } from "@/lib/tituloTrabalho";
+import { numeroRegistroExistente } from "@/lib/registroCertificados";
 
 function slug(texto: string): string {
   return texto
@@ -19,8 +20,17 @@ function slug(texto: string): string {
  * CertificadoGrupoApresentacaoPDF (template). Público de propósito (igual
  * /api/ensalamento/consulta): só exige
  * `eventos/{id}.certificadosGrupoPublicosAtivo === true` e o trabalho estar
- * "aceito" — nenhuma conta, nenhum login. Sem número de registro (ainda não
- * definido com a comissão, ver comentário no componente). */
+ * "aceito" — nenhuma conta, nenhum login.
+ *
+ * Número de registro (2026-11-16, corrigindo um erro nosso — ver comentário
+ * completo em CertificadoGrupoApresentacaoPDF): SÓ LÊ, nunca cria
+ * (`numeroRegistroExistente`, chave antiga `{trabalhoId}_aluno`, a mesma de
+ * `GET /api/certificados/impressao`). Se o colega já tinha impresso esse
+ * trabalho, aparece o MESMO número que já está no papel entregue pro aluno.
+ * Se nunca foi impresso, continua sem número nenhum — nunca inventa um aqui
+ * (isso consumiria um número do contador compartilhado com a numeração por
+ * pessoa de "Emitir certificados individuais", que é uma sequência
+ * diferente e não deve se misturar com essa). */
 export async function GET(request: Request) {
   try {
     const db = getAdminDb();
@@ -58,6 +68,8 @@ export async function GET(request: Request) {
     if (trabalho.nomeOrientador) nomes.push(trabalho.nomeOrientador as string);
     nomes.push(...((trabalho.nomesCoorientadores ?? []) as string[]));
 
+    const registroNumero = await numeroRegistroExistente(`${trabalhoId}_aluno`);
+
     const buffer = await renderToBuffer(
       CertificadoGrupoApresentacaoPDF({
         nomes,
@@ -65,6 +77,7 @@ export async function GET(request: Request) {
         dataRealizacao: evento.dataRealizacao as string,
         tituloTrabalho: tituloExibicao(trabalho.titulo as string),
         assinantes,
+        registroNumero: registroNumero ?? undefined,
       }),
     );
     return new NextResponse(new Uint8Array(buffer), {
