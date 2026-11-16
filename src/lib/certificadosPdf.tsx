@@ -723,18 +723,7 @@ const estiloDeclaracao = StyleSheet.create({
   },
 });
 
-export function DeclaracaoPDF({
-  nome,
-  papel,
-  eventoNome,
-  dataRealizacao,
-  dataRealizacaoFim,
-  cargaHoraria,
-  assinantes,
-  dataAssinatura,
-  logoCabecalhoId,
-  registroNumero,
-}: {
+export type DadosDeclaracao = {
   nome: string;
   papel: "avaliador" | "moderador" | "orientador" | "coorientador" | "monitor" | "participante" | "aluno";
   eventoNome: string;
@@ -758,10 +747,29 @@ export function DeclaracaoPDF({
   // aparece nos exemplos reais" pra esses papéis, ver route.ts). Ausente =
   // sem a linha de registro, exatamente como já era antes.
   registroNumero?: number;
-}) {
+};
+
+/** Página única da declaração — extraída do antigo corpo de `DeclaracaoPDF`
+ * (2026-11-16) pra poder reaproveitar em `DeclaracoesEmLotePDF` (biblioteca
+ * pública, pedido explícito do usuário: "tinha que ter sido igual o de
+ * 2025, por grupo avaliador, e lá dentro todos os PDFs, aí a pessoa
+ * encontra o dela" — 1 PDF por papel com todo mundo dentro, não 1 arquivo
+ * por pessoa). Mesmo espírito de `PaginaApresentacao`/
+ * `CertificadoApresentacaoPDF` logo acima. */
+function PaginaDeclaracao({
+  nome,
+  papel,
+  eventoNome,
+  dataRealizacao,
+  dataRealizacaoFim,
+  cargaHoraria,
+  assinantes,
+  dataAssinatura,
+  logoCabecalhoId,
+  registroNumero,
+}: DadosDeclaracao) {
   const logoDoEvento = logoCabecalhoId ? LOGO_CABECALHO[logoCabecalhoId] : undefined;
   return (
-    <Document>
       <Page size="A4" wrap={false} style={estiloDeclaracao.page}>
         <View style={estiloDeclaracao.cabecalho}>
           {logoDoEvento ? (
@@ -822,6 +830,29 @@ export function DeclaracaoPDF({
           /Paraná{"\n"}www.fatecivaipora.com.br
         </Text>
       </Page>
+  );
+}
+
+export function DeclaracaoPDF(dados: DadosDeclaracao) {
+  return (
+    <Document>
+      <PaginaDeclaracao {...dados} />
+    </Document>
+  );
+}
+
+/** PDF com várias declarações juntas num Document só, uma página por pessoa
+ * — pra biblioteca pública de declarações (2026-11-16, pedido explícito do
+ * usuário, ver comentário em `PaginaDeclaracao`). Usado pra gerar, por
+ * exemplo, 1 arquivo "Avaliadores" com a declaração de todo mundo que
+ * avaliou naquele evento, em vez de 1 arquivo por pessoa — a pessoa abre o
+ * PDF e procura o próprio nome. */
+export function DeclaracoesEmLotePDF({ declaracoes }: { declaracoes: DadosDeclaracao[] }) {
+  return (
+    <Document>
+      {declaracoes.map((d, i) => (
+        <PaginaDeclaracao key={i} {...d} />
+      ))}
     </Document>
   );
 }

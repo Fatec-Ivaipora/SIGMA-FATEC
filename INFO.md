@@ -477,6 +477,24 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **`DeclaracoesEmLotePDF` — várias declarações num PDF só,
+  uma página por pessoa** (pedido explícito do usuário — "tinha que ter
+  sido igual o de 2025, por grupo avaliador, e lá dentro todos os PDFs,
+  aí a pessoa encontra o dela"). Mesmo espírito de
+  `CertificadoApresentacaoPDF`/`PaginaApresentacao`: extraída a página
+  única de `DeclaracaoPDF` pra uma função interna (`PaginaDeclaracao`,
+  não exportada), `DeclaracaoPDF` continua igual por fora (1 página só,
+  nenhum outro lugar do app muda), e a nova `DeclaracoesEmLotePDF({
+  declaracoes })` junta várias páginas num `Document` só. Usado pra montar
+  a biblioteca pública de declarações da X MAC (`/declaracoes`, categoria
+  "X MAC - 2026"): 3 PDFs — "Avaliadores" (24 páginas), "Moderadores" (38)
+  e "Orientadores" (85, inclui coorientadores, 1 por nome distinto) — em
+  vez de 1 arquivo por pessoa (147 arquivos soltos, tentativa inicial
+  errada, desfeita). Gerado e subido via script descartável (admin
+  impersonation, mesma técnica de sempre), não uma tela nova — a
+  biblioteca já tinha upload manual pronto, só precisava do PDF certo pra
+  subir nela.
+
 - **2026-11-16** — **Páginas públicas de certificados: card maior com
   destaque pra data, grade de 5 por linha bem mais larga, listagem padrão
   paginada de 20 em 20** (série de ajustes visuais pedidos explicitamente
