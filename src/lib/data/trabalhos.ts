@@ -199,6 +199,10 @@ export type Trabalho = {
   // montarBancaAutomatica/substituirBancaDoEvento ou ajuste manual
   // (moverBanca), todos em src/lib/data/bancas.ts.
   bancaAvaliadores?: { uid: string; nome: string }[];
+  // Espelho só com os uids de bancaAvaliadores (2026-11-16) — permite
+  // query array-contains no Firestore (não dá pra filtrar array-contains
+  // num array de objetos), ver useTrabalhos acima.
+  bancaAvaliadoresUids?: string[];
   // Dia da defesa ("AAAA-MM-DD") escolhido na geração da banca — cruza a
   // disponibilidade (disponibilidadeBanca) do orientador + 2 avaliadores.
   bancaData?: string;
@@ -284,46 +288,87 @@ export function useTrabalhos(
       // campo que a regra já cobre pra esse papel, evita o problema.
       const comoAvaliador = query(ref, where("avaliadorUid", "==", uid));
       const comoModerador = query(ref, where("moderadorUid", "==", uid));
+      // Banca de TCC (2026-11-16) — orientador entra pelo próprio
+      // orientadorUid; os 2 avaliadores da banca entram por
+      // bancaAvaliadoresUids (array paralelo a bancaAvaliadores, só com os
+      // uids — Firestore não dá pra filtrar array-contains num array de
+      // OBJETOS {uid,nome} direto, mesmo motivo de participantesUids/
+      // participantesNomes serem dois arrays separados em vez de um só).
+      const comoOrientadorTCC = query(ref, where("orientadorUid", "==", uid));
+      const comoAvaliadorBancaTCC = query(ref, where("bancaAvaliadoresUids", "array-contains", uid));
       const porId = new Map<string, Trabalho>();
       let carregouAvaliador = false;
       let carregouModerador = false;
+      let carregouOrientadorTCC = false;
+      let carregouAvaliadorBancaTCC = false;
 
       function publicar() {
         setTrabalhos(Array.from(porId.values()));
-        if (carregouAvaliador && carregouModerador) setCarregando(false);
+        if (carregouAvaliador && carregouModerador && carregouOrientadorTCC && carregouAvaliadorBancaTCC) {
+          setCarregando(false);
+        }
       }
 
       const paraTrabalho = (d: { id: string; data: () => unknown }) =>
         ({ id: d.id, ...(d.data() as object) }) as Trabalho;
 
-      const unsubAvaliador = onSnapshot(comoAvaliador, (snap) => {
-        for (const d of snap.docs) porId.set(d.id, paraTrabalho(d));
-        // Remove quem saiu do resultado (deixou de ser o avaliador).
-        const idsAtuais = new Set(snap.docs.map((d) => d.id));
-        for (const [id, t] of porId) {
-          if (t.avaliadorUid === uid && !idsAtuais.has(id)) porId.delete(id);
+      // Um doc pode chegar por mais de um listener ao mesmo tempo (ex.:
+      // orientador que também é avaliador da própria banca — não deveria
+      // acontecer na prática, mas não corrompe nada se acontecer); só
+      // remove do resultado quando NENHUM dos 4 critérios bate mais.
+      function aindaRelevante(t: Trabalho): boolean {
+        return (
+          t.avaliadorUid === uid ||
+          t.moderadorUid === uid ||
+          t.orientadorUid === uid ||
+          !!t.bancaAvaliadores?.some((a) => a.uid === uid)
+        );
+      }
+
+      function mesclarSnapshot(
+        docs: { id: string; data: () => unknown }[],
+        idsDoListener: Set<string>,
+        pertenceAoListener: (t: Trabalho) => boolean,
+      ) {
+        for (const d of docs) {
+          const existente = porId.get(d.id);
+          porId.set(d.id, existente ? { ...existente, ...paraTrabalho(d) } : paraTrabalho(d));
         }
+        for (const [id, t] of porId) {
+          if (pertenceAoListener(t) && !idsDoListener.has(id) && !aindaRelevante(t)) {
+            porId.delete(id);
+          }
+        }
+      }
+
+      const unsubAvaliador = onSnapshot(comoAvaliador, (snap) => {
+        mesclarSnapshot(snap.docs, new Set(snap.docs.map((d) => d.id)), (t) => t.avaliadorUid === uid);
         carregouAvaliador = true;
         publicar();
       });
       const unsubModerador = onSnapshot(comoModerador, (snap) => {
-        for (const d of snap.docs) {
-          const existente = porId.get(d.id);
-          porId.set(d.id, existente ? { ...existente, ...paraTrabalho(d) } : paraTrabalho(d));
-        }
-        const idsAtuais = new Set(snap.docs.map((d) => d.id));
-        for (const [id, t] of porId) {
-          if (t.moderadorUid === uid && t.avaliadorUid !== uid && !idsAtuais.has(id)) {
-            porId.delete(id);
-          }
-        }
+        mesclarSnapshot(snap.docs, new Set(snap.docs.map((d) => d.id)), (t) => t.moderadorUid === uid);
         carregouModerador = true;
+        publicar();
+      });
+      const unsubOrientadorTCC = onSnapshot(comoOrientadorTCC, (snap) => {
+        mesclarSnapshot(snap.docs, new Set(snap.docs.map((d) => d.id)), (t) => t.orientadorUid === uid);
+        carregouOrientadorTCC = true;
+        publicar();
+      });
+      const unsubAvaliadorBancaTCC = onSnapshot(comoAvaliadorBancaTCC, (snap) => {
+        mesclarSnapshot(snap.docs, new Set(snap.docs.map((d) => d.id)), (t) =>
+          !!t.bancaAvaliadores?.some((a) => a.uid === uid),
+        );
+        carregouAvaliadorBancaTCC = true;
         publicar();
       });
 
       return () => {
         unsubAvaliador();
         unsubModerador();
+        unsubOrientadorTCC();
+        unsubAvaliadorBancaTCC();
       };
     }
 

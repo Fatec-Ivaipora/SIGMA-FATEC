@@ -6,11 +6,15 @@ import { Sidebar } from "@/components/Sidebar";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
+import { useTrabalhos, type Trabalho } from "@/lib/data/trabalhos";
 import {
   diasDoIntervalo,
   salvarMinhaDisponibilidade,
+  salvarNotaBanca,
   useMinhaDisponibilidade,
+  type NotaBancaTCC,
 } from "@/lib/data/bancas";
+import { CRITERIOS_BANCA_TCC, escalaParaPeso } from "@/lib/criteriosAvaliacao";
 
 const CAPACIDADE_PADRAO = 2;
 
@@ -25,6 +29,7 @@ const CAPACIDADE_PADRAO = 2;
 export default function BancaDisponibilidadePage() {
   const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
   const { eventos } = useEventos(perfil);
+  const { trabalhos } = useTrabalhos(perfil, user?.uid);
 
   const eventosTCC = useMemo(() => eventos.filter((e) => e.tipo === "tcc"), [eventos]);
   const [eventoId, setEventoId] = useState("");
@@ -203,10 +208,165 @@ export default function BancaDisponibilidadePage() {
                   <span className="text-sm font-medium text-emerald-700">Salvo.</span>
                 )}
               </div>
+
+              <MinhasBancasView
+                trabalhos={trabalhos.filter((t) => t.eventoId === evento.id)}
+                uid={user?.uid}
+                meuNome={perfil.nome}
+              />
             </div>
           )}
         </div>
       </div>
     </main>
+  );
+}
+
+/** Lista de defesas em que a pessoa logada está na banca (orientador ou um
+ * dos 2 avaliadores, ver useTrabalhos estendido em trabalhos.ts) — cada uma
+ * com o formulário da rubrica de 7 critérios (CRITERIOS_BANCA_TCC) pra
+ * lançar a própria nota, sem mexer na dos outros 2 membros (ver
+ * salvarNotaBanca). Fica na mesma tela de disponibilidade (2026-11-16) —
+ * não cria uma página nova só pra isso, já que é a mesma pessoa cuidando
+ * das duas coisas no mesmo evento. */
+function MinhasBancasView({
+  trabalhos,
+  uid,
+  meuNome,
+}: {
+  trabalhos: Trabalho[];
+  uid: string | undefined;
+  meuNome: string;
+}) {
+  const minhasBancas = trabalhos.filter(
+    (t) => t.bancaData && (t.orientadorUid === uid || t.bancaAvaliadores?.some((a) => a.uid === uid)),
+  );
+  const [avaliandoId, setAvaliandoId] = useState<string | null>(null);
+
+  if (minhasBancas.length === 0) return null;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-fatec-line pt-5">
+      <h2 className="text-sm font-semibold text-fatec-navy-900">Minhas bancas</h2>
+      <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
+        {minhasBancas.map((t) => {
+          const jaAvaliei = t.notasBanca?.some((n) => n.uid === uid);
+          return (
+            <div key={t.id} className="flex flex-col gap-3 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-fatec-navy-900">{t.alunoNome}</p>
+                  <p className="text-xs text-fatec-muted">
+                    {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR")}
+                  </p>
+                </div>
+                {jaAvaliei ? (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    Nota lançada
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAvaliandoId(avaliandoId === t.id ? null : t.id)}
+                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                  >
+                    {avaliandoId === t.id ? "Fechar" : "Dar nota"}
+                  </button>
+                )}
+              </div>
+              {avaliandoId === t.id && !jaAvaliei && uid && (
+                <FormularioNotaBanca
+                  trabalho={t}
+                  uid={uid}
+                  meuNome={meuNome}
+                  onEnviado={() => setAvaliandoId(null)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FormularioNotaBanca({
+  trabalho,
+  uid,
+  meuNome,
+  onEnviado,
+}: {
+  trabalho: Trabalho;
+  uid: string;
+  meuNome: string;
+  onEnviado: () => void;
+}) {
+  const [notas, setNotas] = useState<Record<string, number>>({});
+  const [enviando, setEnviando] = useState(false);
+  const completo = CRITERIOS_BANCA_TCC.every((c) => notas[c.key] !== undefined);
+  const soma = CRITERIOS_BANCA_TCC.reduce((acc, c) => acc + (notas[c.key] ?? 0), 0);
+
+  async function enviar() {
+    if (!completo) return;
+    setEnviando(true);
+    try {
+      const minhaNota: NotaBancaTCC = {
+        uid,
+        nome: meuNome,
+        papelNaBanca: trabalho.orientadorUid === uid ? "orientador" : "avaliador",
+        notas,
+        nota: soma,
+      };
+      await salvarNotaBanca({
+        trabalhoId: trabalho.id,
+        notasBancaAtuais: trabalho.notasBanca ?? [],
+        minhaNota,
+      });
+      onEnviado();
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-fatec-navy-50 p-4">
+      {CRITERIOS_BANCA_TCC.map((c) => (
+        <div key={c.key} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-fatec-navy-900">{c.label}</p>
+            <p className="text-xs text-fatec-muted">{c.descricao}</p>
+          </div>
+          <div className="flex flex-none gap-1">
+            {escalaParaPeso(c.peso ?? 1).map((n) => (
+              <button
+                key={n.valor}
+                type="button"
+                onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n.valor }))}
+                className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg border px-2 text-xs font-semibold transition-colors ${
+                  notas[c.key] === n.valor
+                    ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
+                    : "border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-100"
+                }`}
+              >
+                {n.valor}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center justify-between border-t border-fatec-line pt-3">
+        <span className="text-sm text-fatec-muted">
+          Nota: <span className="font-semibold text-fatec-navy-900">{soma.toFixed(1)}</span> / 10
+        </span>
+        <button
+          type="button"
+          onClick={enviar}
+          disabled={!completo || enviando}
+          className="rounded-xl bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+        >
+          {enviando ? "Enviando..." : "Enviar nota"}
+        </button>
+      </div>
+    </div>
   );
 }

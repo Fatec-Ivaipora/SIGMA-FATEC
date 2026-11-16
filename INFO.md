@@ -477,6 +477,28 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **TCC: rubrica de 7 critérios com peso, nota final e
+  aprovação** (5ª fase do plano). `CriterioDef` ganha `peso?: number`
+  (ausente/sempre 1 pros critérios de MAC, que continuam exatamente iguais
+  — `PainelTrabalhos` nem foi tocado) e `CRITERIOS_BANCA_TCC` chega com os 7
+  critérios reais, pesos 2/2/0.5/1/2/0.5/2 somando 10 (conferidos contra o
+  "Formulário de avaliação Apresentação Oral.doc" da pasta de exemplos).
+  Decidi NÃO reaproveitar `PainelTrabalhos` como o plano original previa —
+  ele carrega lógica de revisão/prazo/comentário bem específica de MAC que
+  não existe em TCC, forçar a reutilização ia complicar mais do que ajudar.
+  Em vez disso: `/avaliador/banca` ganhou uma 2ª seção, "Minhas bancas" —
+  cada membro da banca (orientador ou um dos 2 avaliadores) lança a própria
+  nota ali, sem mexer na dos outros 2 (`salvarNotaBanca`, em
+  `src/lib/data/bancas.ts`, calcula `notaFinalBanca` — média — assim que a
+  3ª chega). Pra isso funcionar, `useTrabalhos` (trabalhos.ts) precisou
+  aprender a enxergar trabalho de TCC pelo papel na banca — antes só sabia
+  ler por `avaliadorUid`/`moderadorUid` (campos de MAC); agora também lê
+  por `orientadorUid` e pelo novo `bancaAvaliadoresUids` (espelho em array
+  simples de `bancaAvaliadores`, pro Firestore conseguir fazer
+  array-contains). `firestore.rules` ganhou leitura/escrita (restrita a
+  `notasBanca`/`notaFinalBanca`/`status`/`atualizadoEm`) pra quem está na
+  banca de um trabalho específico.
+
 - **2026-11-16** — **TCC: disponibilidade de banca e geração automática**
   (4ª fase do plano — a mais nova do sistema, sem precedente nenhum pra
   reaproveitar). Nova coleção `disponibilidadeBanca/{eventoId}_{uid}`

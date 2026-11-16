@@ -13,6 +13,9 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import type { Trabalho } from "@/lib/data/trabalhos";
+
+export type NotaBancaTCC = NonNullable<Trabalho["notasBanca"]>[number];
 
 /** disponibilidadeBanca/{eventoId}_{uid} (2026-11-16, pedido explícito do
  * usuário) — autoatendimento: cada avaliador/orientador/moderador vinculado
@@ -184,6 +187,7 @@ export async function substituirBancaDoEvento(bancas: BancaGerada[]) {
       batch.update(doc(db, "trabalhos", b.trabalhoId), {
         bancaData: b.data,
         bancaAvaliadores: b.avaliadores,
+        bancaAvaliadoresUids: b.avaliadores.map((a) => a.uid),
         status: "tcc_banca_agendada",
         atualizadoEm: serverTimestamp(),
       });
@@ -204,7 +208,35 @@ export function moverBanca(
   return updateDoc(doc(db, "trabalhos", trabalhoId), {
     bancaData: data,
     bancaAvaliadores: avaliadores,
+    bancaAvaliadoresUids: avaliadores.map((a) => a.uid),
     status: "tcc_banca_agendada",
+    atualizadoEm: serverTimestamp(),
+  });
+}
+
+/** Lança a nota de UM membro da banca (2026-11-16) — nunca sobrescreve a
+ * nota dos outros 2 (substitui só a entrada com o mesmo uid, se reenviar).
+ * Calcula notaFinalBanca (média) assim que a 3ª nota chega; antes disso o
+ * campo fica ausente. firestore.rules restringe quem chama isso a só mexer
+ * em notasBanca/notaFinalBanca/atualizadoEm (ver regra de update em
+ * /trabalhos — orientadorUid ou bancaAvaliadoresUids bater com quem está
+ * logado). */
+export async function salvarNotaBanca(params: {
+  trabalhoId: string;
+  notasBancaAtuais: NotaBancaTCC[];
+  minhaNota: NotaBancaTCC;
+}) {
+  const notasBanca = [
+    ...params.notasBancaAtuais.filter((n) => n.uid !== params.minhaNota.uid),
+    params.minhaNota,
+  ];
+  const notaFinalBanca =
+    notasBanca.length === 3
+      ? notasBanca.reduce((acc, n) => acc + n.nota, 0) / 3
+      : undefined;
+  await updateDoc(doc(db, "trabalhos", params.trabalhoId), {
+    notasBanca,
+    ...(notaFinalBanca != null ? { notaFinalBanca } : {}),
     atualizadoEm: serverTimestamp(),
   });
 }

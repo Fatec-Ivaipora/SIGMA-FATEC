@@ -169,6 +169,13 @@ service cloud.firestore {
         // Moderador (2026-08-26) — etapa Apresentação, reaproveita o mesmo
         // padrão do avaliador acima, só que com moderadorUid.
         (souAvaliacao("moderador") && resource.data.moderadorUid == request.auth.uid) ||
+        // Banca de TCC (2026-11-16) — orientador lê o próprio orientando
+        // (orientadorUid), e os 2 avaliadores da banca leem pelo espelho
+        // bancaAvaliadoresUids (ver comentário no campo, trabalhos.ts).
+        ((souAvaliacao("avaliador") || souAvaliacao("orientador") || souAvaliacao("moderador")) && (
+          resource.data.orientadorUid == request.auth.uid ||
+          request.auth.uid in resource.data.get("bancaAvaliadoresUids", [])
+        )) ||
         (meuPapel() == "aluno" && (
           resource.data.alunoUid == request.auth.uid ||
           request.auth.uid in resource.data.get("participantesUids", [])
@@ -213,6 +220,16 @@ service cloud.firestore {
           chegouODiaDoEvento(resource.data.eventoId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "compareceuApresentacao", "premiado", "atualizadoEm"])) ||
+        // Banca de TCC (2026-11-16) — orientador ou um dos 2 avaliadores
+        // da banca lança a PRÓPRIA nota (notasBanca é um array com 1
+        // entrada por pessoa — a aplicação cuida de mesclar a entrada nova
+        // sem sobrescrever a dos outros 2, a regra só limita QUAIS campos
+        // podem mudar, não valida o conteúdo do array).
+        ((souAvaliacao("avaliador") || souAvaliacao("orientador") || souAvaliacao("moderador")) && (
+          resource.data.orientadorUid == request.auth.uid ||
+          request.auth.uid in resource.data.get("bancaAvaliadoresUids", [])
+        ) && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["notasBanca", "notaFinalBanca", "status", "atualizadoEm"])) ||
         // Dono do trabalho edita livremente (título, resumo, orientador,
         // colegas, etc.) enquanto "revisao" (avaliador pediu ajuste, sem
         // prazo) OU dentro do prazo de edição do evento — depois disso,
