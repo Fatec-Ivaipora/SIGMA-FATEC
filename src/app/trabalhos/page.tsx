@@ -388,6 +388,181 @@ function InscritosSimplesView({ evento }: { evento: Evento }) {
   );
 }
 
+type EtapaTCC = "inscricao" | "avaliacao" | "resultado";
+
+const ETAPAS_TCC: { key: EtapaTCC; label: string }[] = [
+  { key: "inscricao", label: "Inscrição" },
+  { key: "avaliacao", label: "Avaliação" },
+  { key: "resultado", label: "Resultado" },
+];
+
+// Etapas de TCC (2026-11-16, pedido explícito do usuário) — bem mais curto
+// que o STATUS_POR_ETAPA de MAC acima: Inscrição → Avaliação → Resultado,
+// sem Revisão/Apresentação/Resultado Final (não existe desempate nem
+// revisão de resumo aqui). Ver TrabalhoStatus em src/lib/data/trabalhos.ts.
+const STATUS_POR_ETAPA_TCC: Record<EtapaTCC, TrabalhoStatus[]> = {
+  inscricao: ["tcc_inscrito"],
+  avaliacao: ["tcc_banca_agendada"],
+  resultado: ["tcc_aprovado", "tcc_reprovado"],
+};
+
+/** Evento TCC (2026-11-16) — igual espírito de InscritosSimplesView acima
+ * (early return no lugar da pipeline de MAC), mas com 3 abas próprias em vez
+ * de lista única, já que TCC tem etapas (ainda que bem mais simples que
+ * MAC). "Avaliação" e "Resultado" ainda ficam vazias até a geração de banca
+ * existir (fases seguintes do plano) — essa tela já reflete o modelo de
+ * dados final (bancaData/notasBanca/notaFinalBanca), só não tem de onde vir
+ * ainda. Self-contido: recebe os trabalhos já filtrados pelo pai. */
+function TrabalhosTCCView({
+  evento,
+  trabalhosDoEvento,
+  onDecidirResultado,
+}: {
+  evento: Evento;
+  trabalhosDoEvento: Trabalho[];
+  onDecidirResultado: (trabalho: Trabalho, aprovado: boolean) => void;
+}) {
+  const [etapa, setEtapa] = useState<EtapaTCC>("inscricao");
+  const [busca, setBusca] = useState("");
+
+  const contagem = (e: EtapaTCC) =>
+    trabalhosDoEvento.filter((t) => STATUS_POR_ETAPA_TCC[e].includes(t.status)).length;
+
+  const exibidos = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return trabalhosDoEvento
+      .filter((t) => STATUS_POR_ETAPA_TCC[etapa].includes(t.status))
+      .filter(
+        (t) =>
+          !termo ||
+          t.titulo.toLowerCase().includes(termo) ||
+          t.alunoNome.toLowerCase().includes(termo) ||
+          (t.nomeOrientador ?? "").toLowerCase().includes(termo),
+      )
+      .sort((a, b) => momentoEnvio(b) - momentoEnvio(a));
+  }, [trabalhosDoEvento, etapa, busca]);
+
+  return (
+    <div className="flex-1 px-6 py-8 md:px-10">
+      <div className="overflow-x-auto pb-1">
+        <div className="flex w-fit overflow-hidden rounded-xl border border-fatec-line">
+          {ETAPAS_TCC.map((e, i) => {
+            const ativa = etapa === e.key;
+            return (
+              <button
+                key={e.key}
+                type="button"
+                onClick={() => setEtapa(e.key)}
+                style={{
+                  clipPath:
+                    i === ETAPAS_TCC.length - 1
+                      ? "polygon(0 0, 100% 0, 100% 100%, 0 100%, 18px 50%)"
+                      : "polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%)",
+                  marginLeft: i === 0 ? 0 : -18,
+                }}
+                className={`relative flex items-center gap-2 py-3 pl-6 pr-8 text-sm font-semibold transition-colors ${
+                  ativa
+                    ? "z-10 bg-fatec-orange-500 text-white"
+                    : "bg-fatec-navy-50 text-fatec-navy-800 hover:bg-fatec-navy-100"
+                }`}
+              >
+                {e.label}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                    ativa ? "bg-white/20 text-white" : "bg-white text-fatec-navy-700"
+                  }`}
+                >
+                  {contagem(e.key)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 sm:w-72">
+        <Search className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={1.75} />
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por título, aluno ou orientador"
+          className="min-w-0 flex-1 bg-transparent text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none"
+        />
+      </div>
+
+      <div className="mt-6 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
+        {exibidos.map((t) => (
+          <div
+            key={t.id}
+            className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-fatec-navy-900">
+                {tituloExibicao(t.titulo)}
+              </p>
+              <p className="truncate text-xs text-fatec-muted">
+                {t.alunoNome} · orientador(a): {t.nomeOrientador ?? "—"}
+              </p>
+              {etapa === "avaliacao" && (
+                <p className="mt-0.5 text-xs text-fatec-muted">
+                  {t.bancaData ? (
+                    <>
+                      Banca em {formatarData({ toDate: () => new Date(`${t.bancaData}T00:00:00`) })}
+                      {t.bancaAvaliadores?.length
+                        ? ` · ${t.bancaAvaliadores.map((a) => a.nome).join(", ")}`
+                        : ""}
+                      {" · "}
+                      {t.notasBanca?.length ?? 0}/3 notas lançadas
+                    </>
+                  ) : (
+                    "Banca ainda não agendada"
+                  )}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              {etapa === "resultado" && t.notaFinalBanca != null && (
+                <span className="rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-navy-800">
+                  Nota final: {t.notaFinalBanca.toFixed(1)}
+                </span>
+              )}
+              {etapa === "avaliacao" && (t.notasBanca?.length ?? 0) === 3 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onDecidirResultado(t, true)}
+                    className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                  >
+                    Aprovar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDecidirResultado(t, false)}
+                    className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                  >
+                    Reprovar
+                  </button>
+                </>
+              )}
+              <StatusBadge status={t.status} />
+            </div>
+          </div>
+        ))}
+        {exibidos.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-fatec-muted">
+            Ninguém nessa etapa ainda.
+          </p>
+        )}
+      </div>
+      {evento.cursoRestrito && (
+        <p className="mt-4 text-xs text-fatec-muted">
+          Evento restrito ao curso de {evento.cursoRestrito}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function TrabalhosAdminPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
   const { eventos } = useEventos(perfil);
@@ -1713,7 +1888,96 @@ export default function TrabalhosAdminPage() {
     setSelecionados(new Set());
   }
 
+  // Aprovar/reprovar um TCC (2026-11-16) — admin decide olhando a
+  // notaFinalBanca já calculada (média das 3 notas da banca, ver fase de
+  // rubrica que preenche isso), sem nota de corte automática por enquanto.
+  // Sem e-mail de notificação ainda (2026-11-16) — /api/mail/trabalho-status
+  // só conhece os tipos de MAC; TCC ganha um tipo próprio numa fase
+  // seguinte, se o usuário pedir.
+  async function decidirResultadoTCC(trabalho: Trabalho, aprovado: boolean) {
+    await updateDoc(doc(db, "trabalhos", trabalho.id), {
+      status: aprovado ? "tcc_aprovado" : "tcc_reprovado",
+      atualizadoEm: serverTimestamp(),
+    });
+  }
+
   if (carregando || !perfil) return null;
+
+  // Evento TCC (2026-11-16) — etapas próprias (Inscrição/Avaliação/
+  // Resultado), bem diferentes da pipeline de MAC abaixo. Mesmo espírito do
+  // early return de evento "simples" logo abaixo: cabeçalho e seletor de
+  // evento continuam os mesmos, só o conteúdo muda.
+  if (eventoSelecionado?.tipo === "tcc") {
+    return (
+      <main className="flex flex-1 flex-col md:flex-row">
+        <Sidebar
+          navItems={NAV_ADMIN}
+          activeHref="/trabalhos"
+          userName={perfil.nome}
+          userRoleLabel={perfil.papel === "admin" ? "Admin" : "Organização"}
+          userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
+        />
+
+        <div className="flex flex-1 flex-col overflow-x-hidden md:h-screen md:overflow-y-auto">
+          <header className="flex flex-col gap-4 border-b border-fatec-line bg-white px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
+            <div>
+              <h1 className="text-xl font-bold tracking-[-0.01em] text-fatec-navy-900">
+                Trabalhos
+              </h1>
+              <p className="text-sm text-fatec-muted">
+                Esse evento é Apresentação de TCC — Inscrição, Avaliação e
+                Resultado.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              {podeVerEncerrados && (
+                <button
+                  type="button"
+                  onClick={alternarEncerrados}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    mostrarEncerrados
+                      ? "bg-fatec-navy-900 text-white hover:bg-fatec-navy-800"
+                      : "border border-fatec-line bg-white text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  }`}
+                >
+                  {mostrarEncerrados ? "Ocultar encerrados" : "Ver encerrados"}
+                </button>
+              )}
+              <div className="relative">
+                <select
+                  value={eventoId}
+                  onChange={(e) => {
+                    setEventoId(e.target.value);
+                    setAreaFiltro("Todas as áreas");
+                  }}
+                  className="w-full appearance-none rounded-xl border border-fatec-line bg-white py-2.5 pl-4 pr-9 text-sm font-medium text-fatec-navy-900 outline-none focus:border-fatec-sky-600 md:w-64"
+                >
+                  <option value="todos">{todosLabel}</option>
+                  {eventosSelecionaveis.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.nome}
+                      {ev.encerrado ? " (encerrado)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fatec-muted"
+                  strokeWidth={1.75}
+                />
+              </div>
+            </div>
+          </header>
+
+          <TrabalhosTCCView
+            evento={eventoSelecionado}
+            trabalhosDoEvento={trabalhos.filter((t) => t.eventoId === eventoSelecionado.id)}
+            onDecidirResultado={decidirResultadoTCC}
+          />
+        </div>
+      </main>
+    );
+  }
 
   // Evento simples (2026-09-22) — sem trabalho/avaliação, mostra a lista de
   // inscritos em vez de toda a pipeline de ETAPAS abaixo. Cabeçalho e

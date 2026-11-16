@@ -477,6 +477,20 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **TCC: abas de Trabalhos (Inscrição/Avaliação/Resultado)
+  no admin** (3ª fase do plano). `/trabalhos` ganha um terceiro early
+  return, igual espírito do de evento "simples" já existente — mesmo
+  cabeçalho/seletor de evento, conteúdo próprio: `TrabalhosTCCView` com 3
+  abas (`ETAPAS_TCC`/`STATUS_POR_ETAPA_TCC`, bem mais curto que o de MAC —
+  sem Revisão/Apresentação/Resultado Final). Aba Inscrição lista título +
+  orientador de quem se inscreveu; Avaliação mostra o dia da banca e quantas
+  das 3 notas já chegaram (ainda sempre vazia — a geração de banca é a
+  próxima fase); Resultado mostra a nota final e deixa aprovar/reprovar
+  manualmente (sem nota de corte automática, sem e-mail ainda — o tipo de
+  notificação de TCC fica pra depois, se for pedido). Já reflete o modelo
+  de dados final (`bancaData`/`notasBanca`/`notaFinalBanca`), só não tem de
+  onde vir até a próxima fase preencher.
+
 - **2026-11-16** — **TCC: inscrição do aluno (título + orientador real) e
   restrição de curso reforçada no servidor** (2ª fase do plano, continuação
   da entrada anterior). Novo componente `OrientadorPicker` — diferente do
