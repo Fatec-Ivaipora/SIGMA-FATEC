@@ -477,6 +477,19 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **"Certificamos" em vez de "Declaramos" no certificado de
+  apresentação em grupo** (confirmado com a secretaria — "estamos certinhos
+  gerando os 3 certificados [premiação, apresentação em grupo e os
+  individuais]. Única coisa: que o de apresentação e de premiação a
+  palavra lá em cima não é declaramos, é certificamos... declaramos vai
+  ser pra avaliadores/moderadores/monitores"). `CertificadoGrupoApresentacaoPDF`
+  trocou "Declaramos que" por "Certificamos que" — regra agora documentada
+  no componente: `DeclaracaoPDF` (avaliador/moderador/monitor/orientador/
+  participante/aluno, papel individual sem trabalho) continua
+  "Declaramos"; apresentação e premiação em grupo são sempre
+  "Certificamos" (premiação já nem usava "Declaramos" — tem título próprio,
+  "CERTIFICADO DE RECONHECIMENTO" — não precisou mudar).
+
 - **2026-11-16** — **Certificado de apresentação em grupo volta a mostrar o
   número de registro já usado** (corrigindo um erro nosso — "nós tiramos o
   número que estava lá na numeração do certificado... foi erro nosso porque

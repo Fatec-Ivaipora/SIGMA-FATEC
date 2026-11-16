@@ -358,7 +358,12 @@ export function CertificadosApresentacaoImpressaoPDF({
  * (`estiloApresentacao.registro`), pra bater exatamente igual ao que já foi
  * impresso — só aparece quando o trabalho já tinha mesmo um número
  * (`numeroRegistroExistente`, NUNCA cria um novo aqui: ver GET
- * /api/certificados/grupo/apresentacao). */
+ * /api/certificados/grupo/apresentacao).
+ *
+ * "Certificamos" em vez de "Declaramos" (2026-11-16, confirmado com a
+ * secretaria) — regra: "Declaramos" fica só pra avaliador/moderador/monitor
+ * (`DeclaracaoPDF`, papel individual, sem trabalho); apresentação e
+ * premiação em grupo são sempre "Certificamos". */
 export function CertificadoGrupoApresentacaoPDF({
   nomes,
   eventoNome,
@@ -380,7 +385,7 @@ export function CertificadoGrupoApresentacaoPDF({
       <Page size="A4" orientation="landscape" style={estiloApresentacao.page}>
         <Image fixed src={FUNDO_APRESENTACAO} style={estiloApresentacao.fundo} />
         <View style={estiloApresentacao.conteudo}>
-          <Text style={estiloApresentacao.rotulo}>Declaramos que</Text>
+          <Text style={estiloApresentacao.rotulo}>Certificamos que</Text>
           <Text style={estiloApresentacao.nomes}>{juntarNomes(nomes.map((n) => n.toUpperCase()))}</Text>
           <Text style={estiloApresentacao.corpo}>
             {plural ? "participaram" : "participou"} da{" "}
