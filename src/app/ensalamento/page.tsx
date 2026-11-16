@@ -42,6 +42,13 @@ import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
 import { baixarGradeEnsalamentoPdf } from "@/lib/baixarCertificado";
 import {
+  diasDoIntervalo,
+  montarBancaAutomatica,
+  substituirBancaDoEvento,
+  moverBanca,
+  useDisponibilidadeDoEvento,
+} from "@/lib/data/bancas";
+import {
   useSessoesDoEvento,
   montarGradeAutomatica,
   substituirGradeDoEvento,
@@ -672,6 +679,236 @@ function ConfirmacaoPresencaView({
   );
 }
 
+// Ensalamento de banca de TCC (2026-11-16, pedido explícito do usuário) —
+// bem diferente do ensalamento por sala×horário abaixo: cruza
+// disponibilidade (dia×pessoa, ver src/lib/data/bancas.ts) em vez de
+// sala×horário, e cada trabalho ganha 1 dia + os 2 avaliadores (o
+// orientador já é fixo, ver orientadorUid no próprio trabalho). Reaproveita
+// só o SHELL (cabeçalho/seletor de evento) de EnsalamentoAdminView — o
+// conteúdo é inteiramente próprio.
+function EnsalamentoBancaView({
+  evento,
+  trabalhos,
+}: {
+  evento: Evento;
+  trabalhos: Trabalho[];
+}) {
+  const { disponibilidades } = useDisponibilidadeDoEvento(evento.id);
+  const dias = useMemo(
+    () => diasDoIntervalo(evento.dataRealizacao ?? "", evento.dataRealizacaoFim ?? ""),
+    [evento.dataRealizacao, evento.dataRealizacaoFim],
+  );
+
+  const [gerando, setGerando] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const [resultado, setResultado] = useState<{ geradas: number; overflow: number } | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [edicaoDia, setEdicaoDia] = useState("");
+  const [edicaoAvaliador1, setEdicaoAvaliador1] = useState("");
+  const [edicaoAvaliador2, setEdicaoAvaliador2] = useState("");
+
+  async function gerarBanca() {
+    setGerando(true);
+    setConfirmando(false);
+    try {
+      const { bancasNovas, overflowTrabalhoIds } = montarBancaAutomatica({
+        trabalhos: trabalhos
+          .filter((t) => t.orientadorUid)
+          .map((t) => ({
+            id: t.id,
+            orientadorUid: t.orientadorUid!,
+            nomeOrientador: t.nomeOrientador ?? "",
+          })),
+        disponibilidades,
+        dias,
+      });
+      await substituirBancaDoEvento(bancasNovas);
+      setResultado({ geradas: bancasNovas.length, overflow: overflowTrabalhoIds.length });
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  function abrirEdicao(t: Trabalho) {
+    setEditandoId(t.id);
+    setEdicaoDia(t.bancaData ?? dias[0] ?? "");
+    setEdicaoAvaliador1(t.bancaAvaliadores?.[0]?.uid ?? "");
+    setEdicaoAvaliador2(t.bancaAvaliadores?.[1]?.uid ?? "");
+  }
+
+  async function salvarEdicao(t: Trabalho) {
+    const nomePorUid = new Map(disponibilidades.map((d) => [d.uid, d.nome]));
+    const avaliadores = [edicaoAvaliador1, edicaoAvaliador2]
+      .filter(Boolean)
+      .filter((uid) => uid !== t.orientadorUid)
+      .map((uid) => ({ uid, nome: nomePorUid.get(uid) ?? uid }));
+    await moverBanca(t.id, edicaoDia, avaliadores);
+    setEditandoId(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-2xl border border-fatec-line bg-white p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-fatec-navy-900">Banca de defesa</h2>
+            <p className="mt-1 text-sm text-fatec-muted">
+              {disponibilidades.length} avaliador(es)/orientador(es) já
+              marcaram disponibilidade · {dias.length} dia(s) na janela do
+              evento.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmando(true)}
+            disabled={gerando || dias.length === 0}
+            className="inline-flex w-fit items-center gap-1.5 rounded-xl bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+          >
+            <Wand2 className="h-4 w-4" strokeWidth={1.75} />
+            {gerando ? "Gerando..." : "Gerar banca automaticamente"}
+          </button>
+        </div>
+        {resultado && (
+          <p className="mt-3 text-sm text-fatec-muted">
+            <span className="font-semibold text-emerald-700">
+              {resultado.geradas} banca(s) montada(s)
+            </span>
+            {resultado.overflow > 0 && (
+              <>
+                {" · "}
+                <span className="font-semibold text-amber-700">
+                  {resultado.overflow} sem banca
+                </span>{" "}
+                (disponibilidade insuficiente nos dias do evento — ajuste
+                manualmente abaixo ou peça mais disponibilidade).
+              </>
+            )}
+            .
+          </p>
+        )}
+      </section>
+
+      <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
+        {trabalhos.map((t) => (
+          <div key={t.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-fatec-navy-900">{t.alunoNome}</p>
+              <p className="truncate text-xs text-fatec-muted">
+                Orientador(a): {t.nomeOrientador ?? "—"}
+              </p>
+            </div>
+
+            {editandoId === t.id ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={edicaoDia}
+                  onChange={(e) => setEdicaoDia(e.target.value)}
+                  className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
+                >
+                  {dias.map((d) => (
+                    <option key={d} value={d}>
+                      {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
+                    </option>
+                  ))}
+                </select>
+                {[
+                  [edicaoAvaliador1, setEdicaoAvaliador1] as const,
+                  [edicaoAvaliador2, setEdicaoAvaliador2] as const,
+                ].map(([valor, setValor], i) => (
+                  <select
+                    key={i}
+                    value={valor}
+                    onChange={(e) => setValor(e.target.value)}
+                    className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
+                  >
+                    <option value="">Avaliador {i + 1}...</option>
+                    {disponibilidades
+                      .filter((d) => d.uid !== t.orientadorUid)
+                      .map((d) => (
+                        <option key={d.uid} value={d.uid}>
+                          {d.nome}
+                        </option>
+                      ))}
+                  </select>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => salvarEdicao(t)}
+                  className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600"
+                >
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoId(null)}
+                  className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-none items-center gap-3">
+                <span className="text-xs text-fatec-muted">
+                  {t.bancaData ? (
+                    <>
+                      {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR")} ·{" "}
+                      {t.bancaAvaliadores?.map((a) => a.nome).join(", ") || "sem avaliadores"}
+                    </>
+                  ) : (
+                    "Sem banca"
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => abrirEdicao(t)}
+                  className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+                >
+                  Editar
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {trabalhos.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-fatec-muted">
+            Nenhum TCC inscrito nesse evento ainda.
+          </p>
+        )}
+      </div>
+
+      <Modal
+        open={confirmando}
+        onClose={() => setConfirmando(false)}
+        title="Gerar banca automaticamente?"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-fatec-muted">
+            Isso substitui a banca de QUALQUER trabalho que já tinha uma —
+            os ajustes manuais feitos até agora serão perdidos pros
+            trabalhos recalculados.
+          </p>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmando(false)}
+              className="rounded-xl border border-fatec-line px-5 py-2.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={gerarBanca}
+              className="rounded-xl bg-fatec-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+            >
+              Gerar banca
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // Visão admin/organização (2026-09-30, extraído pra ficar ao lado de
 // EnsalamentoMonitorView, ver EnsalamentoPage no fim do arquivo) — inalterada
 // além do nome, continua com o próprio useRequireAuth (nunca chega a montar
@@ -1205,7 +1442,9 @@ function EnsalamentoAdminView() {
             <p className="text-sm text-fatec-muted">
               {evento?.tipo === "simples"
                 ? "Confirmação de presença por QR — evento sem trabalho/ensalamento."
-                : "Monte a grade de apresentações automaticamente, por sala, horário, modalidade e área temática."}
+                : evento?.tipo === "tcc"
+                  ? "Cruze a disponibilidade de avaliadores/orientadores por dia e monte a banca de cada defesa."
+                  : "Monte a grade de apresentações automaticamente, por sala, horário, modalidade e área temática."}
             </p>
           </div>
 
@@ -1266,15 +1505,25 @@ function EnsalamentoAdminView() {
             />
           )}
 
-          {eventoId && evento?.tipo !== "simples" && modalidadesDoEvento.length === 0 && (
-            <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
-              Esse evento não tem etapa de apresentação configurada — ajuste
-              em Eventos → Configurações (“Modalidades de apresentação”)
-              antes de ensalar.
-            </p>
+          {eventoId && evento && evento.tipo === "tcc" && (
+            <EnsalamentoBancaView
+              evento={evento}
+              trabalhos={trabalhos.filter((t) => t.eventoId === evento.id)}
+            />
           )}
 
-          {eventoId && modalidadesDoEvento.length > 0 && (
+          {eventoId &&
+            evento?.tipo !== "simples" &&
+            evento?.tipo !== "tcc" &&
+            modalidadesDoEvento.length === 0 && (
+              <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+                Esse evento não tem etapa de apresentação configurada — ajuste
+                em Eventos → Configurações (“Modalidades de apresentação”)
+                antes de ensalar.
+              </p>
+            )}
+
+          {eventoId && evento?.tipo !== "tcc" && modalidadesDoEvento.length > 0 && (
             <div className="flex flex-col gap-6">
               <div className="flex w-fit overflow-hidden rounded-xl border border-fatec-line">
                 <button

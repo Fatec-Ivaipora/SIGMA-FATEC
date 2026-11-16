@@ -406,6 +406,23 @@ service cloud.firestore {
       );
     }
 
+    // disponibilidadeBanca/{eventoId}_{uid} (2026-11-16, pedido explícito do
+    // usuário) — autoatendimento de avaliador/orientador/moderador pra
+    // banca de TCC (ver src/lib/data/bancas.ts), mesmo espírito de
+    // usuariosPublicos: cada um só escreve o PRÓPRIO doc (id começa com
+    // request.auth.uid depois do "_", checado contra o campo `uid` em vez
+    // de parsear o id). Admin/organização do evento leem todos pra gerar a
+    // banca; a própria pessoa também lê a própria disponibilidade.
+    match /disponibilidadeBanca/{id} {
+      allow read: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        resource.data.uid == request.auth.uid
+      );
+      allow create, update: if logado() && request.resource.data.uid == request.auth.uid;
+      allow delete: if souAdmin() || (logado() && resource.data.uid == request.auth.uid);
+    }
+
     // mail/{autoId} — só a extensão Trigger Email (via Admin SDK) escreve;
     // ninguém no client lê ou escreve diretamente.
     match /mail/{autoId} {

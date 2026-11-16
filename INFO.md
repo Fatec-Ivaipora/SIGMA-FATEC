@@ -477,6 +477,26 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **TCC: disponibilidade de banca e geração automática**
+  (4ª fase do plano — a mais nova do sistema, sem precedente nenhum pra
+  reaproveitar). Nova coleção `disponibilidadeBanca/{eventoId}_{uid}`
+  (autoatendimento, regra própria em `firestore.rules`): cada avaliador/
+  orientador/moderador vinculado a um evento TCC marca, numa tela nova
+  (`/avaliador/banca`, item "Banca de TCC" no menu — aparece pra quem tem
+  qualquer um desses 3 papéis), em que dias (dentro de
+  `dataRealizacao`..`dataRealizacaoFim` do evento) topa fazer parte de uma
+  banca e quantas no máximo por dia. Novo `src/lib/data/bancas.ts` —
+  `montarBancaAutomatica`, função pura determinística (first-fit, sem IA,
+  mesmo espírito de `montarGradeAutomatica` em sessoes.ts, só que cruzando
+  DIA×PESSOA em vez de SALA×HORÁRIO): pra cada trabalho, acha o primeiro
+  dia em que o orientador (sempre entra, confirmado 100% no histórico real)
+  e mais 2 avaliadores têm capacidade sobrando, escolhendo os 2 com menos
+  sobra (best-fit). `/ensalamento` ganha um terceiro conteúdo (reaproveita
+  só o cabeçalho/seletor de evento) pra `evento.tipo === "tcc"`: botão
+  "Gerar banca automaticamente" com confirmação antes de regenerar, e
+  ajuste manual por trabalho (dia + 2 avaliadores, mesmo espírito do
+  "Mover para..." do ensalamento por sala).
+
 - **2026-11-16** — **TCC: abas de Trabalhos (Inscrição/Avaliação/Resultado)
   no admin** (3ª fase do plano). `/trabalhos` ganha um terceiro early
   return, igual espírito do de evento "simples" já existente — mesmo
