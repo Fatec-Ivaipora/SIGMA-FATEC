@@ -477,6 +477,23 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-16** — **Páginas públicas de certificados: card maior com
+  destaque pra data, grade de 5 por linha bem mais larga, listagem padrão
+  paginada de 20 em 20** (série de ajustes visuais pedidos explicitamente
+  pelo usuário, revisados localmente antes de subir — "já revisei, tá
+  perfeito"). `/certificados`: evento virou card (não mais botão
+  centralizado), à esquerda, ordenado pelo mais recente primeiro, com a
+  data de realização em destaque (ícone + texto maior) — descrição do
+  evento chegou a ser adicionada e depois removida de novo a pedido.
+  `/certificados/{eventoId}`: resultados em grade de até 5 colunas num
+  container bem mais largo (`max-w-[1800px]`, era `max-w-7xl` — o problema
+  nunca foi o número de colunas, era o container deixando cada uma
+  estreita); cartão levanta e fica laranja no hover; mostra os trabalhos
+  já ao entrar (20 por página, com paginação) em vez de pedir pra digitar
+  2 letras primeiro — a busca filtra o mesmo jeito de sempre, só que agora
+  também pagina. `formatarDataEvento` (data por extenso, usada aqui e na
+  home) virou helper compartilhado em `src/lib/`.
+
 - **2026-11-16** — **Certificado de premiação numerado, contador avançado
   pra 22079, validação de id nas rotas públicas** (pedido explícito do
   usuário, confirmado com a secretaria — "podemos usar do número 22079

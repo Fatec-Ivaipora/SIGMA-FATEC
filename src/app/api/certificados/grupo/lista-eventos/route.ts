@@ -11,7 +11,12 @@ export async function GET() {
   try {
     const db = getAdminDb();
     const snap = await db.collection("eventos").where("certificadosGrupoPublicosAtivo", "==", true).get();
-    const eventos = snap.docs.map((d) => ({ id: d.id, nome: d.data().nome as string }));
+    const eventos = snap.docs.map((d) => ({
+      id: d.id,
+      nome: d.data().nome as string,
+      dataRealizacao: d.data().dataRealizacao as string | undefined,
+      dataRealizacaoFim: d.data().dataRealizacaoFim as string | undefined,
+    }));
     return NextResponse.json({ eventos });
   } catch (e) {
     console.error("Erro ao listar eventos com mural de certificados:", e);
