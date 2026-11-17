@@ -477,6 +477,28 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: ajustes depois de testar o fluxo pela primeira vez
+  com dados populados** (feedback direto do usuário, vendo a tela de
+  verdade). (1) Removida a capacidade máxima de bancas por dia da
+  disponibilidade do avaliador/orientador/moderador — "quando ele seleciona
+  os dias ele vai estar disponível o período de trabalho na instituição",
+  sem precisar declarar quantas bancas topa fazer naquele dia.
+  `DisponibilidadeBanca.dias` virou `string[]` (era
+  `Record<string, number>`); `montarBancaAutomatica` passou a espalhar a
+  carga sozinho, preferindo quem ainda entrou em menos bancas na mesma
+  geração, em vez de depender de um número informado por cada um. (2)
+  Cogitou-se mover "Banca de TCC" de item de menu próprio pra virar uma aba
+  dentro de "Trabalhos" (pra não aparecer pra todo avaliador/moderador que
+  nunca vai mexer com TCC) — o usuário decidiu manter como item de menu
+  próprio mesmo, "porque ajuda a diferenciar e é um evento recorrente na
+  instituição": continua aparecendo pra quem já é avaliador/moderador/
+  orientador, só que agora como mais um item ao lado dos de sempre (Início,
+  Eventos, Trabalhos, Certificações/Projeto Integrador), nunca no lugar
+  deles. (3) Lista "Minhas bancas" ganhou uma tag "Orientador(a)"/
+  "Avaliador(a)" por trabalho — a mesma pessoa pode estar em papéis
+  diferentes em bancas diferentes do mesmo evento, a tag deixa claro qual é
+  qual em cada linha.
+
 - **2026-11-16** — **TCC: certificado de banca** (6ª e última fase do plano
   de implementação do novo tipo de evento "Apresentação de TCC"). Novo
   `CertificadoBancaTCCPDF` em `certificadosPdf.tsx` — redação copiada quase
