@@ -775,7 +775,13 @@ function PainelTrabalhos({
 }
 
 export default function AvaliadorTrabalhosPage() {
-  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
+  // "orientador" (2026-11-17, pedido explícito do usuário — ver comentário
+  // em navAvaliacao.ts) — orientador de TCC também alcança essa tela agora,
+  // igual avaliador/moderador. souAvaliador logo abaixo já tratava
+  // orientador como avaliador (RF-46, orientador alocado como avaliadorUid
+  // num trabalho de MAC); aqui é só o gate da própria página alcançando a
+  // mesma regra.
+  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
   const { eventos } = useEventos(perfil);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const [abaAtiva, setAbaAtiva] = useState<"avaliacao" | "apresentacao">("avaliacao");

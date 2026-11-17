@@ -477,6 +477,32 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: "Banca de TCC" vira modal + card, orientador
+  ganha o mesmo menu de avaliador, "Projeto Integrador" escondido** (2ª
+  rodada de feedback testando o fluxo, mesma sessão). Achado real: a
+  orientadora de teste só via "Início"/"Projeto Integrador"/"Banca de TCC"
+  no menu, nunca "Eventos"/"Trabalhos" — `navParaPerfil` só dava esses dois
+  últimos pra avaliador/moderador, nunca pra orientador puro; agora
+  qualquer um dos três papéis ganha o bloco inteiro (Eventos, Trabalhos,
+  Banca de TCC, Certificações — nessa ordem fixa, "banca de tcc fica em
+  baixo de trabalhos", pedido explícito do usuário). As 3 páginas
+  (`/avaliador/eventos`, `/avaliador/trabalhos`, `/avaliador/certificacoes`)
+  tiveram o próprio `useRequireAuth` ampliado pra aceitar "orientador" —
+  sem isso o link levaria até lá só pra redirecionar de volta. De quebra,
+  corrigido um achado de consistência: "Projeto Integrador" já estava
+  escondido do menu do ALUNO desde 2026-09-09 ("por hora não vamos usar"),
+  mas nunca tinha sido escondido do lado do ORIENTADOR — agora os dois
+  lados batem (`navOrientador.ts`).
+  
+  Reformulada a tela de "Banca de TCC" em si (achado do usuário: "tá muito
+  feia essa forma de selecionar a disponibilidade") — a lista de dias saiu
+  da tela principal e virou um modal, aberto por um botão "Disponibilidade"
+  no cabeçalho; a tela principal agora mostra só os cards dos TCCs em que a
+  pessoa é avaliador(a)/orientador(a), no mesmo estilo visual de
+  `/avaliador/eventos` ("como é na tela do avaliador mesmo") — e aparece
+  mesmo ANTES da banca ser gerada (mostra "Banca ainda não agendada"), não
+  só depois.
+
 - **2026-11-17** — **TCC: ajustes depois de testar o fluxo pela primeira vez
   com dados populados** (feedback direto do usuário, vendo a tela de
   verdade). (1) Removida a capacidade máxima de bancas por dia da

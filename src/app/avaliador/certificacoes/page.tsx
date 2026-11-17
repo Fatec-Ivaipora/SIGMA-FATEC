@@ -19,7 +19,14 @@ type Grupo = {
 };
 
 export default function AvaliadorCertificacoesPage() {
-  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
+  // "orientador" (2026-11-17, pedido explícito do usuário — ver comentário
+  // em navAvaliacao.ts) — alcança a tela igual avaliador/moderador; sem
+  // trabalho nenhum com avaliadorUid/moderadorUid (é o caso normal de um
+  // orientador só de TCC), `grupos` abaixo fica vazio e a tela mostra o
+  // mesmo estado vazio que já mostraria pra um avaliador sem certificado
+  // nenhum ainda — certificado de banca de TCC é outra tela
+  // ("Minhas bancas" em /avaliador/banca), não essa aqui.
+  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
   const { trabalhos } = useTrabalhos(perfil, user?.uid);
   const { eventos } = useEventos(perfil);
 

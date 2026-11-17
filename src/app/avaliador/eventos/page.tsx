@@ -7,7 +7,10 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos } from "@/lib/data/eventos";
 
 export default function AvaliadorEventosPage() {
-  const { perfil, carregando } = useRequireAuth(["avaliador", "moderador"]);
+  // "orientador" (2026-11-17, pedido explícito do usuário — ver comentário
+  // em navAvaliacao.ts) — orientador de TCC também precisa ver os próprios
+  // eventos atribuídos, igual avaliador/moderador.
+  const { perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
   const { eventos } = useEventos(perfil);
 
   if (carregando || !perfil) return null;

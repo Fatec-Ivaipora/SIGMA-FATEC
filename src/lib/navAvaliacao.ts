@@ -14,26 +14,35 @@ import { NAV_ORIENTADOR } from "@/lib/navOrientador";
  * (2026-11-17, decisão final do usuário depois de cogitar virar uma aba
  * dentro de "Trabalhos": "pensando em praticidade podemos deixar esse menu
  * banca de TCC porque ajuda a diferenciar e é um evento recorrente na
- * instituição") — fica fora dos dois blocos abaixo, porque
- * avaliador/moderador/orientador podem entrar numa banca de TCC e nem
- * todo mundo que tem um desses papéis tem os outros (ex.: orientador puro,
- * sem papeisAvaliacao "avaliador"); item único, empurrado uma vez só, pra
- * nunca duplicar se a pessoa acumular mais de um papel de avaliação. */
+ * instituição") — avaliador/moderador/orientador podem entrar numa banca
+ * de TCC, então entra pro mesmo bloco de NAV_AVALIADOR em vez de um bloco
+ * à parte. Posição fixa: logo depois de "Trabalhos", antes de
+ * "Certificações" (2026-11-17, pedido explícito do usuário — "banca de tcc
+ * fica em baixo de trabalhos") — por isso NAV_AVALIADOR é filtrado em duas
+ * partes aqui (Eventos+Trabalhos, depois Certificações) em vez de inteiro
+ * de uma vez.
+ *
+ * Orientador também ganha NAV_AVALIADOR agora (2026-11-17, pedido
+ * explícito do usuário testando o fluxo de TCC — "Eventos"/"Trabalhos"
+ * como qualquer outro avaliador) — antes só avaliador/moderador viam esses
+ * itens; orientador puro nunca alcançava "Eventos"/"Trabalhos", só os de
+ * NAV_ORIENTADOR. As 3 páginas (/avaliador/eventos, /avaliador/trabalhos,
+ * /avaliador/certificacoes) também tiveram o próprio useRequireAuth
+ * ampliado pra aceitar "orientador" — sem isso o link levaria a pessoa até
+ * lá só pra ser redirecionada de volta. */
 export function navParaPerfil(perfil: PerfilUsuario) {
   const itens = [{ label: "Início", href: ROTA_POR_PAPEL[perfil.papel], icon: LayoutGrid }];
 
-  if (temPapel(perfil, "avaliador") || temPapel(perfil, "moderador")) {
-    itens.push(...NAV_AVALIADOR.filter((i) => i.label !== "Início"));
+  const souAvaliacao =
+    temPapel(perfil, "avaliador") || temPapel(perfil, "moderador") || temPapel(perfil, "orientador");
+
+  if (souAvaliacao) {
+    itens.push(...NAV_AVALIADOR.filter((i) => i.label === "Eventos" || i.label === "Trabalhos"));
+    itens.push({ label: "Banca de TCC", href: "/avaliador/banca", icon: CalendarCheck });
+    itens.push(...NAV_AVALIADOR.filter((i) => i.label === "Certificações"));
   }
   if (temPapel(perfil, "orientador")) {
     itens.push(...NAV_ORIENTADOR.filter((i) => i.label !== "Início"));
-  }
-  if (
-    temPapel(perfil, "avaliador") ||
-    temPapel(perfil, "moderador") ||
-    temPapel(perfil, "orientador")
-  ) {
-    itens.push({ label: "Banca de TCC", href: "/avaliador/banca", icon: CalendarCheck });
   }
 
   return itens;
