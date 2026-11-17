@@ -288,6 +288,19 @@ export type Evento = {
   // /api/asaas/interesse (bloqueia a inscrição mesmo se alguém tentar direto
   // pela API).
   cursoRestrito?: string;
+  // Limite de bancas de TCC por dia (2026-11-17, pedido explícito do
+  // usuário testando com 20 TCCs populados — "temos que pensar que não
+  // pode ter 30 bancas no mesmo dia porque geralmente os professores estão
+  // aqui 4h por dia só"). Só usado quando tipo === "tcc". `duracaoBancaMinutos`
+  // é só informativo (ajuda a decidir quanto vale `maxBancasPorDia`, não
+  // entra em conta nenhuma — diferente de duracaoApresentacaoMinutos do
+  // Evento MAC, que divide uma janela de horário de verdade). `maxBancasPorDia`
+  // é o teto de verdade: `montarBancaAutomatica` (src/lib/data/bancas.ts)
+  // nunca agenda mais que isso no mesmo dia, somando todas as bancas (não é
+  // por pessoa); o aviso na edição manual em /ensalamento usa o mesmo
+  // número. Ausente = sem limite (comportamento de antes).
+  duracaoBancaMinutos?: number;
+  maxBancasPorDia?: number;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */

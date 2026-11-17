@@ -122,11 +122,18 @@ export type BancaGerada = {
  * SALA×HORÁRIO). Pra cada trabalho, acha o primeiro dia (na ordem de
  * `dias`) em que: (1) o orientador está disponível (ele SEMPRE entra na
  * banca do próprio orientando, pedido explícito do usuário, confirmado em
- * 100% dos certificados reais de 2025) e (2) existem pelo menos 2 OUTRAS
- * pessoas disponíveis nesse mesmo dia. Sem capacidade/máximo por dia
- * (2026-11-17, removido por pedido explícito do usuário — ver comentário em
- * DisponibilidadeBanca): qualquer disponível pode entrar em quantas bancas
- * precisar no mesmo dia. Pra não sobrecarregar sempre as mesmas 2 pessoas,
+ * 100% dos certificados reais de 2025), (2) existem pelo menos 2 OUTRAS
+ * pessoas disponíveis nesse mesmo dia, e (3) esse dia ainda não bateu
+ * `maxBancasPorDia` (2026-11-17, pedido explícito do usuário — "temos que
+ * pensar que não pode ter 30 bancas no mesmo dia porque geralmente os
+ * professores estão aqui 4h por dia só"; sem esse teto nada impede 20
+ * bancas caindo todas no mesmo dia, mesmo sem tempo físico pra isso).
+ * `maxBancasPorDia` ausente = sem teto (comportamento de antes).
+ *
+ * Sem capacidade/máximo POR PESSOA (2026-11-17, removido antes por pedido
+ * explícito do usuário — ver comentário em DisponibilidadeBanca): qualquer
+ * disponível pode entrar em quantas bancas precisar no mesmo dia, até o
+ * teto do DIA valer. Pra não sobrecarregar sempre as mesmas 2 pessoas,
  * entre os candidatos escolhe os 2 que ainda entraram em MENOS bancas
  * nessa mesma geração (`usosPorUid`, contador que só existe durante essa
  * chamada — não é persistido, cada geração começa do zero). O que não
@@ -136,10 +143,12 @@ export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
   dias: string[];
+  maxBancasPorDia?: number;
 }): { bancasNovas: BancaGerada[]; overflowTrabalhoIds: string[] } {
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
   const nomePorUid = new Map(params.disponibilidades.map((d) => [d.uid, d.nome]));
   const usosPorUid = new Map<string, number>();
+  const bancasPorDia = new Map<string, number>();
 
   const bancasNovas: BancaGerada[] = [];
   const overflowTrabalhoIds: string[] = [];
@@ -148,6 +157,7 @@ export function montarBancaAutomatica(params: {
     let achou = false;
     for (const dia of params.dias) {
       if (!diasPorUid.get(t.orientadorUid)?.has(dia)) continue;
+      if (params.maxBancasPorDia && (bancasPorDia.get(dia) ?? 0) >= params.maxBancasPorDia) continue;
 
       const candidatos = Array.from(diasPorUid.entries())
         .filter(([uid, dias]) => uid !== t.orientadorUid && dias.has(dia))
@@ -158,6 +168,7 @@ export function montarBancaAutomatica(params: {
       const escolhidos = candidatos.slice(0, 2);
       usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
       for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
+      bancasPorDia.set(dia, (bancasPorDia.get(dia) ?? 0) + 1);
 
       bancasNovas.push({
         trabalhoId: t.id,

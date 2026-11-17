@@ -477,6 +477,24 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: limite de bancas por dia** (pedido explícito do
+  usuário, testando com 20 TCCs populados — "temos que pensar que não pode
+  ter 30 bancas no mesmo dia porque geralmente os professores estão aqui
+  4h por dia só, em média dá 8 bancas pelo que lembro do ano passado").
+  Decidimos pela versão mais simples (sem reconstruir o motor de
+  horário×sala da MAC, que exigiria calcular conflito de horário de 3
+  pessoas por banca): dois campos novos no evento, `duracaoBancaMinutos`
+  (só informativo, ajuda a decidir o número — não entra em conta nenhuma)
+  e `maxBancasPorDia` (o teto de verdade). `montarBancaAutomatica`
+  (`src/lib/data/bancas.ts`) ganhou um contador por dia e pula pro próximo
+  dia quando o atual já bateu o máximo, mesmo com gente disponível
+  sobrando. O aviso na edição manual (commit anterior) também passou a
+  considerar esse teto — tanto no `<option>` do dia ("já no limite de
+  bancas") quanto numa linha de aviso própria. Isso NÃO resolve conflito de
+  horário minuto a minuto (seria o motor completo tipo MAC) — só evita
+  empilhar mais bancas num dia do que fisicamente caberia na janela de
+  tempo que os professores ficam na instituição.
+
 - **2026-11-17** — **TCC: aviso de indisponibilidade no ajuste manual da
   banca** (pedido explícito do usuário, testando com 20 TCCs populados —
   "se eu precisar mudar alguma apresentação de dia, vai ter um aviso que

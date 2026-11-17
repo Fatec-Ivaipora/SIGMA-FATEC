@@ -707,6 +707,46 @@ function EnsalamentoBancaView({
   const [edicaoAvaliador1, setEdicaoAvaliador1] = useState("");
   const [edicaoAvaliador2, setEdicaoAvaliador2] = useState("");
 
+  // Config de capacidade por dia (2026-11-17, pedido explícito do usuário —
+  // "temos que pensar que não pode ter 30 bancas no mesmo dia porque
+  // geralmente os professores estão aqui 4h por dia só"). duracaoBanca é
+  // só informativo (ajuda a decidir o número de maxBancas, não entra em
+  // conta — diferente do duracaoApresentacaoMinutos do Evento MAC, que
+  // divide uma janela de horário de verdade); maxBancas é o teto de
+  // verdade, usado tanto por montarBancaAutomatica quanto pelo aviso na
+  // edição manual abaixo.
+  const [duracaoBancaForm, setDuracaoBancaForm] = useState(
+    evento.duracaoBancaMinutos != null ? String(evento.duracaoBancaMinutos) : "",
+  );
+  const [maxBancasForm, setMaxBancasForm] = useState(
+    evento.maxBancasPorDia != null ? String(evento.maxBancasPorDia) : "",
+  );
+  const [salvandoConfigBanca, setSalvandoConfigBanca] = useState(false);
+  // Ajuste de estado durante a renderização (mesmo padrão já usado em
+  // eventos/page.tsx) — resincroniza o formulário se o evento selecionado
+  // mudar (o componente é remontado por evento, então isso cobre só o caso
+  // de o próprio documento atualizar via snapshot).
+  const [eventoIdDoFormBanca, setEventoIdDoFormBanca] = useState(evento.id);
+  if (evento.id !== eventoIdDoFormBanca) {
+    setEventoIdDoFormBanca(evento.id);
+    setDuracaoBancaForm(evento.duracaoBancaMinutos != null ? String(evento.duracaoBancaMinutos) : "");
+    setMaxBancasForm(evento.maxBancasPorDia != null ? String(evento.maxBancasPorDia) : "");
+  }
+
+  async function salvarConfigBanca() {
+    setSalvandoConfigBanca(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        ...(duracaoBancaForm.trim() ? { duracaoBancaMinutos: Number(duracaoBancaForm) } : {}),
+        ...(maxBancasForm.trim() ? { maxBancasPorDia: Number(maxBancasForm) } : {}),
+      });
+    } finally {
+      setSalvandoConfigBanca(false);
+    }
+  }
+
+  const maxBancasPorDia = evento.maxBancasPorDia;
+
   async function gerarBanca() {
     setGerando(true);
     setConfirmando(false);
@@ -721,6 +761,7 @@ function EnsalamentoBancaView({
           })),
         disponibilidades,
         dias,
+        maxBancasPorDia,
       });
       await substituirBancaDoEvento(bancasNovas);
       setResultado({ geradas: bancasNovas.length, overflow: overflowTrabalhoIds.length });
@@ -728,6 +769,18 @@ function EnsalamentoBancaView({
       setGerando(false);
     }
   }
+
+  // Quantas bancas já estão marcadas em cada dia, SEM contar a que está
+  // sendo editada agora (2026-11-17) — usado pra avisar na edição manual
+  // quando o dia escolhido já bateu o teto configurado.
+  const bancasPorDiaAtual = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const t of trabalhos) {
+      if (!t.bancaData || t.id === editandoId) continue;
+      mapa.set(t.bancaData, (mapa.get(t.bancaData) ?? 0) + 1);
+    }
+    return mapa;
+  }, [trabalhos, editandoId]);
 
   // Mapa uid -> Set(dias disponíveis) — usado pra avisar/filtrar na edição
   // manual (2026-11-17, pedido explícito do usuário: "vai ter um aviso que
@@ -804,6 +857,49 @@ function EnsalamentoBancaView({
             .
           </p>
         )}
+
+        {/* Capacidade por dia (2026-11-17) — ver comentário no estado
+            acima. Mesma linha de inputs pequenos, estilo dos campos de
+            configuração do Ensalamento de sala mais abaixo neste arquivo. */}
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-fatec-line pt-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-fatec-navy-900">
+              Duração de cada banca (min)
+            </span>
+            <input
+              type="number"
+              min="0"
+              value={duracaoBancaForm}
+              onChange={(e) => setDuracaoBancaForm(e.target.value)}
+              placeholder="Ex.: 30"
+              className="w-28 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-fatec-navy-900">
+              Máximo de bancas por dia
+            </span>
+            <input
+              type="number"
+              min="0"
+              value={maxBancasForm}
+              onChange={(e) => setMaxBancasForm(e.target.value)}
+              placeholder="Ex.: 8"
+              className="w-28 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={salvarConfigBanca}
+            disabled={salvandoConfigBanca}
+            className="rounded-lg border border-fatec-line px-3.5 py-1.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+          >
+            {salvandoConfigBanca ? "Salvando..." : "Salvar"}
+          </button>
+          <span className="text-xs text-fatec-muted">
+            Sem máximo configurado, &quot;Gerar banca&quot; não limita quantas bancas caem no mesmo dia.
+          </span>
+        </div>
       </section>
 
       <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
@@ -824,14 +920,18 @@ function EnsalamentoBancaView({
                     onChange={(e) => mudarDiaEdicao(t, e.target.value)}
                     className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
                   >
-                    {dias.map((d) => (
-                      <option key={d} value={d}>
-                        {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
-                        {t.orientadorUid && !diasPorUid.get(t.orientadorUid)?.has(d)
-                          ? " — orientador(a) indisponível"
-                          : ""}
-                      </option>
-                    ))}
+                    {dias.map((d) => {
+                      const indisponivel = t.orientadorUid && !diasPorUid.get(t.orientadorUid)?.has(d);
+                      const noLimite =
+                        maxBancasPorDia != null && (bancasPorDiaAtual.get(d) ?? 0) >= maxBancasPorDia;
+                      return (
+                        <option key={d} value={d}>
+                          {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
+                          {indisponivel ? " — orientador(a) indisponível" : ""}
+                          {noLimite ? " — já no limite de bancas" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                   {[
                     [edicaoAvaliador1, setEdicaoAvaliador1] as const,
@@ -883,6 +983,13 @@ function EnsalamentoBancaView({
                   <p className="text-xs font-medium text-amber-700">
                     ⚠ {t.nomeOrientador ?? "O orientador(a)"} não marcou disponibilidade nesse
                     dia — só continue se já combinou isso fora do sistema.
+                  </p>
+                )}
+                {maxBancasPorDia != null && (bancasPorDiaAtual.get(edicaoDia) ?? 0) >= maxBancasPorDia && (
+                  <p className="text-xs font-medium text-amber-700">
+                    ⚠ Esse dia já tem {bancasPorDiaAtual.get(edicaoDia)} banca(s) marcada(s), no
+                    limite configurado ({maxBancasPorDia}/dia) — só continue se os professores
+                    topam um horário a mais.
                   </p>
                 )}
                 {(!edicaoAvaliador1 || !edicaoAvaliador2) && (
