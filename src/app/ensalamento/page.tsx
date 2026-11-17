@@ -729,11 +729,29 @@ function EnsalamentoBancaView({
     }
   }
 
+  // Mapa uid -> Set(dias disponíveis) — usado pra avisar/filtrar na edição
+  // manual (2026-11-17, pedido explícito do usuário: "vai ter um aviso que
+  // aquele dia não tem como porque os orientadores não vão ter [disponibilidade]?").
+  const diasPorUid = useMemo(
+    () => new Map(disponibilidades.map((d) => [d.uid, new Set(d.dias)])),
+    [disponibilidades],
+  );
+
   function abrirEdicao(t: Trabalho) {
     setEditandoId(t.id);
     setEdicaoDia(t.bancaData ?? dias[0] ?? "");
     setEdicaoAvaliador1(t.bancaAvaliadores?.[0]?.uid ?? "");
     setEdicaoAvaliador2(t.bancaAvaliadores?.[1]?.uid ?? "");
+  }
+
+  // Troca de dia na edição manual (2026-11-17) — os avaliadores escolhidos
+  // só continuam marcados se ainda estiverem disponíveis no dia novo;
+  // senão, limpa (evita salvar sem querer alguém indisponível no dia
+  // escolhido só porque a seleção ficou de um dia anterior).
+  function mudarDiaEdicao(t: Trabalho, novoDia: string) {
+    setEdicaoDia(novoDia);
+    if (edicaoAvaliador1 && !diasPorUid.get(edicaoAvaliador1)?.has(novoDia)) setEdicaoAvaliador1("");
+    if (edicaoAvaliador2 && !diasPorUid.get(edicaoAvaliador2)?.has(novoDia)) setEdicaoAvaliador2("");
   }
 
   async function salvarEdicao(t: Trabalho) {
@@ -799,52 +817,80 @@ function EnsalamentoBancaView({
             </div>
 
             {editandoId === t.id ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={edicaoDia}
-                  onChange={(e) => setEdicaoDia(e.target.value)}
-                  className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
-                >
-                  {dias.map((d) => (
-                    <option key={d} value={d}>
-                      {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
-                    </option>
-                  ))}
-                </select>
-                {[
-                  [edicaoAvaliador1, setEdicaoAvaliador1] as const,
-                  [edicaoAvaliador2, setEdicaoAvaliador2] as const,
-                ].map(([valor, setValor], i) => (
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
-                    key={i}
-                    value={valor}
-                    onChange={(e) => setValor(e.target.value)}
+                    value={edicaoDia}
+                    onChange={(e) => mudarDiaEdicao(t, e.target.value)}
                     className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
                   >
-                    <option value="">Avaliador {i + 1}...</option>
-                    {disponibilidades
-                      .filter((d) => d.uid !== t.orientadorUid)
-                      .map((d) => (
-                        <option key={d.uid} value={d.uid}>
-                          {d.nome}
-                        </option>
-                      ))}
+                    {dias.map((d) => (
+                      <option key={d} value={d}>
+                        {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
+                        {t.orientadorUid && !diasPorUid.get(t.orientadorUid)?.has(d)
+                          ? " — orientador(a) indisponível"
+                          : ""}
+                      </option>
+                    ))}
                   </select>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => salvarEdicao(t)}
-                  className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600"
-                >
-                  Salvar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditandoId(null)}
-                  className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
-                >
-                  Cancelar
-                </button>
+                  {[
+                    [edicaoAvaliador1, setEdicaoAvaliador1] as const,
+                    [edicaoAvaliador2, setEdicaoAvaliador2] as const,
+                  ].map(([valor, setValor], i) => {
+                    // Só gente disponível NESSE dia aparece pra escolher
+                    // (2026-11-17, pedido explícito do usuário) — sem
+                    // isso dava pra "salvar" um avaliador que nunca marcou
+                    // esse dia como disponível, sem aviso nenhum.
+                    const outroEscolhido = i === 0 ? edicaoAvaliador2 : edicaoAvaliador1;
+                    const disponiveisNesseDia = disponibilidades.filter(
+                      (d) =>
+                        d.uid !== t.orientadorUid &&
+                        d.uid !== outroEscolhido &&
+                        d.dias.includes(edicaoDia),
+                    );
+                    return (
+                      <select
+                        key={i}
+                        value={valor}
+                        onChange={(e) => setValor(e.target.value)}
+                        className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
+                      >
+                        <option value="">Avaliador {i + 1}...</option>
+                        {disponiveisNesseDia.map((d) => (
+                          <option key={d.uid} value={d.uid}>
+                            {d.nome}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => salvarEdicao(t)}
+                    className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600"
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditandoId(null)}
+                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                {t.orientadorUid && !diasPorUid.get(t.orientadorUid)?.has(edicaoDia) && (
+                  <p className="text-xs font-medium text-amber-700">
+                    ⚠ {t.nomeOrientador ?? "O orientador(a)"} não marcou disponibilidade nesse
+                    dia — só continue se já combinou isso fora do sistema.
+                  </p>
+                )}
+                {(!edicaoAvaliador1 || !edicaoAvaliador2) && (
+                  <p className="text-xs text-fatec-muted">
+                    Só aparece quem marcou disponibilidade nesse dia — mude o dia acima se
+                    faltar opção.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex flex-none items-center gap-3">

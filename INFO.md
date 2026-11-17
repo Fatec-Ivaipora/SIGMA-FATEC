@@ -477,6 +477,20 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: aviso de indisponibilidade no ajuste manual da
+  banca** (pedido explícito do usuário, testando com 20 TCCs populados —
+  "se eu precisar mudar alguma apresentação de dia, vai ter um aviso que
+  aquele dia não tem como porque os orientadores não vão ter
+  [disponibilidade]?"). Antes o "Editar" em `/ensalamento` (evento TCC)
+  deixava escolher QUALQUER dia e QUALQUER avaliador sem checar nada contra
+  a disponibilidade de verdade. Agora: (1) o select de avaliador só lista
+  quem marcou disponibilidade NO DIA escolhido (recalcula a cada troca de
+  dia); (2) trocar o dia limpa um avaliador já escolhido que não esteja
+  mais disponível nesse dia novo, em vez de deixar uma escolha "fantasma"
+  salvar sem querer; (3) aviso explícito (⚠) quando o PRÓPRIO orientador do
+  trabalho não marcou disponibilidade no dia escolhido — não bloqueia
+  salvar (pode ter combinado por fora do sistema), só avisa.
+
 - **2026-11-17** — **TCC: formulário de "Dar nota" vira modal** (feedback
   do usuário — "a avaliação poderia ser igual do avaliador, abrir um
   modal, fica mais bonito") — antes expandia dentro do próprio card da
