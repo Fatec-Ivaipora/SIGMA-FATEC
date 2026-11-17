@@ -117,6 +117,13 @@ export type BancaGerada = {
   avaliadores: { uid: string; nome: string }[];
 };
 
+// Por que ESSE trabalho específico não conseguiu banca (2026-11-17, pedido
+// explícito do usuário — "quando der erro... deve aparecer um ícone que eu
+// possa clicar e abrir um modal pra ver o que deu errado"). Calculado
+// durante o mesmo loop de montarBancaAutomatica, não é um motivo genérico —
+// reflete exatamente qual dos 3 motivos bloqueou esse trabalho.
+export type OverflowBanca = { trabalhoId: string; motivo: string };
+
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
  * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×PESSOA em vez de
  * SALA×HORÁRIO). Pra cada trabalho, acha o primeiro dia (na ordem de
@@ -137,33 +144,48 @@ export type BancaGerada = {
  * entre os candidatos escolhe os 2 que ainda entraram em MENOS bancas
  * nessa mesma geração (`usosPorUid`, contador que só existe durante essa
  * chamada — não é persistido, cada geração começa do zero). O que não
- * couber em dia nenhum volta em `overflowTrabalhoIds`, pra virar aviso na
- * tela em vez de travar o resto. */
+ * couber em dia nenhum volta em `overflow`, com o motivo específico (orientador
+ * sem dia algum disponível, dias dele todos no limite, ou faltou avaliador
+ * nos dias válidos) — pra virar aviso detalhado na tela em vez de só um
+ * número, e nunca travar o resto da geração. */
 export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
   dias: string[];
   maxBancasPorDia?: number;
-}): { bancasNovas: BancaGerada[]; overflowTrabalhoIds: string[] } {
+}): { bancasNovas: BancaGerada[]; overflow: OverflowBanca[] } {
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
   const nomePorUid = new Map(params.disponibilidades.map((d) => [d.uid, d.nome]));
   const usosPorUid = new Map<string, number>();
   const bancasPorDia = new Map<string, number>();
 
   const bancasNovas: BancaGerada[] = [];
-  const overflowTrabalhoIds: string[] = [];
+  const overflow: OverflowBanca[] = [];
 
   for (const t of params.trabalhos) {
     let achou = false;
+    // Diagnóstico (2026-11-17) — só usado se `achou` continuar false no
+    // final; cada flag reflete um motivo diferente, checado na ordem em
+    // que o loop de dias realmente os encontra.
+    let orientadorTemAlgumDiaDisponivel = false;
+    let orientadorSoAchouDiasNoLimite = true;
+    let faltouAvaliadorEmDiaValido = false;
+
     for (const dia of params.dias) {
       if (!diasPorUid.get(t.orientadorUid)?.has(dia)) continue;
+      orientadorTemAlgumDiaDisponivel = true;
+
       if (params.maxBancasPorDia && (bancasPorDia.get(dia) ?? 0) >= params.maxBancasPorDia) continue;
+      orientadorSoAchouDiasNoLimite = false;
 
       const candidatos = Array.from(diasPorUid.entries())
         .filter(([uid, dias]) => uid !== t.orientadorUid && dias.has(dia))
         .map(([uid]) => uid)
         .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
-      if (candidatos.length < 2) continue;
+      if (candidatos.length < 2) {
+        faltouAvaliadorEmDiaValido = true;
+        continue;
+      }
 
       const escolhidos = candidatos.slice(0, 2);
       usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
@@ -178,10 +200,20 @@ export function montarBancaAutomatica(params: {
       achou = true;
       break;
     }
-    if (!achou) overflowTrabalhoIds.push(t.id);
+
+    if (!achou) {
+      const motivo = !orientadorTemAlgumDiaDisponivel
+        ? "O orientador não marcou nenhum dia disponível dentro da janela do evento."
+        : orientadorSoAchouDiasNoLimite
+          ? "Todos os dias em que o orientador está disponível já bateram o máximo de bancas por dia configurado."
+          : faltouAvaliadorEmDiaValido
+            ? "Não há 2 avaliadores disponíveis nos dias em que o orientador pode participar."
+            : "Não foi possível encontrar uma combinação de dia e avaliadores.";
+      overflow.push({ trabalhoId: t.id, motivo });
+    }
   }
 
-  return { bancasNovas, overflowTrabalhoIds };
+  return { bancasNovas, overflow };
 }
 
 // Mesmo limite/motivo de OPERACOES_POR_LOTE em sessoes.ts — 500 é o teto do

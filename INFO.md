@@ -477,6 +477,27 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: modal de detalhe do overflow em "Gerar banca
+  automaticamente"** (pedido explícito do usuário, testando o limite de
+  bancas por dia do commit anterior — "uma coisa importante quando der erro
+  em uma das bancas deve aparecer um ícone embaixo que eu possa clicar e
+  abrir um modal para ver o que deu errado"). Antes `montarBancaAutomatica`
+  (`src/lib/data/bancas.ts`) só devolvia `overflowTrabalhoIds: string[]` —
+  a tela mostrava só a contagem ("3 sem banca"), sem dizer por quê. Agora
+  devolve `overflow: OverflowBanca[]` (`{ trabalhoId, motivo }`), calculado
+  durante o mesmo loop de dias, com um de 3 motivos específicos: orientador
+  sem nenhum dia disponível na janela do evento, todos os dias dele já no
+  teto de `maxBancasPorDia`, ou faltou avaliador disponível nos dias em que
+  ele pode. Em `/ensalamento` (evento TCC) isso virou um botão com ícone
+  (⚠) ao lado da contagem, que abre um `<Modal>` listando aluno + título +
+  orientador + motivo de cada trabalho sem banca. Testado com dado real:
+  populei "Orientador Teste D TCC" com 10 TCCs mas disponibilidade restrita
+  a um único dia (pedido do usuário — "vamos tentar coloque um número de
+  trabalho que não cabe em 8 apresentações de 30 minutos") — rodando
+  "Gerar banca automaticamente" de verdade, 2 desses 10 ficam de fora com o
+  motivo "todos os dias em que o orientador está disponível já bateram o
+  máximo de bancas por dia configurado", exatamente como esperado.
+
 - **2026-11-17** — **TCC: limite de bancas por dia** (pedido explícito do
   usuário, testando com 20 TCCs populados — "temos que pensar que não pode
   ter 30 bancas no mesmo dia porque geralmente os professores estão aqui

@@ -47,6 +47,7 @@ import {
   substituirBancaDoEvento,
   moverBanca,
   useDisponibilidadeDoEvento,
+  type OverflowBanca,
 } from "@/lib/data/bancas";
 import {
   useSessoesDoEvento,
@@ -701,7 +702,10 @@ function EnsalamentoBancaView({
 
   const [gerando, setGerando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
-  const [resultado, setResultado] = useState<{ geradas: number; overflow: number } | null>(null);
+  const [resultado, setResultado] = useState<{ geradas: number; overflow: OverflowBanca[] } | null>(
+    null,
+  );
+  const [verOverflow, setVerOverflow] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [edicaoDia, setEdicaoDia] = useState("");
   const [edicaoAvaliador1, setEdicaoAvaliador1] = useState("");
@@ -751,7 +755,7 @@ function EnsalamentoBancaView({
     setGerando(true);
     setConfirmando(false);
     try {
-      const { bancasNovas, overflowTrabalhoIds } = montarBancaAutomatica({
+      const { bancasNovas, overflow } = montarBancaAutomatica({
         trabalhos: trabalhos
           .filter((t) => t.orientadorUid)
           .map((t) => ({
@@ -764,7 +768,7 @@ function EnsalamentoBancaView({
         maxBancasPorDia,
       });
       await substituirBancaDoEvento(bancasNovas);
-      setResultado({ geradas: bancasNovas.length, overflow: overflowTrabalhoIds.length });
+      setResultado({ geradas: bancasNovas.length, overflow });
     } finally {
       setGerando(false);
     }
@@ -844,18 +848,57 @@ function EnsalamentoBancaView({
             <span className="font-semibold text-emerald-700">
               {resultado.geradas} banca(s) montada(s)
             </span>
-            {resultado.overflow > 0 && (
+            {resultado.overflow.length > 0 && (
               <>
                 {" · "}
-                <span className="font-semibold text-amber-700">
-                  {resultado.overflow} sem banca
-                </span>{" "}
-                (disponibilidade insuficiente nos dias do evento — ajuste
-                manualmente abaixo ou peça mais disponibilidade).
+                <button
+                  type="button"
+                  onClick={() => setVerOverflow(true)}
+                  className="inline-flex items-center gap-1 font-semibold text-amber-700 underline decoration-dotted underline-offset-2 hover:text-amber-800"
+                >
+                  <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
+                  {resultado.overflow.length} sem banca
+                </button>{" "}
+                — clique para ver o motivo de cada um.
               </>
             )}
             .
           </p>
+        )}
+
+        {/* Modal de overflow (2026-11-17, pedido explícito do usuário —
+            "deve aparecer um icone embaixo que eu possa clicar e abrir um
+            modal para ver o que deu errado") — lista, por trabalho que não
+            coube em banca nenhuma, o motivo específico calculado em
+            montarBancaAutomatica (src/lib/data/bancas.ts), não só a
+            contagem. */}
+        {resultado && (
+          <Modal open={verOverflow} onClose={() => setVerOverflow(false)} title="Trabalhos sem banca">
+            <ul className="flex flex-col gap-3">
+              {resultado.overflow.map((o) => {
+                const trabalho = trabalhos.find((t) => t.id === o.trabalhoId);
+                return (
+                  <li
+                    key={o.trabalhoId}
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <p className="font-semibold text-fatec-navy-900">
+                      {trabalho ? trabalho.alunoNome : o.trabalhoId}
+                    </p>
+                    {trabalho?.titulo && (
+                      <p className="text-xs text-fatec-muted">{tituloExibicao(trabalho.titulo)}</p>
+                    )}
+                    {trabalho?.nomeOrientador && (
+                      <p className="text-xs text-fatec-muted">
+                        Orientador(a): {trabalho.nomeOrientador}
+                      </p>
+                    )}
+                    <p className="mt-1 text-sm text-amber-800">{o.motivo}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          </Modal>
         )}
 
         {/* Capacidade por dia (2026-11-17) — ver comentário no estado
