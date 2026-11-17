@@ -231,8 +231,6 @@ function ModalDisponibilidade({
                   <span className="flex-1 text-sm font-medium text-fatec-navy-900">
                     {new Date(`${dia}T00:00:00`).toLocaleDateString("pt-BR", {
                       weekday: "long",
-                      day: "2-digit",
-                      month: "long",
                     })}
                   </span>
                 </button>

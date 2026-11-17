@@ -477,6 +477,18 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: dia da semana sem data na frente, no modal de
+  disponibilidade** (achado testando com os 2 avaliadores de teste criados
+  pra fechar a banca e conferir a tela de avaliação). "terça-feira, 01 de
+  dezembro" virou só "terça-feira" — pedido explícito do usuário: "não
+  precisa colocar os dias na frente, preciso só dos dias da semana". A
+  lista de "Minhas bancas"/card continua mostrando a data completa (é uma
+  banca já marcada, não um padrão semanal). Testado de ponta a ponta com
+  dados reais populados: aluna se inscreve → orientadora marca
+  disponibilidade → banca gerada (orientadora + 2 avaliadores de teste) →
+  avaliador dá nota pela rubrica de 7 critérios, soma calculada certo
+  (8.0/10 no teste) → "Nota lançada".
+
 - **2026-11-17** — **TCC: "Banca de TCC" vira modal + card, orientador
   ganha o mesmo menu de avaliador, "Projeto Integrador" escondido** (2ª
   rodada de feedback testando o fluxo, mesma sessão). Achado real: a
