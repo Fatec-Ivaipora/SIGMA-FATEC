@@ -477,6 +477,14 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: formulário de "Dar nota" vira modal** (feedback
+  do usuário — "a avaliação poderia ser igual do avaliador, abrir um
+  modal, fica mais bonito") — antes expandia dentro do próprio card da
+  lista; agora abre em `<Modal>` (mesmo componente já usado pra
+  disponibilidade), título "Avaliar — {nome do aluno}". Testado com os 2
+  avaliadores de teste lançando nota de verdade (8.0/10 e 10.0/10) — falta
+  só a nota da orientadora pra fechar as 3 e calcular `notaFinalBanca`.
+
 - **2026-11-17** — **TCC: dia da semana sem data na frente, no modal de
   disponibilidade** (achado testando com os 2 avaliadores de teste criados
   pra fechar a banca e conferir a tela de avaliação). "terça-feira, 01 de

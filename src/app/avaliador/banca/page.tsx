@@ -276,6 +276,7 @@ function MinhasBancasView({
     (t) => t.orientadorUid === uid || t.bancaAvaliadores?.some((a) => a.uid === uid),
   );
   const [avaliandoId, setAvaliandoId] = useState<string | null>(null);
+  const trabalhoAvaliando = minhasBancas.find((t) => t.id === avaliandoId);
   const [baixandoId, setBaixandoId] = useState<string | null>(null);
   const [erroBaixar, setErroBaixar] = useState<string | null>(null);
 
@@ -357,26 +358,36 @@ function MinhasBancasView({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setAvaliandoId(avaliandoId === t.id ? null : t.id)}
+                    onClick={() => setAvaliandoId(t.id)}
                     className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                   >
-                    {avaliandoId === t.id ? "Fechar" : "Dar nota"}
+                    Dar nota
                   </button>
                 )}
               </div>
             </div>
-            {avaliandoId === t.id && !jaAvaliei && uid && (
-              <FormularioNotaBanca
-                trabalho={t}
-                uid={uid}
-                meuNome={meuNome}
-                onEnviado={() => setAvaliandoId(null)}
-              />
-            )}
           </div>
         );
       })}
       {erroBaixar && <p className="text-sm text-rose-600">{erroBaixar}</p>}
+
+      {/* Nota num modal (2026-11-17, pedido explícito do usuário — "a
+          avaliação poderia ser igual do avaliador, abrir um modal, fica
+          mais bonito") — antes expandia dentro do próprio card. */}
+      {trabalhoAvaliando && uid && (
+        <Modal
+          open
+          onClose={() => setAvaliandoId(null)}
+          title={`Avaliar — ${trabalhoAvaliando.alunoNome}`}
+        >
+          <FormularioNotaBanca
+            trabalho={trabalhoAvaliando}
+            uid={uid}
+            meuNome={meuNome}
+            onEnviado={() => setAvaliandoId(null)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -420,7 +431,7 @@ function FormularioNotaBanca({
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-xl bg-fatec-navy-50 p-4">
+    <div className="flex flex-col gap-4">
       {CRITERIOS_BANCA_TCC.map((c) => (
         <div key={c.key} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
