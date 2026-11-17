@@ -18,16 +18,21 @@ import {
 } from "@/lib/data/bancas";
 import { CRITERIOS_BANCA_TCC, escalaParaPeso } from "@/lib/criteriosAvaliacao";
 
-const CAPACIDADE_PADRAO = 2;
-
 /** Autoatendimento de disponibilidade pra banca de TCC (2026-11-16, pedido
  * explícito do usuário) — cada avaliador/orientador/moderador vinculado a
  * um evento de TCC marca em que dias, dentro da janela do evento
- * (dataRealizacao..dataRealizacaoFim), pode fazer parte de uma banca, e
- * quantas no máximo nesse dia. Sem precedente de UI no app pra isso (não
- * existe nenhum "calendário de disponibilidade" hoje) — modelado no mesmo
- * padrão de chip-toggle já usado pras salas/dias de presença em
- * /ensalamento, só que por pessoa, não por evento inteiro. */
+ * (dataRealizacao..dataRealizacaoFim), pode fazer parte de uma banca. Sem
+ * precedente de UI no app pra isso (não existe nenhum "calendário de
+ * disponibilidade" hoje) — modelado no mesmo padrão de chip-toggle já
+ * usado pras salas/dias de presença em /ensalamento, só que por pessoa,
+ * não por evento inteiro.
+ *
+ * Sem campo de "máximo de bancas" por dia (2026-11-17, removido por pedido
+ * explícito do usuário — "quando ele seleciona os dias ele vai estar
+ * disponível o período de trabalho na instituição", sem precisar dizer
+ * quantas bancas topa fazer nesse dia). Marcar o dia já basta; quem
+ * espalha a carga de forma justa é `montarBancaAutomatica`
+ * (src/lib/data/bancas.ts), na geração. */
 export default function BancaDisponibilidadePage() {
   const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
   const { eventos } = useEventos(perfil);
@@ -50,7 +55,7 @@ export default function BancaDisponibilidadePage() {
   );
 
   const { disponibilidade } = useMinhaDisponibilidade(eventoId || undefined, user?.uid);
-  const [capacidadePorDia, setCapacidadePorDia] = useState<Record<string, number>>({});
+  const [diasSelecionados, setDiasSelecionados] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
@@ -61,23 +66,14 @@ export default function BancaDisponibilidadePage() {
   const [eventoIdCarregado, setEventoIdCarregado] = useState<string | null>(null);
   if (disponibilidade && eventoId !== eventoIdCarregado) {
     setEventoIdCarregado(eventoId);
-    setCapacidadePorDia(disponibilidade.dias);
+    setDiasSelecionados(disponibilidade.dias);
   }
 
   function alternarDia(dia: string) {
     setSalvo(false);
-    setCapacidadePorDia((prev) => {
-      const novo = { ...prev };
-      if (dia in novo) delete novo[dia];
-      else novo[dia] = CAPACIDADE_PADRAO;
-      return novo;
-    });
-  }
-
-  function mudarCapacidade(dia: string, valor: string) {
-    setSalvo(false);
-    const numero = Math.max(0, Math.floor(Number(valor) || 0));
-    setCapacidadePorDia((prev) => ({ ...prev, [dia]: numero }));
+    setDiasSelecionados((prev) =>
+      prev.includes(dia) ? prev.filter((d) => d !== dia) : [...prev, dia],
+    );
   }
 
   async function salvar() {
@@ -88,7 +84,7 @@ export default function BancaDisponibilidadePage() {
         eventoId,
         uid: user.uid,
         nome: perfil.nome,
-        dias: capacidadePorDia,
+        dias: diasSelecionados,
       });
       setSalvo(true);
     } finally {
@@ -149,29 +145,32 @@ export default function BancaDisponibilidadePage() {
           ) : (
             <div className="flex max-w-2xl flex-col gap-5">
               <p className="text-sm text-fatec-muted">
-                Pra cada dia marcado, diga quantas bancas no máximo você
-                topa participar naquele dia (o orientador também entra
-                nessa conta — ele sempre faz parte da banca do próprio
-                orientando).
+                Marque os dias em que você está disponível — considere o seu
+                período normal de trabalho na instituição nesse dia (o
+                orientador também entra nessa conta: ele sempre faz parte da
+                banca do próprio orientando).
               </p>
 
               <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
                 {dias.map((dia) => {
-                  const marcado = dia in capacidadePorDia;
+                  const marcado = diasSelecionados.includes(dia);
                   return (
-                    <div key={dia} className="flex items-center gap-3 px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => alternarDia(dia)}
+                    <button
+                      key={dia}
+                      type="button"
+                      onClick={() => alternarDia(dia)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-fatec-navy-50"
+                      aria-pressed={marcado}
+                    >
+                      <span
                         className={`flex h-6 w-6 flex-none items-center justify-center rounded-md border transition-colors ${
                           marcado
                             ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
                             : "border-fatec-line bg-white"
                         }`}
-                        aria-pressed={marcado}
                       >
                         {marcado && <Check className="h-4 w-4" strokeWidth={2.5} />}
-                      </button>
+                      </span>
                       <span className="flex-1 text-sm font-medium text-fatec-navy-900">
                         {new Date(`${dia}T00:00:00`).toLocaleDateString("pt-BR", {
                           weekday: "long",
@@ -179,19 +178,7 @@ export default function BancaDisponibilidadePage() {
                           month: "long",
                         })}
                       </span>
-                      {marcado && (
-                        <label className="flex items-center gap-2 text-xs text-fatec-muted">
-                          Máx. de bancas
-                          <input
-                            type="number"
-                            min={0}
-                            value={capacidadePorDia[dia]}
-                            onChange={(e) => mudarCapacidade(dia, e.target.value)}
-                            className="w-16 rounded-lg border border-fatec-line bg-white px-2 py-1 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
-                          />
-                        </label>
-                      )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -268,11 +255,26 @@ function MinhasBancasView({
       <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
         {minhasBancas.map((t) => {
           const jaAvaliei = t.notasBanca?.some((n) => n.uid === uid);
+          // Tag (2026-11-17, pedido explícito do usuário) — a mesma pessoa
+          // pode ser orientador(a) num trabalho e avaliador(a) em outro, no
+          // mesmo evento; deixa claro em qual papel entra em CADA banca.
+          const souOrientadorDesta = t.orientadorUid === uid;
           return (
             <div key={t.id} className="flex flex-col gap-3 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-fatec-navy-900">{t.alunoNome}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium text-fatec-navy-900">{t.alunoNome}</p>
+                    <span
+                      className={`flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        souOrientadorDesta
+                          ? "bg-fatec-navy-100 text-fatec-navy-800"
+                          : "bg-fatec-sky-100 text-fatec-sky-700"
+                      }`}
+                    >
+                      {souOrientadorDesta ? "Orientador(a)" : "Avaliador(a)"}
+                    </span>
+                  </div>
                   <p className="text-xs text-fatec-muted">
                     {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR")}
                   </p>

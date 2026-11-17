@@ -21,17 +21,21 @@ export type NotaBancaTCC = NonNullable<Trabalho["notasBanca"]>[number];
  * usuário) — autoatendimento: cada avaliador/orientador/moderador vinculado
  * a um evento de TCC marca em que dias (dentro da janela
  * dataRealizacao..dataRealizacaoFim do evento) pode fazer parte de uma
- * banca, e quantas bancas no máximo nesse dia (capacidade — no histórico
- * real da "VI Mostra de TCC", a maioria marcava "2"). Isso é cruzado por
- * `montarBancaAutomatica` abaixo — bem diferente do ensalamento por sala×
- * horário do Evento MAC (ver src/lib/data/sessoes.ts), aqui não tem sala
- * nenhuma, só dia. */
+ * banca. Isso é cruzado por `montarBancaAutomatica` abaixo — bem diferente
+ * do ensalamento por sala×horário do Evento MAC (ver
+ * src/lib/data/sessoes.ts), aqui não tem sala nenhuma, só dia.
+ *
+ * Sem capacidade/máximo por dia (2026-11-17, removido por pedido explícito
+ * do usuário — marcar um dia já significa "disponível no período de
+ * trabalho na instituição", sem precisar dizer quantas bancas topa fazer
+ * nesse dia). `montarBancaAutomatica` espalha a carga sozinho, preferindo
+ * quem ainda fez menos bancas até agora na mesma geração. */
 export type DisponibilidadeBanca = {
   eventoId: string;
   uid: string;
   nome: string;
-  // "AAAA-MM-DD" -> capacidade (máx. de bancas nesse dia para essa pessoa).
-  dias: Record<string, number>;
+  // "AAAA-MM-DD" dos dias em que a pessoa está disponível.
+  dias: string[];
 };
 
 export function useDisponibilidadeDoEvento(eventoId: string | undefined) {
@@ -75,7 +79,7 @@ export function salvarMinhaDisponibilidade(params: {
   eventoId: string;
   uid: string;
   nome: string;
-  dias: Record<string, number>;
+  dias: string[];
 }) {
   return setDoc(doc(db, "disponibilidadeBanca", `${params.eventoId}_${params.uid}`), {
     eventoId: params.eventoId,
@@ -116,25 +120,26 @@ export type BancaGerada = {
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
  * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×PESSOA em vez de
  * SALA×HORÁRIO). Pra cada trabalho, acha o primeiro dia (na ordem de
- * `dias`) em que: (1) o orientador tem capacidade > 0 (ele SEMPRE entra na
+ * `dias`) em que: (1) o orientador está disponível (ele SEMPRE entra na
  * banca do próprio orientando, pedido explícito do usuário, confirmado em
  * 100% dos certificados reais de 2025) e (2) existem pelo menos 2 OUTRAS
- * pessoas com capacidade > 0 nesse mesmo dia. Entre os candidatos a
- * avaliador, escolhe os 2 com MENOS capacidade sobrando nesse dia
- * (best-fit, mesmo motivo de sessoes.ts: termina de preencher quem já tem
- * pouca sobra em vez de espalhar). O que não couber em dia nenhum volta em
- * `overflowTrabalhoIds`, pra virar aviso na tela em vez de travar o resto. */
+ * pessoas disponíveis nesse mesmo dia. Sem capacidade/máximo por dia
+ * (2026-11-17, removido por pedido explícito do usuário — ver comentário em
+ * DisponibilidadeBanca): qualquer disponível pode entrar em quantas bancas
+ * precisar no mesmo dia. Pra não sobrecarregar sempre as mesmas 2 pessoas,
+ * entre os candidatos escolhe os 2 que ainda entraram em MENOS bancas
+ * nessa mesma geração (`usosPorUid`, contador que só existe durante essa
+ * chamada — não é persistido, cada geração começa do zero). O que não
+ * couber em dia nenhum volta em `overflowTrabalhoIds`, pra virar aviso na
+ * tela em vez de travar o resto. */
 export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
   dias: string[];
 }): { bancasNovas: BancaGerada[]; overflowTrabalhoIds: string[] } {
-  const capacidade = new Map<string, Map<string, number>>();
-  const nomePorUid = new Map<string, string>();
-  for (const d of params.disponibilidades) {
-    capacidade.set(d.uid, new Map(Object.entries(d.dias)));
-    nomePorUid.set(d.uid, d.nome);
-  }
+  const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
+  const nomePorUid = new Map(params.disponibilidades.map((d) => [d.uid, d.nome]));
+  const usosPorUid = new Map<string, number>();
 
   const bancasNovas: BancaGerada[] = [];
   const overflowTrabalhoIds: string[] = [];
@@ -142,20 +147,17 @@ export function montarBancaAutomatica(params: {
   for (const t of params.trabalhos) {
     let achou = false;
     for (const dia of params.dias) {
-      const capOrientador = capacidade.get(t.orientadorUid)?.get(dia) ?? 0;
-      if (capOrientador <= 0) continue;
+      if (!diasPorUid.get(t.orientadorUid)?.has(dia)) continue;
 
-      const candidatos = Array.from(capacidade.keys())
-        .filter((uid) => uid !== t.orientadorUid)
-        .filter((uid) => (capacidade.get(uid)?.get(dia) ?? 0) > 0)
-        .sort((a, b) => (capacidade.get(a)!.get(dia) ?? 0) - (capacidade.get(b)!.get(dia) ?? 0));
+      const candidatos = Array.from(diasPorUid.entries())
+        .filter(([uid, dias]) => uid !== t.orientadorUid && dias.has(dia))
+        .map(([uid]) => uid)
+        .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
       if (candidatos.length < 2) continue;
 
       const escolhidos = candidatos.slice(0, 2);
-      capacidade.get(t.orientadorUid)!.set(dia, capOrientador - 1);
-      for (const uid of escolhidos) {
-        capacidade.get(uid)!.set(dia, (capacidade.get(uid)!.get(dia) ?? 0) - 1);
-      }
+      usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
+      for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
 
       bancasNovas.push({
         trabalhoId: t.id,
