@@ -588,9 +588,10 @@ function TrabalhosTCCView({
         )}
       </div>
       {erroBaixar && <p className="mt-2 text-sm text-rose-600">{erroBaixar}</p>}
-      {evento.cursoRestrito && (
+      {evento.cursoRestrito && evento.cursoRestrito.length > 0 && (
         <p className="mt-4 text-xs text-fatec-muted">
-          Evento restrito ao curso de {evento.cursoRestrito}.
+          Evento restrito ao{evento.cursoRestrito.length > 1 ? "s cursos de" : " curso de"}{" "}
+          {evento.cursoRestrito.join(", ")}.
         </p>
       )}
     </div>

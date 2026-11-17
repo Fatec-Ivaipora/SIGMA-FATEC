@@ -44,13 +44,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: "Usuário não encontrado." }, { status: 404 });
   }
 
-  // Evento de TCC restrito a um curso (2026-11-16, pedido explícito do
-  // usuário) — o client já esconde o card (ver eventosParaAluno em
+  // Evento de TCC restrito a um ou mais cursos (2026-11-16, pedido
+  // explícito do usuário; virou lista em 2026-11-17 — "tem casos de banca
+  // com Enfermagem e Fisioterapia... deixe livre para mais de um curso") —
+  // o client já esconde o card (ver eventosParaAluno em
   // src/lib/data/eventos.ts), isso aqui fecha a mesma checagem pra quem
   // tentar chamar a rota direto.
-  if (evento.cursoRestrito && usuario.curso !== evento.cursoRestrito) {
+  if (evento.cursoRestrito?.length && !evento.cursoRestrito.includes(usuario.curso)) {
     return NextResponse.json(
-      { erro: "Esse evento é restrito ao curso " + evento.cursoRestrito + "." },
+      { erro: "Esse evento é restrito ao(s) curso(s): " + evento.cursoRestrito.join(", ") + "." },
       { status: 403 },
     );
   }

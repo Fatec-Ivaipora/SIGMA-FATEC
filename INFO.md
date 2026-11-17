@@ -477,6 +477,26 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-17** — **TCC: curso restrito vira lista (mais de 1 curso) +
+  menu "Mais opções" não fica mais cortado no fim da lista de eventos**
+  (pedido explícito do usuário, testando o evento de TCC de Enfermagem —
+  "vamos permitir mais de 1 [curso] porque tem casos de bancas com
+  enfermagem e fisioterapia porque aí aproveita os professores"; e "quando
+  estávamos testando o evento de enfermagem o evento da MAC desceu pra
+  baixo... quando cliquei em mais opções ele ia pra baixo e não dava pra
+  ver as opções"). `Evento.cursoRestrito` virou `string[]` (era `string`) —
+  atualizado em `eventosParaAluno()`, `/api/asaas/interesse` (bloqueio
+  server-side) e no wizard de criação (`/eventos`, checkbox por curso em
+  vez de um `<select>` só). O certificado de banca
+  (`/api/certificados/banca-tcc`) agora imprime o curso do PRÓPRIO aluno
+  (busca em `usuarios/{alunoUid}`), não mais "o" curso do evento — com mais
+  de um curso restrito não dava mais pra assumir qual é o certo. O menu
+  "Mais opções" de cada card em `/eventos` (`MenuAcoesEvento`) media a
+  própria altura com `useLayoutEffect` e abre pra cima (`bottom-full`) em
+  vez de pra baixo quando não cabe mais na viewport — sem isso o menu de um
+  evento perto do fim da lista ficava cortado e não dava pra ver nem clicar
+  nas opções de baixo.
+
 - **2026-11-17** — **TCC: modal de detalhe do overflow em "Gerar banca
   automaticamente"** (pedido explícito do usuário, testando o limite de
   bancas por dia do commit anterior — "uma coisa importante quando der erro

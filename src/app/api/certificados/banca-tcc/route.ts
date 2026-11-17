@@ -79,7 +79,16 @@ export async function GET(request: Request) {
     if (assinantes.length === 0) {
       return NextResponse.json({ erro: "Evento sem assinantes configurados." }, { status: 400 });
     }
-    if (!evento.cursoRestrito) {
+    // O curso impresso no certificado é o curso do PRÓPRIO aluno, não mais
+    // "o" curso do evento (2026-11-17, pedido explícito do usuário — evento
+    // de TCC agora pode ter mais de um curso restrito, ex. Enfermagem +
+    // Fisioterapia compartilhando banca). Cai pro primeiro curso restrito do
+    // evento só se o cadastro do aluno não tiver curso preenchido.
+    const alunoSnap = trabalho.alunoUid
+      ? await db.doc(`usuarios/${trabalho.alunoUid}`).get()
+      : null;
+    const curso = (alunoSnap?.data()?.curso as string | undefined) ?? evento.cursoRestrito?.[0];
+    if (!curso) {
       return NextResponse.json({ erro: "Evento sem curso configurado." }, { status: 400 });
     }
 
@@ -94,7 +103,7 @@ export async function GET(request: Request) {
         tituloTrabalho: tituloExibicao(trabalho.titulo as string),
         alunoNomes: [trabalho.alunoNome as string],
         nomeOrientador: trabalho.nomeOrientador as string,
-        curso: evento.cursoRestrito as string,
+        curso,
         assinantes,
         dataAssinatura,
         logoCabecalhoId: evento.logoCertificadoId as string | undefined,

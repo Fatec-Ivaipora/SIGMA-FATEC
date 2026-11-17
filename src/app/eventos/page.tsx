@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import {
   type LucideIcon,
@@ -223,6 +223,21 @@ type ItemMenuEvento = {
  * configurado) — sem isso, esconder o item também esconderia o aviso. */
 function MenuAcoesEvento({ itens, pendencia }: { itens: ItemMenuEvento[]; pendencia?: boolean }) {
   const [aberto, setAberto] = useState(false);
+  // Abre pra cima quando não há espaço embaixo (2026-11-17, pedido
+  // explícito do usuário — testando com mais eventos na lista, "o evento da
+  // mac desceu pra baixo... quando cliquei em mais opções ele ia pra baixo e
+  // não dava pra ver as opções"). Mede depois de renderizar aberto pra
+  // baixo (padrão); se o fundo do menu passar da viewport, vira pra cima —
+  // sem isso o menu de um card perto do fim da lista ficava cortado/
+  // invisível.
+  const [abrirParaCima, setAbrirParaCima] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!aberto || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    setAbrirParaCima(rect.bottom > window.innerHeight);
+  }, [aberto]);
 
   return (
     <div className="relative">
@@ -249,7 +264,12 @@ function MenuAcoesEvento({ itens, pendencia }: { itens: ItemMenuEvento[]; penden
               Modal com fundo escuro/blur porque isso aqui é um menu leve,
               não um diálogo. */}
           <div aria-hidden onClick={() => setAberto(false)} className="fixed inset-0 z-10" />
-          <div className="absolute left-0 top-full z-20 mt-1.5 w-56 overflow-hidden rounded-xl border border-fatec-line bg-white py-1.5 shadow-lg">
+          <div
+            ref={menuRef}
+            className={`absolute left-0 z-20 w-56 overflow-hidden rounded-xl border border-fatec-line bg-white py-1.5 shadow-lg ${
+              abrirParaCima ? "bottom-full mb-1.5" : "top-full mt-1.5"
+            }`}
+          >
             {itens.map((item) => {
               const Icone = item.icone;
               const conteudo = (
@@ -749,7 +769,7 @@ export default function EventosPage() {
   // Curso ao qual a inscrição do evento TCC fica restrita (2026-11-16,
   // pedido explícito do usuário) — só preenchido/exigido quando
   // tipoForm === "tcc" (ver criarEvento e o botão "Criar evento" abaixo).
-  const [cursoRestritoForm, setCursoRestritoForm] = useState("");
+  const [cursoRestritoForm, setCursoRestritoForm] = useState<string[]>([]);
   const [criando, setCriando] = useState(false);
 
   // Configurações do evento (2026-09-09) — editar nome/descrição/datas de
@@ -964,7 +984,7 @@ export default function EventosPage() {
     setMinimoPeriodos("");
     setLabelsPeriodos([]);
     setAssinantesCertificadoIds([]);
-    setCursoRestritoForm("");
+    setCursoRestritoForm([]);
     setFaseCriar(0);
     setTipoForm(null);
   }
@@ -1429,7 +1449,7 @@ export default function EventosPage() {
     if (
       !nome.trim() ||
       (tipoForm === "mac" && areasTematicasForm.length === 0) ||
-      (tipoForm === "tcc" && !cursoRestritoForm) ||
+      (tipoForm === "tcc" && cursoRestritoForm.length === 0) ||
       !valorValido
     )
       return;
@@ -1933,28 +1953,35 @@ export default function EventosPage() {
           )}
 
           {tipoForm === "tcc" && (
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-fatec-navy-900">
-              Curso restrito
+              Curso(s) restrito(s) <span className="text-fatec-orange-600">*</span>
             </span>
             <span className="text-xs text-fatec-muted">
-              Só alunos desse curso conseguem se inscrever nesse evento — os
-              demais nem veem o card (2026-11-16, pedido explícito do
-              usuário, pra evitar inscrição por engano).
+              Só alunos de um desses cursos conseguem se inscrever nesse
+              evento — os demais nem veem o card. Dá pra marcar mais de um
+              (2026-11-17, pedido explícito do usuário — &quot;tem casos de
+              banca com Enfermagem e Fisioterapia porque aí aproveita os
+              professores&quot;).
             </span>
-            <select
-              value={cursoRestritoForm}
-              onChange={(e) => setCursoRestritoForm(e.target.value)}
-              className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
-            >
-              <option value="">Selecione o curso...</option>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {CURSOS_FATEC.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+                <label key={c} className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={cursoRestritoForm.includes(c)}
+                    onChange={(e) =>
+                      setCursoRestritoForm((prev) =>
+                        e.target.checked ? [...prev, c] : prev.filter((curso) => curso !== c),
+                      )
+                    }
+                    className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span className="text-sm text-fatec-navy-900">{c}</span>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
           )}
 
           <label className="flex items-center gap-2.5">
@@ -2257,7 +2284,7 @@ export default function EventosPage() {
                 disabled={
                   !nome.trim() ||
                   (tipoForm === "mac" && areasTematicasForm.length === 0) ||
-                  (tipoForm === "tcc" && !cursoRestritoForm) ||
+                  (tipoForm === "tcc" && cursoRestritoForm.length === 0) ||
                   !valorValido ||
                   criando
                 }

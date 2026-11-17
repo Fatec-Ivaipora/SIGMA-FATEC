@@ -279,15 +279,18 @@ export type Evento = {
   // Trabalho.certificadoLiberado, só que por evento inteiro (aqui não tem
   // trabalho nenhum pra liberar um por um).
   certificadosLiberados?: boolean;
-  // Curso ao qual a inscrição desse evento fica restrita (2026-11-16, pedido
-  // explícito do usuário — "a ideia é criar um evento com o curso
-  // específico também pra outros cursos não se registrarem sem querer").
-  // Só usado quando tipo === "tcc" (ausente/outros tipos = sem restrição de
-  // curso, comportamento de sempre). Checado tanto em eventosParaAluno()
-  // (esconde o evento pra quem é de outro curso) quanto no servidor, em
-  // /api/asaas/interesse (bloqueia a inscrição mesmo se alguém tentar direto
-  // pela API).
-  cursoRestrito?: string;
+  // Curso(s) ao(s) qual(is) a inscrição desse evento fica restrita
+  // (2026-11-16, pedido explícito do usuário — "a ideia é criar um evento
+  // com o curso específico também pra outros cursos não se registrarem sem
+  // querer"). Lista em vez de um curso só (2026-11-17, pedido explícito do
+  // usuário — "tem casos de banca com Enfermagem e Fisioterapia porque aí
+  // aproveita os professores, então deixe livre para mais de um curso").
+  // Só usado quando tipo === "tcc" (ausente/vazio/outros tipos = sem
+  // restrição de curso, comportamento de sempre). Checado tanto em
+  // eventosParaAluno() (esconde o evento pra quem não é de nenhum dos
+  // cursos) quanto no servidor, em /api/asaas/interesse (bloqueia a
+  // inscrição mesmo se alguém tentar direto pela API).
+  cursoRestrito?: string[];
   // Limite de bancas de TCC por dia (2026-11-17, pedido explícito do
   // usuário testando com 20 TCCs populados — "temos que pensar que não
   // pode ter 30 bancas no mesmo dia porque geralmente os professores estão
@@ -353,7 +356,7 @@ export function eventosParaAluno(
 ) {
   return eventos
     .filter((e) => vinculoFatec !== false || e.aceitaExternos)
-    .filter((e) => !e.cursoRestrito || !curso || e.cursoRestrito === curso);
+    .filter((e) => !e.cursoRestrito?.length || !curso || e.cursoRestrito.includes(curso));
 }
 
 /** Pode ENVIAR um trabalho novo agora? Dois motivos pra travar, checados
