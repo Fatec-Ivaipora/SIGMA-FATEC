@@ -166,6 +166,10 @@ function RelatoriosContent() {
   // mais de 1 dia, ver diasDoEvento em src/lib/certificadoDias.ts).
   const eventoSelecionado = eventoId === "todos" ? undefined : eventos.find((e) => e.id === eventoId);
   const ehSimples = eventoSelecionado?.tipo === "simples";
+  // Área temática é exclusiva de evento MAC (2026-11-24, pedido explícito do
+  // usuário) — a aba "Avaliação dos trabalhos" é só nota/ranking por área,
+  // não faz sentido pra TCC (que nem tem área temática nenhuma).
+  const ehTcc = eventoSelecionado?.tipo === "tcc";
 
   const presencaConfirmadaCount = useMemo(
     () => inscricoesDoEvento.filter((i) => diasConfirmadosCount(i) > 0).length,
@@ -548,7 +552,9 @@ function RelatoriosContent() {
                 // 2026-11-04 — etiquetas das pastas pra secretaria.
                 { key: "etiquetas", label: "Etiquetas das pastas" },
               ] as { key: "perfil" | "avaliacao" | "cursos" | "etiquetas"; label: string }[]
-            ).map((aba) => (
+            )
+              .filter((aba) => !(ehTcc && aba.key === "avaliacao"))
+              .map((aba) => (
               <button
                 key={aba.key}
                 type="button"
@@ -699,7 +705,7 @@ function RelatoriosContent() {
           </div>
           )}
 
-          {!ehSimples && abaRelatorioCompleto === "avaliacao" && (
+          {!ehSimples && !ehTcc && abaRelatorioCompleto === "avaliacao" && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -828,7 +834,7 @@ function RelatoriosContent() {
           </div>
           )}
 
-          {!ehSimples && abaRelatorioCompleto === "avaliacao" && (
+          {!ehSimples && !ehTcc && abaRelatorioCompleto === "avaliacao" && (
           <div className="mt-6 rounded-2xl border border-fatec-line bg-white p-6">
             <h2 className="text-base font-semibold text-fatec-navy-900">
               Melhores trabalhos por área temática

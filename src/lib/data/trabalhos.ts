@@ -53,6 +53,13 @@ export type TrabalhoStatus =
   // evento MAC/simples.
   | "tcc_inscrito"
   | "tcc_banca_agendada"
+  // Todo mundo da banca (orientador + 2 avaliadores) já lançou nota, mas o
+  // admin ainda não decidiu aprovar/reprovar (2026-11-24, pedido explícito
+  // do usuário — "não pode ter só o botão aprovar/reprovar direto, tem que
+  // ter um 'enviar para resultado' igual na MAC, selecionando em lote só
+  // quem já tem as 3 notas"). Só entra aqui via ação manual do admin
+  // (enviarParaResultadoTCC em src/lib/data/bancas.ts), nunca automático.
+  | "tcc_avaliado"
   | "tcc_aprovado"
   | "tcc_reprovado";
 
@@ -206,6 +213,23 @@ export type Trabalho = {
   // Dia da defesa ("AAAA-MM-DD") escolhido na geração da banca — cruza a
   // disponibilidade (disponibilidadeBanca) do orientador + 2 avaliadores.
   bancaData?: string;
+  // Sala (1..numeroSalasBanca do evento) e índice do horário dentro do dia
+  // (0, 1, 2... — junto com horarioInicioBanca/duracaoBancaMinutos do
+  // evento dá o horário de relógio) — só preenchidos quando a banca veio
+  // de `montarBancaAutomatica` com conflito de horário checado de verdade
+  // (2026-11-24). Ajuste manual (moverBanca) limpa os dois, porque não
+  // passa pelo mesmo checker — fica "sem sala definida" até gerar nova
+  // vez ou alguém arrumar na mão.
+  bancaSala?: number;
+  bancaHorarioIndex?: number;
+  // Motivo específico de não ter conseguido banca na última geração
+  // automática (2026-11-24, pedido explícito do usuário — a mensagem
+  // "X sem banca" sumia ao atualizar a página, porque só existia em
+  // estado do React). Gravado por `montarBancaAutomatica` via
+  // `salvarOverflowBanca` (src/lib/data/bancas.ts) pra sobreviver a
+  // reload; limpo (deleteField) assim que o trabalho ganha banca, numa
+  // geração futura ou ajuste manual.
+  motivoSemBanca?: string;
   // Uma entrada por membro da banca que já avaliou (máx. 3: orientador +
   // os 2 avaliadores) — cada um preenche a própria nota, ninguém sobrescreve
   // a nota dos outros 2 (ver salvarNotaBanca). `notas` usa as chaves de

@@ -81,6 +81,16 @@ const STATUS_META: Record<
     text: "text-fatec-navy-800",
     bg: "bg-fatec-navy-100",
   },
+  // Todo mundo da banca já lançou nota, mas o admin ainda não decidiu
+  // aprovar/reprovar (2026-11-24, pedido explícito do usuário — mesmo
+  // espírito do "avaliado" de MAC: fica aqui até alguém mandar pra
+  // Resultado em lote).
+  tcc_avaliado: {
+    label: "Avaliado",
+    dot: "bg-fatec-sky-600",
+    text: "text-fatec-sky-700",
+    bg: "bg-fatec-sky-100",
+  },
   tcc_aprovado: {
     label: "Aprovado",
     dot: "bg-emerald-600",

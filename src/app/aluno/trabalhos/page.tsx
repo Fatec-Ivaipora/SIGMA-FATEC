@@ -6,6 +6,7 @@ import { Check, Clock, Download, FileStack, MapPin, Pencil, Eye, X } from "lucid
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
+import { SubmeterTCCModal, type DadosSubmissaoTCC } from "@/components/SubmeterTCCModal";
 import { navAlunoPara } from "@/lib/navAluno";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import {
@@ -177,6 +178,25 @@ export default function AlunoTrabalhosPage() {
         notificarStatusTrabalho(user, trabalho.id, "aviso_entrega_atrasada");
       }
     }
+    setEditando(null);
+  }
+
+  // Edição de TCC é bem mais simples que a de MAC acima (2026-11-24,
+  // achado real do usuário — editar um TCC abria o modal de MAC, com
+  // "Apresentação oral ou roda de conversa" aparecendo à toa): só
+  // título/orientador mudam, TCC não tem revisão/nota/coautor/convite
+  // nesse ponto do fluxo, então não precisa de nada da lógica acima.
+  async function salvarEdicaoTCC(trabalho: Trabalho, dados: DadosSubmissaoTCC) {
+    if (!podeEditarTrabalho(trabalho)) {
+      setEditando(null);
+      return;
+    }
+    await atualizarTrabalho(trabalho.id, {
+      titulo: dados.titulo,
+      orientadorUid: dados.orientadorUid,
+      nomeOrientador: dados.orientadorNome,
+      atualizadoEm: serverTimestamp(),
+    });
     setEditando(null);
   }
 
@@ -420,41 +440,58 @@ export default function AlunoTrabalhosPage() {
         </div>
       </div>
 
-      {editando && (
-        <SubmeterTrabalhoModal
+      {editando && eventos.find((e) => e.id === editando.eventoId)?.tipo === "tcc" ? (
+        <SubmeterTCCModal
           open={!!editando}
           modoEdicao
           somenteLeitura={!podeEditarTrabalho(editando)}
           eventoId={editando.eventoId}
-          temTaxa={!!eventos.find((e) => e.id === editando.eventoId)?.valorInscricao}
           eventoNome={eventos.find((e) => e.id === editando.eventoId)?.nome ?? ""}
-          areasDisponiveis={eventos.find((e) => e.id === editando.eventoId)?.areasTematicas ?? []}
-          areasComplexas={
-            eventos.find((e) => e.id === editando.eventoId)?.areasTematicasComplexas ?? []
-          }
-          modalidadesPermitidas={
-            eventos.find((e) => e.id === editando.eventoId)?.modalidadesApresentacao
-          }
-          resumoAcademico
-          meuUid={user?.uid}
-          autorPrincipal={{ nome: editando.alunoNome, souEu: editando.alunoUid === user?.uid }}
-          comentarioRevisao={editando.status === "revisao" ? editando.comentarioRevisao : null}
           valoresIniciais={{
             titulo: editando.titulo,
-            resumo: editando.resumo,
-            palavrasChave: editando.palavrasChave,
-            areaTematica: editando.areaTematica,
-            modalidadeApresentacao: editando.modalidadeApresentacao,
-            nomeOrientador: editando.nomeOrientador,
-            nomesCoorientadores: editando.nomesCoorientadores,
-            participantes: (editando.participantesUids ?? []).map((uid, i) => ({
-              uid,
-              nome: editando.participantesNomes?.[i] ?? uid,
-            })),
+            orientadorUid: editando.orientadorUid ?? "",
+            orientadorNome: editando.nomeOrientador ?? "",
           }}
           onClose={() => setEditando(null)}
-          onSubmit={(dados) => salvarEdicao(editando, dados)}
+          onSubmit={(dados) => salvarEdicaoTCC(editando, dados)}
         />
+      ) : (
+        editando && (
+          <SubmeterTrabalhoModal
+            open={!!editando}
+            modoEdicao
+            somenteLeitura={!podeEditarTrabalho(editando)}
+            eventoId={editando.eventoId}
+            temTaxa={!!eventos.find((e) => e.id === editando.eventoId)?.valorInscricao}
+            eventoNome={eventos.find((e) => e.id === editando.eventoId)?.nome ?? ""}
+            areasDisponiveis={eventos.find((e) => e.id === editando.eventoId)?.areasTematicas ?? []}
+            areasComplexas={
+              eventos.find((e) => e.id === editando.eventoId)?.areasTematicasComplexas ?? []
+            }
+            modalidadesPermitidas={
+              eventos.find((e) => e.id === editando.eventoId)?.modalidadesApresentacao
+            }
+            resumoAcademico
+            meuUid={user?.uid}
+            autorPrincipal={{ nome: editando.alunoNome, souEu: editando.alunoUid === user?.uid }}
+            comentarioRevisao={editando.status === "revisao" ? editando.comentarioRevisao : null}
+            valoresIniciais={{
+              titulo: editando.titulo,
+              resumo: editando.resumo,
+              palavrasChave: editando.palavrasChave,
+              areaTematica: editando.areaTematica,
+              modalidadeApresentacao: editando.modalidadeApresentacao,
+              nomeOrientador: editando.nomeOrientador,
+              nomesCoorientadores: editando.nomesCoorientadores,
+              participantes: (editando.participantesUids ?? []).map((uid, i) => ({
+                uid,
+                nome: editando.participantesNomes?.[i] ?? uid,
+              })),
+            }}
+            onClose={() => setEditando(null)}
+            onSubmit={(dados) => salvarEdicao(editando, dados)}
+          />
+        )
       )}
     </main>
   );

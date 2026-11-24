@@ -16,8 +16,13 @@ export default function AreasTematicasPage() {
   const { eventos: todosEventos } = useEventos(perfil);
   // Encerrado some daqui (2026-10-16, pedido explícito do usuário) — área
   // temática só importa pra configurar submissão de trabalho de um evento
-  // em andamento, mesmo espírito de Trabalhos/Ensalamento.
-  const eventos = todosEventos.filter((e) => !e.encerrado);
+  // em andamento, mesmo espírito de Trabalhos/Ensalamento. Área temática é
+  // exclusiva de evento MAC (2026-11-24, pedido explícito do usuário) —
+  // TCC/Simples nunca usam isso (SubmeterTCCModal nem coleta área, evento
+  // simples não tem trabalho). "mac" nem existe como literal de `tipo` (só
+  // "simples"/"tcc" são valores reais, ver Evento em src/lib/data/eventos.ts)
+  // — tipo ausente é o próprio MAC, por isso o filtro é `!e.tipo`.
+  const eventos = todosEventos.filter((e) => !e.encerrado && !e.tipo);
   const [novaArea, setNovaArea] = useState<Record<string, string>>({});
   const [modalAreaComplexa, setModalAreaComplexa] = useState<{
     eventoId: string;

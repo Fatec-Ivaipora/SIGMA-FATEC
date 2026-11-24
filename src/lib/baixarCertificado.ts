@@ -225,6 +225,28 @@ export async function baixarGradeEnsalamentoPdf(
   return { ok: true };
 }
 
+/** PDF da banca de TCC, agrupado por sala (2026-11-24, pedido explícito do
+ * usuário) — ver GET /api/ensalamento/pdf-banca. Mesmo padrão de download
+ * das funções acima. */
+export async function baixarGradeBancaPdf(
+  user: User,
+  eventoId: string,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`/api/ensalamento/pdf-banca?eventoId=${encodeURIComponent(eventoId)}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o PDF da banca." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "banca-tcc.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
 /** Recibo de pagamento da Inscrição extra (2026-11-11, pedido explícito do
  * usuário) — ver GET /api/inscricoes/recibo/pdf. Mesmo padrão de download
  * das funções acima. */

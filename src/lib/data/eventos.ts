@@ -304,6 +304,21 @@ export type Evento = {
   // número. Ausente = sem limite (comportamento de antes).
   duracaoBancaMinutos?: number;
   maxBancasPorDia?: number;
+  // Número de salas simultâneas de banca (2026-11-24, pedido explícito do
+  // usuário simulando o ensalamento com 42 TCCs de teste). NÃO entra no
+  // algoritmo de `montarBancaAutomatica` (que continua agendando só por
+  // dia, sem conflito de horário/pessoa entre salas — decisão deliberada,
+  // igual a `maxBancasPorDia`, pra não reconstruir o motor sala×horário da
+  // MAC). Serve só pra MONTAR a grade de exibição "Horário × Sala" em
+  // /ensalamento: as bancas já agendadas num dia são repartidas em N
+  // colunas (uma por sala), sem garantia de que ninguém fique em 2 salas
+  // no mesmo horário — o admin ainda precisa olhar a grade e resolver um
+  // choque raro na mão. `horarioInicioBanca` ("HH:mm") é o horário de
+  // início do primeiro horário do dia, usado com `duracaoBancaMinutos`
+  // pra rotular cada linha da grade com horário de relógio de verdade
+  // (ausente = linhas só numeradas, sem horário).
+  numeroSalasBanca?: number;
+  horarioInicioBanca?: string;
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */

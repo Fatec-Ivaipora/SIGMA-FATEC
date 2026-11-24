@@ -40,14 +40,14 @@ import {
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
 import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
-import { baixarGradeEnsalamentoPdf } from "@/lib/baixarCertificado";
+import { baixarGradeEnsalamentoPdf, baixarGradeBancaPdf } from "@/lib/baixarCertificado";
 import {
   diasDoIntervalo,
   montarBancaAutomatica,
   substituirBancaDoEvento,
+  salvarOverflowBanca,
   moverBanca,
   useDisponibilidadeDoEvento,
-  type OverflowBanca,
 } from "@/lib/data/bancas";
 import {
   useSessoesDoEvento,
@@ -694,17 +694,31 @@ function EnsalamentoBancaView({
   evento: Evento;
   trabalhos: Trabalho[];
 }) {
+  const { user } = useAuth();
   const { disponibilidades } = useDisponibilidadeDoEvento(evento.id);
   const dias = useMemo(
     () => diasDoIntervalo(evento.dataRealizacao ?? "", evento.dataRealizacaoFim ?? ""),
     [evento.dataRealizacao, evento.dataRealizacaoFim],
   );
 
+  // PDF da banca agrupado por sala, pra enviar aos alunos (2026-11-24,
+  // pedido explícito do usuário — "pode ser um pdf depois para enviarmos
+  // pros alunos e uma lista por sala não separado por dias") — ver
+  // /api/ensalamento/pdf-banca. A grade na tela foi removida a pedido do
+  // próprio usuário ("essa grade por sala, não precisa").
+  const [gerandoPdfBanca, setGerandoPdfBanca] = useState(false);
+  const [erroPdfBanca, setErroPdfBanca] = useState<string | null>(null);
+  async function gerarPdfBanca() {
+    if (!user) return;
+    setGerandoPdfBanca(true);
+    setErroPdfBanca(null);
+    const resultado = await baixarGradeBancaPdf(user, evento.id);
+    if (!resultado.ok) setErroPdfBanca(resultado.erro);
+    setGerandoPdfBanca(false);
+  }
+
   const [gerando, setGerando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
-  const [resultado, setResultado] = useState<{ geradas: number; overflow: OverflowBanca[] } | null>(
-    null,
-  );
   const [verOverflow, setVerOverflow] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [edicaoDia, setEdicaoDia] = useState("");
@@ -725,6 +739,13 @@ function EnsalamentoBancaView({
   const [maxBancasForm, setMaxBancasForm] = useState(
     evento.maxBancasPorDia != null ? String(evento.maxBancasPorDia) : "",
   );
+  // Grade "Horário × Sala" (2026-11-24, pedido explícito do usuário) — ver
+  // comentário de numeroSalasBanca em src/lib/data/eventos.ts: só distribui
+  // visualmente as bancas já agendadas, não entra no algoritmo.
+  const [numeroSalasForm, setNumeroSalasForm] = useState(
+    evento.numeroSalasBanca != null ? String(evento.numeroSalasBanca) : "",
+  );
+  const [horarioInicioForm, setHorarioInicioForm] = useState(evento.horarioInicioBanca ?? "");
   const [salvandoConfigBanca, setSalvandoConfigBanca] = useState(false);
   // Ajuste de estado durante a renderização (mesmo padrão já usado em
   // eventos/page.tsx) — resincroniza o formulário se o evento selecionado
@@ -735,6 +756,8 @@ function EnsalamentoBancaView({
     setEventoIdDoFormBanca(evento.id);
     setDuracaoBancaForm(evento.duracaoBancaMinutos != null ? String(evento.duracaoBancaMinutos) : "");
     setMaxBancasForm(evento.maxBancasPorDia != null ? String(evento.maxBancasPorDia) : "");
+    setNumeroSalasForm(evento.numeroSalasBanca != null ? String(evento.numeroSalasBanca) : "");
+    setHorarioInicioForm(evento.horarioInicioBanca ?? "");
   }
 
   async function salvarConfigBanca() {
@@ -743,6 +766,8 @@ function EnsalamentoBancaView({
       await updateDoc(doc(db, "eventos", evento.id), {
         ...(duracaoBancaForm.trim() ? { duracaoBancaMinutos: Number(duracaoBancaForm) } : {}),
         ...(maxBancasForm.trim() ? { maxBancasPorDia: Number(maxBancasForm) } : {}),
+        ...(numeroSalasForm.trim() ? { numeroSalasBanca: Number(numeroSalasForm) } : {}),
+        ...(horarioInicioForm.trim() ? { horarioInicioBanca: horarioInicioForm.trim() } : {}),
       });
     } finally {
       setSalvandoConfigBanca(false);
@@ -750,6 +775,12 @@ function EnsalamentoBancaView({
   }
 
   const maxBancasPorDia = evento.maxBancasPorDia;
+  // Teto é POR SALA (2026-11-24, pedido explícito do usuário — ver
+  // montarBancaAutomatica em src/lib/data/bancas.ts); o ajuste manual não
+  // escolhe sala, então o aviso abaixo compara contra a capacidade TOTAL
+  // do dia (teto × nº de salas), não contra o teto sozinho.
+  const numeroSalas = Math.max(1, evento.numeroSalasBanca ?? 1);
+  const capacidadeTotalDia = maxBancasPorDia != null ? maxBancasPorDia * numeroSalas : null;
 
   async function gerarBanca() {
     setGerando(true);
@@ -766,13 +797,26 @@ function EnsalamentoBancaView({
         disponibilidades,
         dias,
         maxBancasPorDia,
+        numeroSalas: evento.numeroSalasBanca,
       });
-      await substituirBancaDoEvento(bancasNovas);
-      setResultado({ geradas: bancasNovas.length, overflow });
+      await Promise.all([substituirBancaDoEvento(bancasNovas), salvarOverflowBanca(overflow)]);
     } finally {
       setGerando(false);
     }
   }
+
+  // Resumo "X banca(s) montada(s) · Y sem banca" derivado direto dos
+  // trabalhos (2026-11-24, pedido explícito do usuário — a mensagem sumia
+  // ao atualizar a página, porque só existia em estado do React; agora é
+  // só ler o que já está gravado em cada trabalho, sobrevive a reload e
+  // atualiza sozinho se alguém editar na mão depois). `semBanca` só conta
+  // quem já foi considerado numa geração e tem motivo gravado — um
+  // trabalho recém-submetido, nunca processado, não aparece aqui.
+  const comBanca = useMemo(() => trabalhos.filter((t) => t.bancaData).length, [trabalhos]);
+  const semBanca = useMemo(
+    () => trabalhos.filter((t) => !t.bancaData && t.motivoSemBanca),
+    [trabalhos],
+  );
 
   // Quantas bancas já estão marcadas em cada dia, SEM contar a que está
   // sendo editada agora (2026-11-17) — usado pra avisar na edição manual
@@ -843,12 +887,12 @@ function EnsalamentoBancaView({
             {gerando ? "Gerando..." : "Gerar banca automaticamente"}
           </button>
         </div>
-        {resultado && (
+        {(comBanca > 0 || semBanca.length > 0) && (
           <p className="mt-3 text-sm text-fatec-muted">
             <span className="font-semibold text-emerald-700">
-              {resultado.geradas} banca(s) montada(s)
+              {comBanca} banca(s) montada(s)
             </span>
-            {resultado.overflow.length > 0 && (
+            {semBanca.length > 0 && (
               <>
                 {" · "}
                 <button
@@ -857,7 +901,7 @@ function EnsalamentoBancaView({
                   className="inline-flex items-center gap-1 font-semibold text-amber-700 underline decoration-dotted underline-offset-2 hover:text-amber-800"
                 >
                   <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
-                  {resultado.overflow.length} sem banca
+                  {semBanca.length} sem banca
                 </button>{" "}
                 — clique para ver o motivo de cada um.
               </>
@@ -868,35 +912,31 @@ function EnsalamentoBancaView({
 
         {/* Modal de overflow (2026-11-17, pedido explícito do usuário —
             "deve aparecer um icone embaixo que eu possa clicar e abrir um
-            modal para ver o que deu errado") — lista, por trabalho que não
-            coube em banca nenhuma, o motivo específico calculado em
-            montarBancaAutomatica (src/lib/data/bancas.ts), não só a
-            contagem. */}
-        {resultado && (
+            modal para ver o que deu errado"; gravado em cada trabalho
+            desde 2026-11-24, pra essa mensagem não sumir ao atualizar a
+            página) — lista, por trabalho que não coube em banca nenhuma,
+            o motivo específico calculado em montarBancaAutomatica
+            (src/lib/data/bancas.ts), não só a contagem. */}
+        {semBanca.length > 0 && (
           <Modal open={verOverflow} onClose={() => setVerOverflow(false)} title="Trabalhos sem banca">
             <ul className="flex flex-col gap-3">
-              {resultado.overflow.map((o) => {
-                const trabalho = trabalhos.find((t) => t.id === o.trabalhoId);
-                return (
-                  <li
-                    key={o.trabalhoId}
-                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
-                  >
-                    <p className="font-semibold text-fatec-navy-900">
-                      {trabalho ? trabalho.alunoNome : o.trabalhoId}
+              {semBanca.map((trabalho) => (
+                <li
+                  key={trabalho.id}
+                  className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                >
+                  <p className="font-semibold text-fatec-navy-900">{trabalho.alunoNome}</p>
+                  {trabalho.titulo && (
+                    <p className="text-xs text-fatec-muted">{tituloExibicao(trabalho.titulo)}</p>
+                  )}
+                  {trabalho.nomeOrientador && (
+                    <p className="text-xs text-fatec-muted">
+                      Orientador(a): {trabalho.nomeOrientador}
                     </p>
-                    {trabalho?.titulo && (
-                      <p className="text-xs text-fatec-muted">{tituloExibicao(trabalho.titulo)}</p>
-                    )}
-                    {trabalho?.nomeOrientador && (
-                      <p className="text-xs text-fatec-muted">
-                        Orientador(a): {trabalho.nomeOrientador}
-                      </p>
-                    )}
-                    <p className="mt-1 text-sm text-amber-800">{o.motivo}</p>
-                  </li>
-                );
-              })}
+                  )}
+                  <p className="mt-1 text-sm text-amber-800">{trabalho.motivoSemBanca}</p>
+                </li>
+              ))}
             </ul>
           </Modal>
         )}
@@ -920,7 +960,7 @@ function EnsalamentoBancaView({
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-fatec-navy-900">
-              Máximo de bancas por dia
+              Máximo de bancas por sala/dia
             </span>
             <input
               type="number"
@@ -929,6 +969,30 @@ function EnsalamentoBancaView({
               onChange={(e) => setMaxBancasForm(e.target.value)}
               placeholder="Ex.: 8"
               className="w-28 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-fatec-navy-900">
+              Nº de salas simultâneas
+            </span>
+            <input
+              type="number"
+              min="1"
+              value={numeroSalasForm}
+              onChange={(e) => setNumeroSalasForm(e.target.value)}
+              placeholder="Ex.: 2"
+              className="w-28 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none focus:border-fatec-sky-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-fatec-navy-900">
+              Horário de início (opcional)
+            </span>
+            <input
+              type="time"
+              value={horarioInicioForm}
+              onChange={(e) => setHorarioInicioForm(e.target.value)}
+              className="w-28 rounded-lg border border-fatec-line bg-white px-3 py-1.5 text-sm text-fatec-ink outline-none focus:border-fatec-sky-600"
             />
           </label>
           <button
@@ -940,9 +1004,32 @@ function EnsalamentoBancaView({
             {salvandoConfigBanca ? "Salvando..." : "Salvar"}
           </button>
           <span className="text-xs text-fatec-muted">
-            Sem máximo configurado, &quot;Gerar banca&quot; não limita quantas bancas caem no mesmo dia.
+            Teto é POR SALA, não somado — com 2 salas e máximo 8, o dia aceita até 16
+            bancas no total (8 em cada sala). Sem máximo configurado, &quot;Gerar
+            banca&quot; não limita quantas bancas caem no mesmo dia.
           </span>
         </div>
+        {(evento.numeroSalasBanca ?? 0) > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-fatec-line pt-3">
+            <p className="flex-1 text-xs text-fatec-muted">
+              Com &quot;Nº de salas simultâneas&quot; preenchido, &quot;Gerar banca
+              automaticamente&quot; já evita escalar a mesma pessoa em 2 salas no mesmo
+              horário (ela pode, sim, ter bancas diferentes em horários diferentes no
+              mesmo dia). Um ajuste manual depois (&quot;Editar&quot;) não passa por essa
+              checagem — a banca editada na mão sai da lista por sala até gerar de novo.
+            </p>
+            <button
+              type="button"
+              onClick={gerarPdfBanca}
+              disabled={gerandoPdfBanca}
+              className="inline-flex w-fit flex-none items-center gap-1.5 rounded-lg border border-fatec-line px-3.5 py-1.5 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
+            >
+              <FileDown className="h-4 w-4" strokeWidth={1.75} />
+              {gerandoPdfBanca ? "Gerando..." : "Baixar lista por sala (PDF)"}
+            </button>
+          </div>
+        )}
+        {erroPdfBanca && <p className="mt-2 text-xs font-medium text-rose-700">{erroPdfBanca}</p>}
       </section>
 
       <div className="flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
@@ -966,7 +1053,7 @@ function EnsalamentoBancaView({
                     {dias.map((d) => {
                       const indisponivel = t.orientadorUid && !diasPorUid.get(t.orientadorUid)?.has(d);
                       const noLimite =
-                        maxBancasPorDia != null && (bancasPorDiaAtual.get(d) ?? 0) >= maxBancasPorDia;
+                        capacidadeTotalDia != null && (bancasPorDiaAtual.get(d) ?? 0) >= capacidadeTotalDia;
                       return (
                         <option key={d} value={d}>
                           {new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR")}
@@ -1028,11 +1115,11 @@ function EnsalamentoBancaView({
                     dia — só continue se já combinou isso fora do sistema.
                   </p>
                 )}
-                {maxBancasPorDia != null && (bancasPorDiaAtual.get(edicaoDia) ?? 0) >= maxBancasPorDia && (
+                {capacidadeTotalDia != null && (bancasPorDiaAtual.get(edicaoDia) ?? 0) >= capacidadeTotalDia && (
                   <p className="text-xs font-medium text-amber-700">
-                    ⚠ Esse dia já tem {bancasPorDiaAtual.get(edicaoDia)} banca(s) marcada(s), no
-                    limite configurado ({maxBancasPorDia}/dia) — só continue se os professores
-                    topam um horário a mais.
+                    ⚠ Esse dia já tem {bancasPorDiaAtual.get(edicaoDia)} banca(s) marcada(s), na
+                    capacidade total do dia ({maxBancasPorDia}/sala × {numeroSalas} sala(s) ={" "}
+                    {capacidadeTotalDia}) — só continue se os professores topam um horário a mais.
                   </p>
                 )}
                 {(!edicaoAvaliador1 || !edicaoAvaliador2) && (
@@ -1044,16 +1131,28 @@ function EnsalamentoBancaView({
               </div>
             ) : (
               <div className="flex flex-none items-center gap-3">
-                <span className="text-xs text-fatec-muted">
-                  {t.bancaData ? (
-                    <>
-                      {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR")} ·{" "}
+                {t.bancaData ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {t.bancaSala != null && (
+                        <span className="inline-flex items-center rounded-full bg-fatec-navy-50 px-2 py-0.5 text-xs font-semibold text-fatec-navy-800">
+                          Sala {t.bancaSala}
+                        </span>
+                      )}
+                      <span className="text-xs font-semibold text-fatec-navy-900">
+                        {new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <span className="text-xs text-fatec-muted">
                       {t.bancaAvaliadores?.map((a) => a.nome).join(", ") || "sem avaliadores"}
-                    </>
-                  ) : (
-                    "Sem banca"
-                  )}
-                </span>
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-fatec-muted">Sem banca</span>
+                )}
                 <button
                   type="button"
                   onClick={() => abrirEdicao(t)}

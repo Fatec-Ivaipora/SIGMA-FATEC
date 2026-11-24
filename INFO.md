@@ -477,6 +477,74 @@ tem o detalhe completo — isso aqui é só pra orientar rápido). Ver a regra
 fixa lá em cima: toda mudança validada ganha uma linha aqui, no mesmo
 commit que sobe pro git.
 
+- **2026-11-24** — **TCC: salas simultâneas na banca, PDF por sala/dia pros
+  alunos, fluxo de Resultado em lote, e área temática/premiados virando
+  exclusividade de evento MAC** (sessão inteira testando o evento real de
+  "Banca de TCC - Enfermagem/Biomedicina", com 42 trabalhos de teste
+  populados e apagados depois — pedidos explícitos do usuário, em ordem):
+  - **Tag de tipo de evento** ("Evento: MAC"/"Simples"/"Apresentação de
+    TCC") em todo card de `/eventos`, mais tag por curso restrito no card
+    de evento TCC.
+  - **Curso(s) restrito(s)** do evento TCC virou editável depois da
+    criação, direto em Configurações (antes só dava pra definir uma vez).
+  - **Área temática e "premiados por área" viraram exclusividade de MAC**
+    (pedido explícito — "área temática é somente na MAC, qualquer outro
+    evento pode retirar essa opção"): sumiram de `/areas-tematicas`
+    (filtro de eventos não tinha nenhum corte por tipo antes — achado
+    real), da aba "Avaliação dos trabalhos" de `/relatorios`, e do menu
+    "Mais opções"/card de `/eventos` pra evento TCC.
+  - **"Prazo final de avaliação" saiu da Configurações de evento TCC**
+    (não se aplica — a avaliação É a banca), entrou **"Início/fim das
+    apresentações"** no lugar (os campos `dataRealizacao`/
+    `dataRealizacaoFim` que já existiam, mas só editáveis antes em
+    "Configurar certificado" — sem jeito direto de corrigir a janela de
+    dias da banca).
+  - **Número de salas simultâneas na banca** (`numeroSalasBanca`/
+    `horarioInicioBanca`, novos campos do evento): `montarBancaAutomatica`
+    (src/lib/data/bancas.ts) agora pensa em dia×horário×sala, nunca
+    escalando a mesma pessoa em 2 salas no mesmo horário (pedido
+    explícito — "não pode acontecer de uma pessoa ser avaliadora na sala
+    1 às 19h e orientador às 19h na sala 2"). `maxBancasPorDia` virou teto
+    **por sala**, não mais somado no dia (pedido explícito — "tem que ser
+    o máximo de banca por sala no dia"), e os trabalhos agora são
+    processados primeiro pelos orientadores com MENOS dias disponíveis
+    (achado real testando: 3 trabalhos ficavam sem banca automática
+    mesmo cabendo na mão, porque orientadores com a semana toda livre
+    consumiam a vaga escassa de quem só tinha 1-2 dias — resolvido
+    reordenando o processamento, testado com dado real: 0 overflow
+    depois).
+  - **PDF da banca por sala, uma página por sala+dia** (pedido explícito
+    — "pode ser um pdf... uma lista por sala não separado por dias...
+    cada folha uma sala e dia"), em vez da grade na tela (removida a
+    pedido do usuário): `src/lib/gradeBancaPdf.tsx` + rota nova
+    `/api/ensalamento/pdf-banca`. Avaliador 1/Avaliador 2 separados (não
+    mais lista com vírgula), aluno/título/orientador/avaliadores cada um
+    numa linha, dia e quantidade de bancas em destaque, e uma escala
+    dinâmica por grupo garante que cada sala+dia cabe numa página A4 só
+    (testado com o caso real que antes estourava pra 2 páginas).
+  - **Status novo `tcc_avaliado` + botão "Enviar para resultado" em
+    lote** (pedido explícito — "igual na MAC, seleciona os trabalhos e
+    envia pra resultado só os que estão com as 3 notas"): trabalho com as
+    3 notas lançadas não muda mais sozinho de status, fica em "Avaliação"
+    até o admin selecionar (checkbox só habilita com 3/3 notas) e enviar
+    em lote — só aí a nota final fica visível do lado dos botões
+    Aprovar/Reprovar (antes eles ficavam na aba Avaliação sem mostrar a
+    nota, achado real durante o teste).
+  - **Mensagem "X banca(s) · Y sem banca" parou de sumir ao atualizar a
+    página** — motivo de cada "sem banca" agora grava em
+    `trabalho.motivoSemBanca` (limpo quando a banca é conseguida depois),
+    a tela lê isso direto dos trabalhos em vez de guardar só em estado do
+    React.
+  - **Bugfix real**: editar um trabalho de TCC em `/aluno/trabalhos`
+    abria o modal genérico de MAC, mostrando "Apresentação oral ou roda
+    de conversa" à toa (evento TCC nunca tem esse campo) — `SubmeterTCCModal`
+    ganhou modo de edição próprio (só título/orientador), e a tela agora
+    escolhe o modal certo pelo `evento.tipo`.
+  - Populado também o cadastro real de ~22 avaliadores/orientadores de
+    TCC a partir de um levantamento de disponibilidade (planilha da
+    organização), com criação de conta + senha temporária pros que ainda
+    não tinham cadastro.
+
 - **2026-11-17** — **TCC: curso restrito vira lista (mais de 1 curso) +
   menu "Mais opções" não fica mais cortado no fim da lista de eventos**
   (pedido explícito do usuário, testando o evento de TCC de Enfermagem —

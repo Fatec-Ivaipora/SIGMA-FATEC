@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Plus,
   Star,
+  GraduationCap,
   FileStack,
   Tag,
   Image as ImageIcon,
@@ -352,6 +353,7 @@ function CardEventoAdmin({
 }) {
   const temTaxa = !!evento.valorInscricao;
   const simples = evento.tipo === "simples";
+  const tcc = evento.tipo === "tcc";
   const { inscritos } = useInscritosDoEvento(temTaxa || simples ? evento.id : undefined);
   const inscritosPagos = inscritos.filter((i) => i.status === "pago").length;
 
@@ -379,6 +381,12 @@ function CardEventoAdmin({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="font-semibold text-fatec-navy-900">{evento.nome}</p>
+            {/* Tipo do evento (2026-11-24, pedido explícito do usuário) — em
+                todo evento, não só TCC, pra diferenciar MAC/Simples/TCC de
+                relance no card. */}
+            <span className="inline-flex items-center gap-1 rounded-full bg-fatec-navy-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-navy-900">
+              Evento: {tcc ? "Apresentação de TCC" : simples ? "Simples" : "MAC"}
+            </span>
             {evento.encerrado && (
               <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
                 Encerrado
@@ -406,6 +414,19 @@ function CardEventoAdmin({
                 })}
               </span>
             )}
+            {/* Curso(s) restrito(s) do evento TCC (2026-11-24, pedido
+                explícito do usuário) — mesmo padrão visual das outras tags
+                (destaque/externos/taxa/encerrado), uma por curso marcado. */}
+            {tcc &&
+              (evento.cursoRestrito ?? []).map((curso) => (
+                <span
+                  key={curso}
+                  className="inline-flex items-center gap-1 rounded-full bg-fatec-navy-50 px-2.5 py-0.5 text-xs font-semibold text-fatec-navy-800"
+                >
+                  <GraduationCap className="h-3 w-3" strokeWidth={2} />
+                  {curso}
+                </span>
+              ))}
           </div>
           {periodoInscricao && <p className="text-sm text-fatec-muted">{periodoInscricao}</p>}
           {periodoEnvio && <p className="text-sm text-fatec-muted">{periodoEnvio}</p>}
@@ -462,10 +483,14 @@ function CardEventoAdmin({
               <FileStack className="h-3.5 w-3.5" strokeWidth={1.75} />
               {totalTrabalhos} trabalhos
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Tag className="h-3.5 w-3.5" strokeWidth={1.75} />
-              {(evento.areasTematicas ?? []).length} áreas
-            </span>
+            {/* Área temática é exclusiva de evento MAC (2026-11-24) — TCC
+                nunca tem área, o badge só mostraria "0 áreas" à toa. */}
+            {!tcc && (
+              <span className="inline-flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {(evento.areasTematicas ?? []).length} áreas
+              </span>
+            )}
           </>
         )}
         {(temTaxa || simples) && (
@@ -513,7 +538,11 @@ function CardEventoAdmin({
               label: evento.aceitaExternos ? "Não aceitar externos" : "Aceitar externos",
               onClick: onAlternarAceitaExternos,
             },
-            ...(!simples
+            // Área temática e "premiados por área" são exclusivos de evento
+            // MAC (2026-11-24, pedido explícito do usuário) — TCC nunca
+            // teve área temática pra premiar por área, só "!simples" deixava
+            // passar TCC aqui sem querer.
+            ...(!simples && !tcc
               ? [
                   { icone: Tag, cor: "navy" as const, label: "Áreas temáticas", href: "/areas-tematicas" },
                   {
@@ -777,6 +806,7 @@ export default function EventosPage() {
   // só permite preencher uma vez, e às vezes sai errado ou precisa mudar).
   const [modalConfigId, setModalConfigId] = useState<string | null>(null);
   const configSimples = eventos.find((e) => e.id === modalConfigId)?.tipo === "simples";
+  const configTcc = eventos.find((e) => e.id === modalConfigId)?.tipo === "tcc";
   const [nomeConfig, setNomeConfig] = useState("");
   const [descricaoConfig, setDescricaoConfig] = useState("");
   const [inicioInscricoesConfig, setInicioInscricoesConfig] = useState("");
@@ -784,6 +814,15 @@ export default function EventosPage() {
   const [inicioEnvioTrabalhoConfig, setInicioEnvioTrabalhoConfig] = useState("");
   const [fimEnvioTrabalhoConfig, setFimEnvioTrabalhoConfig] = useState("");
   const [prazoAvaliacaoConfig, setPrazoAvaliacaoConfig] = useState("");
+  const [cursoRestritoConfig, setCursoRestritoConfig] = useState<string[]>([]);
+  // Início/fim das apresentações (banca de TCC) editável aqui também
+  // (2026-11-24, pedido explícito do usuário — "não achei essa opção e é
+  // importante para na hora de gerar a grade não gere em dias que não
+  // existe"). Mesmo campo que "Configurar certificado" (dataRealizacaoCert/
+  // dataRealizacaoFimCert) já edita — ensalamento (diasDoIntervalo) usa
+  // exatamente esses dois pra montar a janela de dias da banca.
+  const [dataRealizacaoConfig, setDataRealizacaoConfig] = useState("");
+  const [dataRealizacaoFimConfig, setDataRealizacaoFimConfig] = useState("");
   const [modalidadesApresentacaoConfig, setModalidadesApresentacaoConfig] = useState<
     ("oral" | "roda_conversa")[]
   >([]);
@@ -1011,10 +1050,13 @@ export default function EventosPage() {
       setPrazoAvaliacaoConfig("");
     }
     setModalidadesApresentacaoConfig(evento.modalidadesApresentacao ?? []);
+    setCursoRestritoConfig(evento.cursoRestrito ?? []);
+    setDataRealizacaoConfig(evento.dataRealizacao ?? "");
+    setDataRealizacaoFimConfig(evento.dataRealizacaoFim ?? "");
   }
 
   async function salvarConfig() {
-    if (!modalConfigId || !nomeConfig.trim()) return;
+    if (!modalConfigId || !nomeConfig.trim() || (configTcc && cursoRestritoConfig.length === 0)) return;
     setSalvandoConfig(true);
     try {
       await updateDoc(doc(db, "eventos", modalConfigId), {
@@ -1047,8 +1089,24 @@ export default function EventosPage() {
         // Sempre grava a lista, mesmo vazia (2026-09-24) — campo ausente é
         // lido como "evento antigo, as duas modalidades" pelo
         // SubmeterTrabalhoModal, então apagar o campo fazia "nenhuma
-        // marcada" virar "as duas" pro aluno.
-        modalidadesApresentacao: modalidadesApresentacaoConfig,
+        // marcada" virar "as duas" pro aluno. TCC nunca usa esse campo
+        // (usa SubmeterTCCModal, sempre oral) — não grava nada pra ele,
+        // mesmo guard da criação (criarEvento, tipoForm !== "tcc").
+        ...(configTcc ? {} : { modalidadesApresentacao: modalidadesApresentacaoConfig }),
+        // Curso(s) restrito(s) editável depois da criação (2026-11-24,
+        // pedido explícito do usuário — só dava pra definir uma vez, na
+        // criação do evento, sem jeito de corrigir depois).
+        ...(configTcc ? { cursoRestrito: cursoRestritoConfig } : {}),
+        // Início/fim das apresentações (2026-11-24, pedido explícito do
+        // usuário) — é o que diasDoIntervalo (bancas.ts) usa pra saber em
+        // quais dias a banca pode cair; sem isso editável aqui, só dava
+        // pra corrigir via "Configurar certificado".
+        ...(configTcc
+          ? {
+              dataRealizacao: dataRealizacaoConfig || deleteField(),
+              dataRealizacaoFim: dataRealizacaoFimConfig || deleteField(),
+            }
+          : {}),
       });
       setModalConfigId(null);
     } finally {
@@ -2489,6 +2547,8 @@ export default function EventosPage() {
             novo pra esse evento.
           </span>
 
+          {!configTcc && (
+          <>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">
               Prazo final de avaliação
@@ -2505,7 +2565,80 @@ export default function EventosPage() {
             revisão ou rejeitar um trabalho. Depois, trava — mesmo tentando
             direto sem passar pela tela. Vazio = sem prazo.
           </span>
+          </>
+          )}
 
+          {/* TCC não usa "prazo de avaliação" (a avaliação É a banca,
+              agendada por dia) — no lugar, início/fim das apresentações,
+              que é a janela de dias que diasDoIntervalo (bancas.ts) usa
+              pra "Gerar banca automaticamente" nunca cair fora do evento
+              (2026-11-24, pedido explícito do usuário). */}
+          {configTcc && (
+          <div className="grid grid-cols-1 gap-3 border-t border-fatec-line pt-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Início das apresentações
+              </span>
+              <input
+                type="date"
+                value={dataRealizacaoConfig}
+                onChange={(e) => setDataRealizacaoConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-fatec-navy-900">
+                Fim das apresentações
+              </span>
+              <input
+                type="date"
+                value={dataRealizacaoFimConfig}
+                onChange={(e) => setDataRealizacaoFimConfig(e.target.value)}
+                className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
+              />
+            </label>
+            <span className="text-xs text-fatec-muted sm:col-span-2">
+              É a janela de dias da banca — orientador/avaliador/moderador marcam
+              disponibilidade dentro dela, e &quot;Gerar banca automaticamente&quot;
+              (em Ensalamento) nunca agenda fora desses dias.
+            </span>
+          </div>
+          )}
+
+          {/* Curso(s) restrito(s) editável depois da criação (2026-11-24,
+              pedido explícito do usuário) — mesma UI do wizard de criação. */}
+          {configTcc && (
+          <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">
+            <span className="text-sm font-medium text-fatec-navy-900">
+              Curso(s) restrito(s) <span className="text-fatec-orange-600">*</span>
+            </span>
+            <span className="text-xs text-fatec-muted">
+              Só alunos de um desses cursos conseguem se inscrever nesse
+              evento — os demais nem veem o card. Dá pra marcar mais de um.
+            </span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {CURSOS_FATEC.map((c) => (
+                <label key={c} className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={cursoRestritoConfig.includes(c)}
+                    onChange={(e) =>
+                      setCursoRestritoConfig((prev) =>
+                        e.target.checked ? [...prev, c] : prev.filter((curso) => curso !== c),
+                      )
+                    }
+                    className="h-4 w-4 rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500"
+                  />
+                  <span className="text-sm text-fatec-navy-900">{c}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          )}
+
+          {/* TCC não tem modalidade de apresentação nenhuma (toda banca é
+              oral) — mesmo guard do wizard de criação (tipoForm === "mac"). */}
+          {!configTcc && (
           <div className="flex flex-col gap-2 border-t border-fatec-line pt-4">
             <span className="text-sm font-medium text-fatec-navy-900">
               Modalidades de apresentação
@@ -2537,13 +2670,14 @@ export default function EventosPage() {
               ))}
             </div>
           </div>
+          )}
           </>
           )}
 
           <button
             type="button"
             onClick={salvarConfig}
-            disabled={salvandoConfig || !nomeConfig.trim()}
+            disabled={salvandoConfig || !nomeConfig.trim() || (configTcc && cursoRestritoConfig.length === 0)}
             className="w-fit rounded-xl bg-fatec-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-fatec-orange-500/25 transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted disabled:shadow-none"
           >
             {salvandoConfig ? "Salvando..." : "Salvar"}

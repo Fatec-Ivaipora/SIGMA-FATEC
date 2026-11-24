@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   collection,
+  deleteField,
   doc,
   onSnapshot,
   query,
@@ -114,6 +115,8 @@ export type TrabalhoParaBanca = {
 export type BancaGerada = {
   trabalhoId: string;
   data: string;
+  sala: number;
+  horario: number;
   avaliadores: { uid: string; nome: string }[];
 };
 
@@ -125,44 +128,94 @@ export type BancaGerada = {
 export type OverflowBanca = { trabalhoId: string; motivo: string };
 
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
- * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×PESSOA em vez de
- * SALA×HORÁRIO). Pra cada trabalho, acha o primeiro dia (na ordem de
- * `dias`) em que: (1) o orientador está disponível (ele SEMPRE entra na
- * banca do próprio orientando, pedido explícito do usuário, confirmado em
- * 100% dos certificados reais de 2025), (2) existem pelo menos 2 OUTRAS
- * pessoas disponíveis nesse mesmo dia, e (3) esse dia ainda não bateu
- * `maxBancasPorDia` (2026-11-17, pedido explícito do usuário — "temos que
- * pensar que não pode ter 30 bancas no mesmo dia porque geralmente os
- * professores estão aqui 4h por dia só"; sem esse teto nada impede 20
- * bancas caindo todas no mesmo dia, mesmo sem tempo físico pra isso).
- * `maxBancasPorDia` ausente = sem teto (comportamento de antes).
+ * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×HORÁRIO×SALA×
+ * PESSOA). Pra cada trabalho, acha o primeiro dia (na ordem de `dias`) em
+ * que: (1) o orientador está disponível (ele SEMPRE entra na banca do
+ * próprio orientando, pedido explícito do usuário, confirmado em 100% dos
+ * certificados reais de 2025), (2) existem pelo menos 2 OUTRAS pessoas
+ * disponíveis nesse mesmo dia, e (3) ainda sobra pelo menos 1 sala que não
+ * bateu `maxBancasPorDia` nesse dia.
  *
- * Sem capacidade/máximo POR PESSOA (2026-11-17, removido antes por pedido
- * explícito do usuário — ver comentário em DisponibilidadeBanca): qualquer
- * disponível pode entrar em quantas bancas precisar no mesmo dia, até o
- * teto do DIA valer. Pra não sobrecarregar sempre as mesmas 2 pessoas,
- * entre os candidatos escolhe os 2 que ainda entraram em MENOS bancas
- * nessa mesma geração (`usosPorUid`, contador que só existe durante essa
- * chamada — não é persistido, cada geração começa do zero). O que não
- * couber em dia nenhum volta em `overflow`, com o motivo específico (orientador
- * sem dia algum disponível, dias dele todos no limite, ou faltou avaliador
- * nos dias válidos) — pra virar aviso detalhado na tela em vez de só um
- * número, e nunca travar o resto da geração. */
+ * `maxBancasPorDia` é POR SALA, não total do dia (2026-11-24, pedido
+ * explícito do usuário — "o máximo de bancas por dia tem que ser o máximo
+ * de banca por sala no dia": reflete que cada sala roda bancas em
+ * sequência dentro da janela de tempo física da instituição, então o teto
+ * de "quantas bancas cabem" é por sala — com N salas, a capacidade do dia
+ * inteiro é `maxBancasPorDia × numeroSalas`, não `maxBancasPorDia` sozinho
+ * como antes). `maxBancasPorDia` ausente = sem teto (comportamento de
+ * antes), em qualquer número de salas.
+ *
+ * Conflito de horário real entre salas (2026-11-24, pedido explícito do
+ * usuário — "não pode acontecer de uma pessoa ser avaliadora na sala 1 às
+ * 19h e orientador às 19h na sala 2"): dentro de cada dia, as bancas
+ * também ocupam um "horário" (índice 0, 1, 2...) dentro de uma sala
+ * específica — nunca duas bancas na mesma sala no mesmo horário, e nunca
+ * alguém (orientador ou avaliador) repetido no mesmo horário em salas
+ * diferentes. Pra cada trabalho, tenta o horário 0, depois 1, 2... e,
+ * dentro de cada horário, tenta cada sala em ordem — a 1ª sala que (a)
+ * ainda não tem banca nesse horário, (b) ainda não bateu `maxBancasPorDia`
+ * nesse dia, e (c) tem os 3 participantes livres nesse horário, recebe a
+ * banca. A MESMA pessoa pode, sim, entrar em bancas diferentes no mesmo
+ * dia, só não no mesmo horário (em qualquer sala). `numeroSalas` ausente
+ * ou 1 = sempre 1 sala, equivalente ao comportamento de antes.
+ *
+ * Sem capacidade/máximo POR PESSOA no dia inteiro (2026-11-17, removido
+ * antes por pedido explícito do usuário — ver comentário em
+ * DisponibilidadeBanca): qualquer disponível pode entrar em quantas
+ * bancas precisar no mesmo dia (em horários diferentes), até o teto de
+ * SALA valer. Pra não sobrecarregar sempre as mesmas 2 pessoas, entre os
+ * candidatos escolhe os 2 que ainda entraram em MENOS bancas nessa mesma
+ * geração (`usosPorUid`, contador que só existe durante essa chamada —
+ * não é persistido, cada geração começa do zero). O que não couber em dia
+ * nenhum volta em `overflow`, com o motivo específico (orientador sem dia
+ * algum disponível, dias dele todos com todas as salas no limite, ou
+ * faltou avaliador nos dias válidos) — pra virar aviso detalhado na tela
+ * em vez de só um número, e nunca travar o resto da geração.
+ *
+ * Processa trabalhos do orientador com MENOS dias disponíveis primeiro
+ * (2026-11-24, pedido explícito do usuário, ver `trabalhosOrdenados` mais
+ * abaixo) — sem isso, quem tem muitos dias livres podia consumir a última
+ * vaga escassa de um dia que era a ÚNICA opção de outro orientador. */
 export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
   dias: string[];
   maxBancasPorDia?: number;
+  numeroSalas?: number;
 }): { bancasNovas: BancaGerada[]; overflow: OverflowBanca[] } {
+  const numeroSalas = Math.max(1, params.numeroSalas ?? 1);
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
   const nomePorUid = new Map(params.disponibilidades.map((d) => [d.uid, d.nome]));
   const usosPorUid = new Map<string, number>();
-  const bancasPorDia = new Map<string, number>();
+  // Chave "dia#sala" — quantas bancas essa sala já tem nesse dia (o teto
+  // de verdade, POR sala, não somado entre salas).
+  const bancasPorSalaDia = new Map<string, number>();
+  // Chave "dia#horario" — quem já está ocupado nesse horário (qualquer
+  // sala) e quais salas já estão em uso nele.
+  const ocupadosPorSlot = new Map<string, Set<string>>();
+  const salasUsadasPorSlot = new Map<string, Set<number>>();
 
   const bancasNovas: BancaGerada[] = [];
   const overflow: OverflowBanca[] = [];
 
-  for (const t of params.trabalhos) {
+  // Mais restrito primeiro (2026-11-24, pedido explícito do usuário — achou
+  // 3 trabalhos sem banca automática mesmo cabendo na mão: eram justamente
+  // os 3 orientadores com menos dias disponíveis dentro da janela, e o
+  // algoritmo processava na ordem que os trabalhos vêm do banco, deixando
+  // orientadores "fáceis de encaixar" consumirem a vaga que sobraria pros
+  // mais restritos). Ordena por quantos dias VÁLIDOS (dentro da janela do
+  // evento) o orientador tem disponível, crescente — quem tem só 1-2 dias
+  // possíveis é processado antes de quem tem a semana toda livre, então
+  // ganha a vaga escassa antes dela sumir. Sort é estável (Node/V8
+  // garantem isso), então empates mantêm a ordem original.
+  const diasValidos = new Set(params.dias);
+  const diasValidosPorOrientador = (uid: string) =>
+    Array.from(diasPorUid.get(uid) ?? []).filter((d) => diasValidos.has(d)).length;
+  const trabalhosOrdenados = [...params.trabalhos].sort(
+    (a, b) => diasValidosPorOrientador(a.orientadorUid) - diasValidosPorOrientador(b.orientadorUid),
+  );
+
+  for (const t of trabalhosOrdenados) {
     let achou = false;
     // Diagnóstico (2026-11-17) — só usado se `achou` continuar false no
     // final; cada flag reflete um motivo diferente, checado na ordem em
@@ -175,40 +228,81 @@ export function montarBancaAutomatica(params: {
       if (!diasPorUid.get(t.orientadorUid)?.has(dia)) continue;
       orientadorTemAlgumDiaDisponivel = true;
 
-      if (params.maxBancasPorDia && (bancasPorDia.get(dia) ?? 0) >= params.maxBancasPorDia) continue;
+      // Esse dia só vale a pena tentar se SOBRAR pelo menos 1 sala que
+      // ainda não bateu o teto (por sala, não somado) — senão nenhum
+      // horário vai resolver, pula pro próximo dia direto.
+      const salaComVagaNoDia = (sala: number) =>
+        !params.maxBancasPorDia || (bancasPorSalaDia.get(`${dia}#${sala}`) ?? 0) < params.maxBancasPorDia;
+      if (!Array.from({ length: numeroSalas }, (_, i) => i + 1).some(salaComVagaNoDia)) continue;
       orientadorSoAchouDiasNoLimite = false;
 
-      const candidatos = Array.from(diasPorUid.entries())
-        .filter(([uid, dias]) => uid !== t.orientadorUid && dias.has(dia))
-        .map(([uid]) => uid)
-        .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
-      if (candidatos.length < 2) {
+      // Checagem rápida de nível-dia (ignora horário/sala) — se nem no dia
+      // inteiro existem 2 outras pessoas disponíveis, nenhuma sala/horário
+      // vai resolver; evita rodar o loop de horário à toa (e evita loop
+      // sem fim se o dia nunca tiver gente suficiente).
+      const poolDoDia = Array.from(diasPorUid.entries()).filter(
+        ([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia),
+      ).length;
+      if (poolDoDia < 2) {
         faltouAvaliadorEmDiaValido = true;
         continue;
       }
 
-      const escolhidos = candidatos.slice(0, 2);
-      usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
-      for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
-      bancasPorDia.set(dia, (bancasPorDia.get(dia) ?? 0) + 1);
+      // Limite de segurança (2026-11-24) — nunca mais horários do que
+      // trabalhos existem, pra garantir que o loop sempre termina mesmo
+      // num caso adversarial não previsto.
+      const horarioMaximo = params.trabalhos.length;
+      let achouNesseDia = false;
+      for (let horario = 0; horario <= horarioMaximo && !achouNesseDia; horario++) {
+        const chaveSlot = `${dia}#${horario}`;
+        const ocupados = ocupadosPorSlot.get(chaveSlot) ?? new Set<string>();
+        if (ocupados.has(t.orientadorUid)) continue;
 
-      bancasNovas.push({
-        trabalhoId: t.id,
-        data: dia,
-        avaliadores: escolhidos.map((uid) => ({ uid, nome: nomePorUid.get(uid) ?? uid })),
-      });
-      achou = true;
-      break;
+        const candidatos = Array.from(diasPorUid.entries())
+          .filter(([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia) && !ocupados.has(uid))
+          .map(([uid]) => uid)
+          .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
+        if (candidatos.length < 2) continue;
+
+        const salasUsadas = salasUsadasPorSlot.get(chaveSlot) ?? new Set<number>();
+        for (let sala = 1; sala <= numeroSalas; sala++) {
+          if (salasUsadas.has(sala)) continue; // essa sala já tem banca nesse horário
+          if (!salaComVagaNoDia(sala)) continue; // essa sala já bateu o teto do dia
+
+          const escolhidos = candidatos.slice(0, 2);
+          usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
+          for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
+          bancasPorSalaDia.set(`${dia}#${sala}`, (bancasPorSalaDia.get(`${dia}#${sala}`) ?? 0) + 1);
+          salasUsadas.add(sala);
+          salasUsadasPorSlot.set(chaveSlot, salasUsadas);
+          const novoOcupados = new Set(ocupados);
+          novoOcupados.add(t.orientadorUid);
+          for (const uid of escolhidos) novoOcupados.add(uid);
+          ocupadosPorSlot.set(chaveSlot, novoOcupados);
+
+          bancasNovas.push({
+            trabalhoId: t.id,
+            data: dia,
+            sala,
+            horario,
+            avaliadores: escolhidos.map((uid) => ({ uid, nome: nomePorUid.get(uid) ?? uid })),
+          });
+          achou = true;
+          achouNesseDia = true;
+          break;
+        }
+      }
+      if (achouNesseDia) break;
     }
 
     if (!achou) {
       const motivo = !orientadorTemAlgumDiaDisponivel
         ? "O orientador não marcou nenhum dia disponível dentro da janela do evento."
         : orientadorSoAchouDiasNoLimite
-          ? "Todos os dias em que o orientador está disponível já bateram o máximo de bancas por dia configurado."
+          ? "Todas as salas já bateram o máximo de bancas por dia configurado, nos dias em que o orientador está disponível."
           : faltouAvaliadorEmDiaValido
             ? "Não há 2 avaliadores disponíveis nos dias em que o orientador pode participar."
-            : "Não foi possível encontrar uma combinação de dia e avaliadores.";
+            : "Não foi possível encontrar sala e horário sem conflito de pessoas nos dias disponíveis.";
       overflow.push({ trabalhoId: t.id, motivo });
     }
   }
@@ -224,16 +318,62 @@ const OPERACOES_POR_LOTE = 450;
  * bancaAvaliadores+status num update só). Diferente de
  * substituirGradeDoEvento (sessoes.ts): não existe "sessão" pra apagar
  * aqui, cada trabalho já carrega a própria banca direto nos seus campos —
- * só atualiza os trabalhos que entraram em bancasNovas. */
+ * só atualiza os trabalhos que entraram em bancasNovas. Limpa
+ * `motivoSemBanca` (2026-11-24) — se esse trabalho tinha ficado de fora
+ * numa geração anterior, o motivo antigo não faz mais sentido agora que
+ * ele conseguiu banca. */
 export async function substituirBancaDoEvento(bancas: BancaGerada[]) {
   for (let i = 0; i < bancas.length; i += OPERACOES_POR_LOTE) {
     const batch = writeBatch(db);
     for (const b of bancas.slice(i, i + OPERACOES_POR_LOTE)) {
       batch.update(doc(db, "trabalhos", b.trabalhoId), {
         bancaData: b.data,
+        bancaSala: b.sala,
+        bancaHorarioIndex: b.horario,
         bancaAvaliadores: b.avaliadores,
         bancaAvaliadoresUids: b.avaliadores.map((a) => a.uid),
         status: "tcc_banca_agendada",
+        motivoSemBanca: deleteField(),
+        atualizadoEm: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+}
+
+/** Grava o motivo de cada trabalho que NÃO coube em banca nenhuma
+ * (2026-11-24, pedido explícito do usuário — a mensagem "X sem banca"
+ * sumia ao atualizar a página, porque só existia em estado do React;
+ * agora fica gravado no próprio trabalho, sobrevive a reload). Chamado
+ * sempre junto de `substituirBancaDoEvento` na mesma geração — juntos,
+ * os dois cobrem 100% de `params.trabalhos` passados pra
+ * `montarBancaAutomatica` (todo trabalho com orientador sai de uma
+ * geração ou com banca ou com motivo, nunca os dois nem nenhum). */
+export async function salvarOverflowBanca(overflow: OverflowBanca[]) {
+  for (let i = 0; i < overflow.length; i += OPERACOES_POR_LOTE) {
+    const batch = writeBatch(db);
+    for (const o of overflow.slice(i, i + OPERACOES_POR_LOTE)) {
+      batch.update(doc(db, "trabalhos", o.trabalhoId), {
+        motivoSemBanca: o.motivo,
+        atualizadoEm: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+}
+
+/** Envio em lote da Avaliação pra Resultado (2026-11-24, pedido explícito
+ * do usuário — "não pode ter só o botão aprovar/reprovar direto, tem que
+ * ter um 'enviar para resultado' igual na MAC, selecionando em lote só
+ * quem já tem as 3 notas"). A tela (TrabalhosTCCView, trabalhos/page.tsx)
+ * só deixa selecionar quem já tem `notasBanca.length === 3` — essa função
+ * confia nisso e só grava o status, não revalida. */
+export async function enviarParaResultadoTCC(trabalhoIds: string[]) {
+  for (let i = 0; i < trabalhoIds.length; i += OPERACOES_POR_LOTE) {
+    const batch = writeBatch(db);
+    for (const id of trabalhoIds.slice(i, i + OPERACOES_POR_LOTE)) {
+      batch.update(doc(db, "trabalhos", id), {
+        status: "tcc_avaliado",
         atualizadoEm: serverTimestamp(),
       });
     }
@@ -244,7 +384,12 @@ export async function substituirBancaDoEvento(bancas: BancaGerada[]) {
 /** Ajuste manual pós-geração (2026-11-16, mesmo espírito de moverTrabalho em
  * sessoes.ts) — admin troca o dia e/ou os 2 avaliadores de UM trabalho sem
  * precisar gerar a banca inteira de novo. Não valida capacidade (é uma
- * escolha manual, deliberadamente por cima do algoritmo automático). */
+ * escolha manual, deliberadamente por cima do algoritmo automático). Limpa
+ * `bancaSala`/`bancaHorarioIndex` (2026-11-24) — o ajuste manual não passa
+ * pelo checker de conflito de horário entre salas, então esses campos
+ * ficariam mentindo sobre uma sala/horário que ninguém verificou; a banca
+ * continua marcada (por dia), só sai da grade "Horário × Sala" até alguém
+ * rodar a geração de novo ou arrumar isso na mão. */
 export function moverBanca(
   trabalhoId: string,
   data: string,
@@ -252,6 +397,8 @@ export function moverBanca(
 ) {
   return updateDoc(doc(db, "trabalhos", trabalhoId), {
     bancaData: data,
+    bancaSala: deleteField(),
+    bancaHorarioIndex: deleteField(),
     bancaAvaliadores: avaliadores,
     bancaAvaliadoresUids: avaliadores.map((a) => a.uid),
     status: "tcc_banca_agendada",

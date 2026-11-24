@@ -58,6 +58,7 @@ import {
   baixarCertificadoBancaTCC,
 } from "@/lib/baixarCertificado";
 import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
+import { enviarParaResultadoTCC } from "@/lib/data/bancas";
 import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
 type Etapa =
@@ -409,7 +410,11 @@ const ETAPAS_TCC: { key: EtapaTCC; label: string }[] = [
 const STATUS_POR_ETAPA_TCC: Record<EtapaTCC, TrabalhoStatus[]> = {
   inscricao: ["tcc_inscrito"],
   avaliacao: ["tcc_banca_agendada"],
-  resultado: ["tcc_aprovado", "tcc_reprovado"],
+  // "tcc_avaliado" entra aqui (2026-11-24, pedido explícito do usuário) —
+  // é o lote "já tem as 3 notas, mandado pra Resultado, falta decidir
+  // aprovar/reprovar" — fica junto dos já decididos pra decisão acontecer
+  // na mesma tela que mostra a nota final (StatusBadge diferencia os 3).
+  resultado: ["tcc_avaliado", "tcc_aprovado", "tcc_reprovado"],
 };
 
 /** Evento TCC (2026-11-16) — igual espírito de InscritosSimplesView acima
@@ -434,6 +439,24 @@ function TrabalhosTCCView({
   const [busca, setBusca] = useState("");
   const [baixandoId, setBaixandoId] = useState<string | null>(null);
   const [erroBaixar, setErroBaixar] = useState<string | null>(null);
+  // Envio em lote pra Resultado (2026-11-24, pedido explícito do usuário —
+  // "igual na MAC, seleciona os trabalhos e envia pra resultado só os que
+  // estão com as 3 notas; quem falta nota fica banca agendada, não pode
+  // ser enviado"). Só existe nessa etapa, zera ao trocar de etapa/evento
+  // (igual outros estados dessa tela).
+  const [selecionadosTCC, setSelecionadosTCC] = useState<Set<string>>(new Set());
+  const [enviandoResultado, setEnviandoResultado] = useState(false);
+
+  async function handleEnviarParaResultado() {
+    if (selecionadosTCC.size === 0) return;
+    setEnviandoResultado(true);
+    try {
+      await enviarParaResultadoTCC([...selecionadosTCC]);
+      setSelecionadosTCC(new Set());
+    } finally {
+      setEnviandoResultado(false);
+    }
+  }
 
   async function handleBaixarCertificado(trabalhoId: string) {
     if (!user) return;
@@ -474,7 +497,10 @@ function TrabalhosTCCView({
               <button
                 key={e.key}
                 type="button"
-                onClick={() => setEtapa(e.key)}
+                onClick={() => {
+                  setEtapa(e.key);
+                  setSelecionadosTCC(new Set());
+                }}
                 style={{
                   clipPath:
                     i === ETAPAS_TCC.length - 1
@@ -502,23 +528,60 @@ function TrabalhosTCCView({
         </div>
       </div>
 
-      <div className="mt-6 flex items-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 sm:w-72">
-        <Search className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={1.75} />
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por título, aluno ou orientador"
-          className="min-w-0 flex-1 bg-transparent text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none"
-        />
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 rounded-xl border border-fatec-line bg-white px-4 py-2.5 sm:w-72">
+          <Search className="h-4 w-4 flex-none text-fatec-muted" strokeWidth={1.75} />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por título, aluno ou orientador"
+            className="min-w-0 flex-1 bg-transparent text-sm text-fatec-ink placeholder:text-fatec-muted/70 outline-none"
+          />
+        </div>
+        {etapa === "avaliacao" && (
+          <button
+            type="button"
+            onClick={handleEnviarParaResultado}
+            disabled={selecionadosTCC.size === 0 || enviandoResultado}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-fatec-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+          >
+            {enviandoResultado ? "Enviando..." : "Enviar para resultado"}
+            {selecionadosTCC.size > 0 && ` (${selecionadosTCC.size})`}
+          </button>
+        )}
       </div>
 
       <div className="mt-6 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
-        {exibidos.map((t) => (
+        {exibidos.map((t) => {
+          const notasCompletas = (t.notasBanca?.length ?? 0) === 3;
+          return (
           <div
             key={t.id}
             className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-start gap-3">
+              {etapa === "avaliacao" && (
+                <input
+                  type="checkbox"
+                  checked={selecionadosTCC.has(t.id)}
+                  disabled={!notasCompletas}
+                  onChange={(e) =>
+                    setSelecionadosTCC((prev) => {
+                      const novo = new Set(prev);
+                      if (e.target.checked) novo.add(t.id);
+                      else novo.delete(t.id);
+                      return novo;
+                    })
+                  }
+                  title={
+                    notasCompletas
+                      ? "Selecionar pra enviar pra Resultado"
+                      : "Só pode enviar depois que as 3 notas forem lançadas"
+                  }
+                  className="mt-1 h-4 w-4 flex-none rounded border-fatec-line text-fatec-orange-500 focus:ring-fatec-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+                />
+              )}
+              <div className="min-w-0">
               <p className="truncate text-sm font-medium text-fatec-navy-900">
                 {tituloExibicao(t.titulo)}
               </p>
@@ -541,6 +604,7 @@ function TrabalhosTCCView({
                   )}
                 </p>
               )}
+              </div>
             </div>
             <div className="flex flex-none flex-wrap items-center gap-2">
               {etapa === "resultado" && t.notaFinalBanca != null && (
@@ -559,7 +623,7 @@ function TrabalhosTCCView({
                   {baixandoId === t.id ? "Gerando..." : "Certificado da banca"}
                 </button>
               )}
-              {etapa === "avaliacao" && (t.notasBanca?.length ?? 0) === 3 && (
+              {etapa === "resultado" && t.status === "tcc_avaliado" && (
                 <>
                   <button
                     type="button"
@@ -580,7 +644,8 @@ function TrabalhosTCCView({
               <StatusBadge status={t.status} />
             </div>
           </div>
-        ))}
+          );
+        })}
         {exibidos.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-fatec-muted">
             Ninguém nessa etapa ainda.
