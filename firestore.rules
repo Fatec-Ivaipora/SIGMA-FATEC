@@ -191,9 +191,17 @@ service cloud.firestore {
       // certificado (ver /api/certificados). Evento encerrado (2026-09-10)
       // bloqueia enviar trabalho novo, mesmo tentando direto sem passar
       // pela UI.
+      // TCC sempre precisa de orientador real já na criação (2026-11-25,
+      // pedido explícito do usuário — "o aluno não pode se inscrever sem
+      // colocar o orientador"): a UI (SubmeterTCCModal) já trava o botão de
+      // envio sem orientador escolhido, isso aqui é a mesma regra validada
+      // no servidor, não só escondida na tela (mesmo espírito da RN-17
+      // acima).
       allow create: if logado() && meuPapel() == "aluno" && request.resource.data.alunoUid == request.auth.uid &&
         !eventoEncerrado(request.resource.data.eventoId) &&
-        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId));
+        (meuVinculoFatec() || eventoAceitaExternos(request.resource.data.eventoId)) &&
+        (request.resource.data.status != "tcc_inscrito" ||
+          (request.resource.data.orientadorUid is string && request.resource.data.orientadorUid.size() > 0));
       allow update: if logado() && (
         souAdmin() ||
         (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
