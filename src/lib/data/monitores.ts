@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useEventosPublicos, type Evento } from "@/lib/data/eventos";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 /** monitoresEvento/{eventoId}::{uid} (2026-09-01) — aluno marcado pela
  * organização/admin como monitor de um evento (ajuda na operação, não avalia
@@ -121,7 +122,11 @@ export async function adicionarMonitor(
   await setDoc(doc(db, "monitoresEvento", `${eventoId}::${aluno.uid}`), {
     eventoId,
     uid: aluno.uid,
-    nome: aluno.nome,
+    // Nome copiado de uma conta já existente — mesmo assim passa por
+    // caixaAltaNome (2026-11-25, pedido explícito do usuário: "temos que
+    // ter essa regra fixa em toda a aplicação"), pra não depender de uma
+    // conta antiga ainda não corrigida.
+    nome: caixaAltaNome(aluno.nome),
     email: aluno.email,
     criadoEm: serverTimestamp(),
   });

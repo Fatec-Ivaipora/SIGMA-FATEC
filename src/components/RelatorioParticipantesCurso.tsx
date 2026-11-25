@@ -232,7 +232,7 @@ function DetalheCurso({ curso }: { curso: RelatorioCurso }) {
                         <span key={t.titulo} className="block text-fatec-ink">
                           {tituloExibicao(t.titulo)}{" "}
                           <span className="text-xs text-fatec-muted">
-                            ({t.papel === "Autor principal" ? "enviou" : "coautor"} ·{" "}
+                            ({t.papel === "Autor principal" ? "enviou" : "outro autor"} ·{" "}
                             {ROTULO_STATUS_TRABALHO[t.status] ?? t.status})
                           </span>
                         </span>

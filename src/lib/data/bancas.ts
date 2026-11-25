@@ -127,6 +127,27 @@ export type BancaGerada = {
 // reflete exatamente qual dos 3 motivos bloqueou esse trabalho.
 export type OverflowBanca = { trabalhoId: string; motivo: string };
 
+// Regra de prioridade pra UM trabalho específico na geração automática
+// (2026-11-25, pedido explícito do usuário — caso real de uma aluna grávida
+// que precisava apresentar numa segunda-feira específica). Sempre mira 1
+// trabalho só (nunca "todos os trabalhos de um orientador") — orientador ou
+// avaliador na restrição é quem TEM que estar na banca, não o alvo da
+// regra. `alunoNome`/`titulo` são só um retrato pra listar a regra na tela
+// sem precisar cruzar com `trabalhos` de novo. É preferência FORTE, não
+// trava a geração inteira: `montarBancaAutomatica` tenta só a restrição
+// pedida e, se não der (nem sacrificando mais nada), esse trabalho cai pro
+// "sem banca" com motivo específico — nunca força um choque de horário nem
+// desloca outro trabalho pra caber a regra. Salva em `evento.regrasPrioridadeBanca`
+// (fica disponível de uma geração pra outra, editável/removível).
+export type RegraPrioridadeBanca = {
+  id: string;
+  trabalhoId: string;
+  alunoNome: string;
+  titulo: string;
+  prioridade: "alta" | "media" | "baixa";
+  restricao: { tipo: "dia"; data: string } | { tipo: "avaliador"; uid: string; nome: string };
+};
+
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
  * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×HORÁRIO×SALA×
  * PESSOA). Pra cada trabalho, acha o primeiro dia (na ordem de `dias`) em
@@ -175,13 +196,31 @@ export type OverflowBanca = { trabalhoId: string; motivo: string };
  * Processa trabalhos do orientador com MENOS dias disponíveis primeiro
  * (2026-11-24, pedido explícito do usuário, ver `trabalhosOrdenados` mais
  * abaixo) — sem isso, quem tem muitos dias livres podia consumir a última
- * vaga escassa de um dia que era a ÚNICA opção de outro orientador. */
+ * vaga escassa de um dia que era a ÚNICA opção de outro orientador.
+ *
+ * Regras de prioridade (2026-11-25, pedido explícito do usuário, ver
+ * RegraPrioridadeBanca) — ANTES do desempate por "menos dias disponíveis",
+ * os trabalhos com regra `alta` são processados primeiro, depois `media`,
+ * depois `baixa`, depois o resto (sem regra); dentro de cada grupo mantém
+ * o mesmo desempate de sempre. Isso garante que quem tem prioridade
+ * reivindica a vaga escassa (ex.: a única sala livre numa segunda-feira)
+ * antes de outro trabalho sem regra preencher a capacidade do dia.
+ *
+ * Preferência FORTE, não regra dura (2026-11-25, pedido explícito do
+ * usuário — "preferência forte, com aviso se não der"): um trabalho com
+ * regra só tenta a restrição pedida (o dia específico, ou ter o avaliador
+ * específico na banca) — nunca cai pra uma busca sem restrição nenhuma.
+ * Se a restrição não couber (ex.: o avaliador prioritário não está
+ * disponível em dia nenhum em comum com o orientador), esse trabalho
+ * específico vai pro `overflow` com um motivo próprio, SEM afetar o
+ * agendamento de nenhum outro trabalho nem forçar choque de horário. */
 export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
   dias: string[];
   maxBancasPorDia?: number;
   numeroSalas?: number;
+  regras?: RegraPrioridadeBanca[];
 }): { bancasNovas: BancaGerada[]; overflow: OverflowBanca[] } {
   const numeroSalas = Math.max(1, params.numeroSalas ?? 1);
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
@@ -198,6 +237,24 @@ export function montarBancaAutomatica(params: {
   const bancasNovas: BancaGerada[] = [];
   const overflow: OverflowBanca[] = [];
 
+  const diasValidos = new Set(params.dias);
+  const diasValidosPorOrientador = (uid: string) =>
+    Array.from(diasPorUid.get(uid) ?? []).filter((d) => diasValidos.has(d)).length;
+
+  // 1 regra por trabalho (o mais recente vence, se por algum motivo vier
+  // mais de uma pro mesmo id — a tela já evita isso, ver ensalamento/page.tsx).
+  const regraPorTrabalho = new Map<string, RegraPrioridadeBanca>();
+  for (const r of params.regras ?? []) regraPorTrabalho.set(r.trabalhoId, r);
+  const PESO_PRIORIDADE: Record<RegraPrioridadeBanca["prioridade"], number> = {
+    alta: 0,
+    media: 1,
+    baixa: 2,
+  };
+  const pesoDoTrabalho = (id: string) => {
+    const regra = regraPorTrabalho.get(id);
+    return regra ? PESO_PRIORIDADE[regra.prioridade] : 3;
+  };
+
   // Mais restrito primeiro (2026-11-24, pedido explícito do usuário — achou
   // 3 trabalhos sem banca automática mesmo cabendo na mão: eram justamente
   // os 3 orientadores com menos dias disponíveis dentro da janela, e o
@@ -207,24 +264,36 @@ export function montarBancaAutomatica(params: {
   // evento) o orientador tem disponível, crescente — quem tem só 1-2 dias
   // possíveis é processado antes de quem tem a semana toda livre, então
   // ganha a vaga escassa antes dela sumir. Sort é estável (Node/V8
-  // garantem isso), então empates mantêm a ordem original.
-  const diasValidos = new Set(params.dias);
-  const diasValidosPorOrientador = (uid: string) =>
-    Array.from(diasPorUid.get(uid) ?? []).filter((d) => diasValidos.has(d)).length;
-  const trabalhosOrdenados = [...params.trabalhos].sort(
-    (a, b) => diasValidosPorOrientador(a.orientadorUid) - diasValidosPorOrientador(b.orientadorUid),
-  );
+  // garantem isso), então empates mantêm a ordem original. Prioridade de
+  // regra vem primeiro (2026-11-25), esse desempate só decide a ordem
+  // DENTRO do mesmo nível de prioridade.
+  const trabalhosOrdenados = [...params.trabalhos].sort((a, b) => {
+    const diffPrioridade = pesoDoTrabalho(a.id) - pesoDoTrabalho(b.id);
+    if (diffPrioridade !== 0) return diffPrioridade;
+    return diasValidosPorOrientador(a.orientadorUid) - diasValidosPorOrientador(b.orientadorUid);
+  });
 
-  for (const t of trabalhosOrdenados) {
-    let achou = false;
-    // Diagnóstico (2026-11-17) — só usado se `achou` continuar false no
-    // final; cada flag reflete um motivo diferente, checado na ordem em
-    // que o loop de dias realmente os encontra.
+  // Uma tentativa de encaixar UM trabalho, testando só os dias de
+  // `diasParaTentar` (lista restrita a 1 dia, pra regra de dia específico;
+  // ou `params.dias` inteiro, no caso normal/regra de avaliador) e, se
+  // `avaliadorObrigatorioUid` vier preenchido, só aceitando slot em que essa
+  // pessoa entre como um dos 2 avaliadores. Já grava o resultado nos mapas
+  // compartilhados e em `bancasNovas` se achar — por isso só pode ser
+  // chamada 1x por trabalho.
+  function tentarAgendar(
+    t: TrabalhoParaBanca,
+    diasParaTentar: string[],
+    avaliadorObrigatorioUid?: string,
+  ): { ok: true } | { ok: false; motivo: string } {
+    // Diagnóstico (2026-11-17) — só usado se não achar no final; cada flag
+    // reflete um motivo diferente, checado na ordem em que o loop de dias
+    // realmente os encontra.
     let orientadorTemAlgumDiaDisponivel = false;
     let orientadorSoAchouDiasNoLimite = true;
     let faltouAvaliadorEmDiaValido = false;
+    let avaliadorObrigatorioNuncaDisponivel = true;
 
-    for (const dia of params.dias) {
+    for (const dia of diasParaTentar) {
       if (!diasPorUid.get(t.orientadorUid)?.has(dia)) continue;
       orientadorTemAlgumDiaDisponivel = true;
 
@@ -242,26 +311,44 @@ export function montarBancaAutomatica(params: {
       // sem fim se o dia nunca tiver gente suficiente).
       const poolDoDia = Array.from(diasPorUid.entries()).filter(
         ([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia),
-      ).length;
-      if (poolDoDia < 2) {
+      );
+      if (avaliadorObrigatorioUid && poolDoDia.some(([uid]) => uid === avaliadorObrigatorioUid)) {
+        avaliadorObrigatorioNuncaDisponivel = false;
+      }
+      if (poolDoDia.length < 2) {
         faltouAvaliadorEmDiaValido = true;
         continue;
       }
+      // Esse dia não tem o avaliador exigido pela regra disponível — não
+      // adianta tentar horário/sala nenhum aqui, pula direto pro próximo dia.
+      if (avaliadorObrigatorioUid && !poolDoDia.some(([uid]) => uid === avaliadorObrigatorioUid)) continue;
 
       // Limite de segurança (2026-11-24) — nunca mais horários do que
       // trabalhos existem, pra garantir que o loop sempre termina mesmo
       // num caso adversarial não previsto.
       const horarioMaximo = params.trabalhos.length;
-      let achouNesseDia = false;
-      for (let horario = 0; horario <= horarioMaximo && !achouNesseDia; horario++) {
+      for (let horario = 0; horario <= horarioMaximo; horario++) {
         const chaveSlot = `${dia}#${horario}`;
         const ocupados = ocupadosPorSlot.get(chaveSlot) ?? new Set<string>();
         if (ocupados.has(t.orientadorUid)) continue;
+        if (avaliadorObrigatorioUid && ocupados.has(avaliadorObrigatorioUid)) continue;
 
-        const candidatos = Array.from(diasPorUid.entries())
+        const candidatosDisponiveis = Array.from(diasPorUid.entries())
           .filter(([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia) && !ocupados.has(uid))
           .map(([uid]) => uid)
           .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
+
+        // Avaliador exigido entra primeiro na lista de escolhidos, se
+        // estiver livre nesse horário — senão esse horário não serve
+        // (a regra não é satisfeita), tenta o próximo.
+        let candidatos = candidatosDisponiveis;
+        if (avaliadorObrigatorioUid) {
+          if (!candidatosDisponiveis.includes(avaliadorObrigatorioUid)) continue;
+          candidatos = [
+            avaliadorObrigatorioUid,
+            ...candidatosDisponiveis.filter((uid) => uid !== avaliadorObrigatorioUid),
+          ];
+        }
         if (candidatos.length < 2) continue;
 
         const salasUsadas = salasUsadasPorSlot.get(chaveSlot) ?? new Set<number>();
@@ -287,24 +374,56 @@ export function montarBancaAutomatica(params: {
             horario,
             avaliadores: escolhidos.map((uid) => ({ uid, nome: nomePorUid.get(uid) ?? uid })),
           });
-          achou = true;
-          achouNesseDia = true;
-          break;
+          return { ok: true };
         }
       }
-      if (achouNesseDia) break;
     }
 
-    if (!achou) {
-      const motivo = !orientadorTemAlgumDiaDisponivel
-        ? "O orientador não marcou nenhum dia disponível dentro da janela do evento."
-        : orientadorSoAchouDiasNoLimite
-          ? "Todas as salas já bateram o máximo de bancas por dia configurado, nos dias em que o orientador está disponível."
+    const motivo = !orientadorTemAlgumDiaDisponivel
+      ? "O orientador não marcou nenhum dia disponível dentro da janela do evento."
+      : orientadorSoAchouDiasNoLimite
+        ? "Todas as salas já bateram o máximo de bancas por dia configurado, nos dias em que o orientador está disponível."
+        : avaliadorObrigatorioUid && avaliadorObrigatorioNuncaDisponivel
+          ? "O avaliador priorizado pela regra não marcou nenhum dia disponível em comum com o orientador."
           : faltouAvaliadorEmDiaValido
             ? "Não há 2 avaliadores disponíveis nos dias em que o orientador pode participar."
             : "Não foi possível encontrar sala e horário sem conflito de pessoas nos dias disponíveis.";
-      overflow.push({ trabalhoId: t.id, motivo });
+    return { ok: false, motivo };
+  }
+
+  for (const t of trabalhosOrdenados) {
+    const regra = regraPorTrabalho.get(t.id);
+    let resultado: { ok: true } | { ok: false; motivo: string };
+
+    if (regra?.restricao.tipo === "dia") {
+      const diaRegra = regra.restricao.data;
+      if (!diasValidos.has(diaRegra)) {
+        resultado = {
+          ok: false,
+          motivo: `O dia priorizado pela regra de prioridade (${diaRegra}) está fora da janela de apresentações do evento.`,
+        };
+      } else {
+        resultado = tentarAgendar(t, [diaRegra]);
+        if (!resultado.ok) {
+          resultado = {
+            ok: false,
+            motivo: `Não coube no dia priorizado pela regra de prioridade (${diaRegra}): ${resultado.motivo}`,
+          };
+        }
+      }
+    } else if (regra?.restricao.tipo === "avaliador") {
+      resultado = tentarAgendar(t, params.dias, regra.restricao.uid);
+      if (!resultado.ok) {
+        resultado = {
+          ok: false,
+          motivo: `Não foi possível incluir o avaliador priorizado pela regra de prioridade (${regra.restricao.nome}) em nenhum dia/horário disponível.`,
+        };
+      }
+    } else {
+      resultado = tentarAgendar(t, params.dias);
     }
+
+    if (!resultado.ok) overflow.push({ trabalhoId: t.id, motivo: resultado.motivo });
   }
 
   return { bancasNovas, overflow };

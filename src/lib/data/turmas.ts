@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { caixaAltaNome } from "@/lib/textoNome";
 
 export type Turma = {
   id: string;
@@ -123,11 +124,16 @@ export function criarTurma(dados: {
 
 export function convidarAlunoTurma(turma: Turma, aluno: { uid: string; nome: string }) {
   if ((turma.alunosUids ?? []).includes(aluno.uid)) return Promise.resolve();
+  // Nome copiado de uma conta já existente — mesmo assim passa por
+  // caixaAltaNome (2026-11-25, pedido explícito do usuário: "temos que ter
+  // essa regra fixa em toda a aplicação"), pra não depender de uma conta
+  // antiga ainda não corrigida.
+  const nome = caixaAltaNome(aluno.nome);
   return updateDoc(doc(db, "turmas", turma.id), {
     alunosUids: [...(turma.alunosUids ?? []), aluno.uid],
-    alunosNomes: [...(turma.alunosNomes ?? []), aluno.nome],
+    alunosNomes: [...(turma.alunosNomes ?? []), nome],
     convitesPendentesUids: [...(turma.convitesPendentesUids ?? []), aluno.uid],
-    convitesPendentesNomes: [...(turma.convitesPendentesNomes ?? []), aluno.nome],
+    convitesPendentesNomes: [...(turma.convitesPendentesNomes ?? []), nome],
   });
 }
 

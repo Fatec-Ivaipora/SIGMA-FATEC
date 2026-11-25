@@ -64,7 +64,7 @@ export type AlunoCurso = {
   nome: string;
   email?: string;
   inscricao: string;
-  trabalhos: { titulo: string; papel: "Autor principal" | "Coautor"; status: string }[];
+  trabalhos: { titulo: string; papel: "Autor principal" | "Outro autor"; status: string }[];
 };
 export type RelatorioCurso = {
   curso: string;
@@ -109,7 +109,7 @@ export function montarRelatorioCursos(
   for (const g of grupos) {
     for (const m of g.membros) {
       const lista = trabalhosPorUid.get(m.uid) ?? [];
-      lista.push({ titulo: g.titulo, papel: m.principal ? "Autor principal" : "Coautor", status: g.status });
+      lista.push({ titulo: g.titulo, papel: m.principal ? "Autor principal" : "Outro autor", status: g.status });
       trabalhosPorUid.set(m.uid, lista);
     }
   }

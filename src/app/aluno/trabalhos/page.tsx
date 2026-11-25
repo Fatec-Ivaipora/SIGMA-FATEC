@@ -181,22 +181,39 @@ export default function AlunoTrabalhosPage() {
     setEditando(null);
   }
 
-  // Edição de TCC é bem mais simples que a de MAC acima (2026-11-24,
-  // achado real do usuário — editar um TCC abria o modal de MAC, com
-  // "Apresentação oral ou roda de conversa" aparecendo à toa): só
-  // título/orientador mudam, TCC não tem revisão/nota/coautor/convite
-  // nesse ponto do fluxo, então não precisa de nada da lógica acima.
+  // Edição de TCC é mais simples que a de MAC acima (2026-11-24, achado real
+  // do usuário — editar um TCC abria o modal de MAC, com "Apresentação oral
+  // ou roda de conversa" aparecendo à toa): TCC não tem revisão/nota nesse
+  // ponto do fluxo, só título/orientador/outro autor mudam. Convite de outro
+  // autor (2026-11-25, achado real — "tem tcc feito em dupla, tínhamos
+  // esquecido") reaproveita o mesmo merge de convitesPendentes do MAC.
   async function salvarEdicaoTCC(trabalho: Trabalho, dados: DadosSubmissaoTCC) {
     if (!podeEditarTrabalho(trabalho)) {
       setEditando(null);
       return;
     }
+    const uidsAntigos = new Set(trabalho.participantesUids ?? []);
+    const novosConvites = dados.participantesUids.filter((uid) => !uidsAntigos.has(uid));
+    const convitesPendentes = Array.from(
+      new Set([
+        ...(trabalho.convitesPendentes ?? []).filter((uid) =>
+          dados.participantesUids.includes(uid),
+        ),
+        ...novosConvites,
+      ]),
+    );
     await atualizarTrabalho(trabalho.id, {
       titulo: dados.titulo,
       orientadorUid: dados.orientadorUid,
       nomeOrientador: dados.orientadorNome,
+      participantesUids: dados.participantesUids,
+      participantesNomes: dados.participantesNomes,
+      convitesPendentes,
       atualizadoEm: serverTimestamp(),
     });
+    if (user) {
+      novosConvites.forEach((colegaUid) => notificarConviteColega(user, trabalho.id, colegaUid));
+    }
     setEditando(null);
   }
 
@@ -447,10 +464,14 @@ export default function AlunoTrabalhosPage() {
           somenteLeitura={!podeEditarTrabalho(editando)}
           eventoId={editando.eventoId}
           eventoNome={eventos.find((e) => e.id === editando.eventoId)?.nome ?? ""}
+          meuUid={user?.uid}
+          autorPrincipal={{ nome: editando.alunoNome, souEu: editando.alunoUid === user?.uid }}
           valoresIniciais={{
             titulo: editando.titulo,
             orientadorUid: editando.orientadorUid ?? "",
             orientadorNome: editando.nomeOrientador ?? "",
+            participantesUids: editando.participantesUids ?? [],
+            participantesNomes: editando.participantesNomes ?? [],
           }}
           onClose={() => setEditando(null)}
           onSubmit={(dados) => salvarEdicaoTCC(editando, dados)}

@@ -482,7 +482,11 @@ export function SubmeterTrabalhoModal({
         .filter(Boolean)
         .map(caixaAltaNome),
       participantesUids: participantes.map((p) => p.uid),
-      participantesNomes: participantes.map((p) => p.nome),
+      // Nome copiado de uma conta já existente, não digitado aqui — mesmo
+      // assim passa por caixaAltaNome (2026-11-25, pedido explícito do
+      // usuário: "temos que ter essa regra fixa em toda a aplicação"), pra
+      // não depender de uma conta antiga ainda não corrigida.
+      participantesNomes: participantes.map((p) => caixaAltaNome(p.nome)),
       });
     } finally {
       enviandoRef.current = false;

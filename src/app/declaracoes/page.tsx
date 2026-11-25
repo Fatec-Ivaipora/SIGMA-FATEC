@@ -25,7 +25,7 @@ import { useEventos } from "@/lib/data/eventos";
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useInscritosDoEvento, diasConfirmadosCount } from "@/lib/data/inscricoes";
 import { useMonitoresDoEvento } from "@/lib/data/monitores";
-import { baixarCertificado } from "@/lib/baixarCertificado";
+import { baixarCertificado, baixarRelatorioCargoEvento } from "@/lib/baixarCertificado";
 import {
   useDeclaracoesAgrupadas,
   criarCategoriaDeclaracao,
@@ -82,6 +82,16 @@ const ROTULO_TIPO_FILTRO: Record<TipoCandidato, string> = {
   orientador: "Orientadores",
 };
 
+// Relatório por cargo pra anexar ao MEC (2026-11-25) — só existe pra esses
+// 4 cargos, nunca pra "aluno" (ver ROTULO_TIPO_FILTRO acima).
+type CargoRelatorio = "avaliador" | "orientador" | "moderador" | "monitor";
+const CARGOS_COM_RELATORIO = new Set<TipoCandidato | "todos">([
+  "avaliador",
+  "orientador",
+  "moderador",
+  "monitor",
+]);
+
 function EmitirCertificado({
   perfil,
   user,
@@ -102,6 +112,12 @@ function EmitirCertificado({
   // usuário). Filtro por tipo específico, não só "aluno"/"outros"
   // (2026-10-09, pedido explícito do usuário).
   const [filtroTipo, setFiltroTipo] = useState<"todos" | TipoCandidato>("todos");
+  // Relatório de pessoas por cargo, pra anexar em prestação de contas ao
+  // MEC (2026-11-25, pedido explícito do usuário) — nome do evento em cima,
+  // cargo embaixo, sequência numerada só com o nome. Ver /api/relatorios/
+  // cargo-evento.
+  const [gerandoCargo, setGerandoCargo] = useState<string | null>(null);
+  const [erroCargo, setErroCargo] = useState<string | null>(null);
 
   const evento = eventos.find((e) => e.id === eventoId);
   const { monitores } = useMonitoresDoEvento(eventoId || undefined);
@@ -309,6 +325,15 @@ function EmitirCertificado({
     setBaixandoChave(null);
   }
 
+  async function gerarRelatorioCargo(cargo: CargoRelatorio) {
+    if (!eventoId || !user) return;
+    setErroCargo(null);
+    setGerandoCargo(cargo);
+    const resultado = await baixarRelatorioCargoEvento(user, { eventoId, cargo });
+    if (!resultado.ok) setErroCargo(resultado.erro);
+    setGerandoCargo(null);
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <p className="max-w-2xl text-sm text-fatec-muted">
@@ -363,28 +388,53 @@ function EmitirCertificado({
       </div>
 
       {eventoId && tiposPresentes.length > 1 && (
-        <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
-          {(
-            [
-              { label: "Todos", valor: "todos" as const },
-              ...tiposPresentes.map((tipo) => ({ label: ROTULO_TIPO_FILTRO[tipo], valor: tipo })),
-            ]
-          ).map((f) => (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-1 rounded-xl bg-fatec-navy-50 p-1">
+            {(
+              [
+                { label: "Todos", valor: "todos" as const },
+                ...tiposPresentes.map((tipo) => ({ label: ROTULO_TIPO_FILTRO[tipo], valor: tipo })),
+              ]
+            ).map((f) => (
+              <button
+                key={f.valor}
+                type="button"
+                onClick={() => setFiltroTipo(f.valor)}
+                className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                  filtroTipo === f.valor
+                    ? "bg-white text-fatec-navy-900 shadow-sm"
+                    : "text-fatec-muted hover:text-fatec-navy-900"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* Relatório por cargo, pra anexar ao MEC (2026-11-25, pedido
+              explícito do usuário — "se eu clicar em avaliadores aparece
+              gerar relatório de avaliadores... conforme eu escolho o cargo
+              ali em cima o botão muda"): reaproveita o mesmo filtro de tipo
+              já usado pra filtrar a busca, em vez de um seletor separado —
+              só aparece quando o filtro ativo é um dos 4 cargos com
+              relatório (não existe pra "Todos"/"Alunos"). */}
+          {CARGOS_COM_RELATORIO.has(filtroTipo as CargoRelatorio) && (
             <button
-              key={f.valor}
               type="button"
-              onClick={() => setFiltroTipo(f.valor)}
-              className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                filtroTipo === f.valor
-                  ? "bg-white text-fatec-navy-900 shadow-sm"
-                  : "text-fatec-muted hover:text-fatec-navy-900"
-              }`}
+              onClick={() => gerarRelatorioCargo(filtroTipo as CargoRelatorio)}
+              disabled={gerandoCargo !== null}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-fatec-line px-3.5 py-2 text-sm font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50 disabled:cursor-not-allowed disabled:text-fatec-muted"
             >
-              {f.label}
+              {gerandoCargo === filtroTipo ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <Download className="h-4 w-4" strokeWidth={1.75} />
+              )}
+              Gerar relatório de {ROTULO_TIPO_FILTRO[filtroTipo as CargoRelatorio].toLowerCase()}
             </button>
-          ))}
+          )}
         </div>
       )}
+      {erroCargo && <p className="text-xs font-medium text-rose-600">{erroCargo}</p>}
 
       {!eventoId && (
         <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">

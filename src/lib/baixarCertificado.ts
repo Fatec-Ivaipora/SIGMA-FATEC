@@ -225,6 +225,30 @@ export async function baixarGradeEnsalamentoPdf(
   return { ok: true };
 }
 
+/** Relatório de pessoas por cargo (avaliador/orientador/moderador/monitor),
+ * pra anexar em prestação de contas ao MEC (2026-11-25, pedido explícito do
+ * usuário) — ver GET /api/relatorios/cargo-evento. Mesmo padrão de download
+ * das funções acima. */
+export async function baixarRelatorioCargoEvento(
+  user: User,
+  params: { eventoId: string; cargo: "avaliador" | "orientador" | "moderador" | "monitor" },
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const idToken = await user.getIdToken();
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`/api/relatorios/cargo-evento?${query}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => null);
+    return { ok: false, erro: corpo?.erro ?? "Não foi possível gerar o relatório." };
+  }
+  const blob = await res.blob();
+  const nomeArquivo =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "relatorio-cargo.pdf";
+  dispararDownload(blob, nomeArquivo);
+  return { ok: true };
+}
+
 /** PDF da banca de TCC, agrupado por sala (2026-11-24, pedido explícito do
  * usuário) — ver GET /api/ensalamento/pdf-banca. Mesmo padrão de download
  * das funções acima. */

@@ -117,9 +117,16 @@ export async function GET(request: Request) {
           .sort((a, b) => (a.bancaHorarioIndex as number) - (b.bancaHorarioIndex as number))
           .map((t) => {
             const avaliadores = (t.bancaAvaliadores as { nome: string }[] | undefined) ?? [];
+            // TCC em dupla (2026-11-25, achado real — "só vejo o nome da
+            // Karla... tem que ter o nome de ambas") — junta o autor
+            // principal com os outros autores já confirmados.
+            const nomesAutores = [
+              t.alunoNome as string | undefined,
+              ...((t.participantesNomes as string[] | undefined) ?? []),
+            ].filter(Boolean);
             return {
               horario: formatarHorario(t.bancaHorarioIndex as number),
-              alunoNome: (t.alunoNome as string) ?? "—",
+              alunoNome: nomesAutores.join(", ") || "—",
               titulo: tituloExibicao((t.titulo as string) ?? ""),
               nomeOrientador: (t.nomeOrientador as string) ?? "",
               avaliador1: avaliadores[0]?.nome ?? "",

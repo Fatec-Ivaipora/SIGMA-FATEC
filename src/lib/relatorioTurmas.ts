@@ -32,7 +32,7 @@ export type AlunoTurma = {
   nome: string;
   situacao: SituacaoNoEvento;
   inscricao?: string;
-  trabalhos: { titulo: string; papel: "Autor principal" | "Coautor"; status: string }[];
+  trabalhos: { titulo: string; papel: "Autor principal" | "Outro autor"; status: string }[];
 };
 export type TurmaRelatorio = {
   turma: number;

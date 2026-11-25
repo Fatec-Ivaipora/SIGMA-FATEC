@@ -25,6 +25,7 @@ import { baixarCertificado } from "@/lib/baixarCertificado";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SubmeterTrabalhoModal, type DadosSubmissao } from "@/components/SubmeterTrabalhoModal";
+import { SubmeterTCCModal, type DadosSubmissaoTCC } from "@/components/SubmeterTCCModal";
 import { BotaoOutroTrabalho } from "@/components/BotaoOutroTrabalho";
 import { InscricaoEventoModal } from "@/components/InscricaoEventoModal";
 import { ConfirmarPresencaModal } from "@/components/ConfirmarPresencaModal";
@@ -228,6 +229,33 @@ export default function AlunoPainelPage() {
       alunoNome: perfil.nome,
       status: "submissao",
       convitesPendentes: dados.participantesUids,
+      enviadoEm: serverTimestamp(),
+      atualizadoEm: serverTimestamp(),
+    });
+    notificarStatusTrabalho(user, ref.id, "submetido");
+    dados.participantesUids.forEach((colegaUid) => notificarConviteColega(user, ref.id, colegaUid));
+    setModalEventoId(null);
+  }
+
+  // Inscrição de TCC direto da tela inicial (2026-11-25, correção de bug
+  // real — essa tela nunca tinha ganhado o branch de TCC quando a feature
+  // foi feita em 2026-11-16, só /aluno/eventos; um aluno que clicasse
+  // "Enviar trabalho" aqui pra um evento TCC caía no modal de MAC, com
+  // "Apresentação oral ou roda de conversa" aparecendo à toa). Mesma
+  // lógica de enviarTCC em src/app/aluno/eventos/page.tsx.
+  async function enviarTCC(dados: DadosSubmissaoTCC) {
+    if (!modalEventoId || !user || !perfil) return;
+    const ref = await addDoc(collection(db, "trabalhos"), {
+      titulo: dados.titulo,
+      orientadorUid: dados.orientadorUid,
+      nomeOrientador: dados.orientadorNome,
+      participantesUids: dados.participantesUids,
+      participantesNomes: dados.participantesNomes,
+      convitesPendentes: dados.participantesUids,
+      eventoId: modalEventoId,
+      alunoUid: user.uid,
+      alunoNome: perfil.nome,
+      status: "tcc_inscrito",
       enviadoEm: serverTimestamp(),
       atualizadoEm: serverTimestamp(),
     });
@@ -479,30 +507,57 @@ export default function AlunoPainelPage() {
                                 : "Baixar certificado"}
                             </button>
                           )}
-                        {trabalho && evento.tipo !== "simples" && dentroDoPrazoEnvio(evento) && (
-                          <BotaoOutroTrabalho
-                            onClick={() => setModalEventoId(evento.id)}
-                            className="px-2.5 py-1"
-                          />
-                        )}
-                        {!trabalho &&
-                          evento.tipo !== "simples" &&
-                          (dentroDoPrazoEnvio(evento) ? (
+                        {evento.tipo === "tcc" ? (
+                          // TCC não tem "submissão"/"enviar outro trabalho" —
+                          // é a própria inscrição do TCC (2026-11-25, correção
+                          // de bug real, mesma nomenclatura já usada em
+                          // /aluno/eventos: "Inscrever TCC"/"TCC inscrito").
+                          trabalho ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+                              TCC inscrito
+                            </span>
+                          ) : dentroDoPrazoEnvio(evento) ? (
                             <button
                               type="button"
                               onClick={() => setModalEventoId(evento.id)}
                               className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
                             >
-                              Enviar trabalho
+                              Inscrever TCC
                             </button>
                           ) : (
-                            // Prazo de submissão encerrado (2026-09-09,
-                            // pedido do coordenador) — não dá mais pra
-                            // enviar um trabalho novo pra esse evento.
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-muted">
-                              Submissão encerrada
+                              Inscrição de TCC encerrada
                             </span>
-                          ))}
+                          )
+                        ) : (
+                          <>
+                            {trabalho && evento.tipo !== "simples" && dentroDoPrazoEnvio(evento) && (
+                              <BotaoOutroTrabalho
+                                onClick={() => setModalEventoId(evento.id)}
+                                className="px-2.5 py-1"
+                              />
+                            )}
+                            {!trabalho &&
+                              evento.tipo !== "simples" &&
+                              (dentroDoPrazoEnvio(evento) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setModalEventoId(evento.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-fatec-orange-600"
+                                >
+                                  Enviar trabalho
+                                </button>
+                              ) : (
+                                // Prazo de submissão encerrado (2026-09-09,
+                                // pedido do coordenador) — não dá mais pra
+                                // enviar um trabalho novo pra esse evento.
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-muted">
+                                  Submissão encerrada
+                                </span>
+                              ))}
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -557,20 +612,32 @@ export default function AlunoPainelPage() {
         </div>
       </div>
 
-      {eventoModal && (
-        <SubmeterTrabalhoModal
+      {eventoModal && eventoModal.tipo === "tcc" ? (
+        <SubmeterTCCModal
           open={!!eventoModal}
           eventoId={eventoModal.id}
-          temTaxa={!!eventoModal.valorInscricao}
           eventoNome={eventoModal.nome}
-          areasDisponiveis={eventoModal.areasTematicas ?? []}
-          areasComplexas={eventoModal.areasTematicasComplexas ?? []}
-          resumoAcademico
           meuUid={user?.uid}
           autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           onClose={() => setModalEventoId(null)}
-          onSubmit={enviarTrabalho}
+          onSubmit={enviarTCC}
         />
+      ) : (
+        eventoModal && (
+          <SubmeterTrabalhoModal
+            open={!!eventoModal}
+            eventoId={eventoModal.id}
+            temTaxa={!!eventoModal.valorInscricao}
+            eventoNome={eventoModal.nome}
+            areasDisponiveis={eventoModal.areasTematicas ?? []}
+            areasComplexas={eventoModal.areasTematicasComplexas ?? []}
+            resumoAcademico
+            meuUid={user?.uid}
+            autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
+            onClose={() => setModalEventoId(null)}
+            onSubmit={enviarTrabalho}
+          />
+        )
       )}
 
       {eventoInscricao && (

@@ -235,7 +235,7 @@ function TurmasDoCurso({ curso }: { curso: CursoTurmas }) {
                             <span key={tr.titulo} className="block text-fatec-ink">
                               {tituloExibicao(tr.titulo)}{" "}
                               <span className="text-xs text-fatec-muted">
-                                ({tr.papel === "Autor principal" ? "enviou" : "coautor"} ·{" "}
+                                ({tr.papel === "Autor principal" ? "enviou" : "outro autor"} ·{" "}
                                 {ROTULO_STATUS_TRABALHO[tr.status] ?? tr.status})
                               </span>
                             </span>

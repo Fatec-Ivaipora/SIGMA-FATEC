@@ -109,7 +109,7 @@ export async function GET(request: Request) {
       ];
       for (const [u, principal] of membros) {
         const lista = trabalhosPorUid.get(u) ?? [];
-        lista.push({ titulo: t.titulo as string, papel: principal ? "Autor principal" : "Coautor", status: t.status as string });
+        lista.push({ titulo: t.titulo as string, papel: principal ? "Autor principal" : "Outro autor", status: t.status as string });
         trabalhosPorUid.set(u, lista);
       }
     }

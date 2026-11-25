@@ -170,6 +170,13 @@ function RelatoriosContent() {
   // usuário) — a aba "Avaliação dos trabalhos" é só nota/ranking por área,
   // não faz sentido pra TCC (que nem tem área temática nenhuma).
   const ehTcc = eventoSelecionado?.tipo === "tcc";
+  // Generalizado por valor, não por tipo (2026-11-25, pedido explícito do
+  // usuário — "evento de tcc geralmente não é pago, mas podemos deixar
+  // generalizado: se o evento não for pago, some Pagantes/Receita") — vale
+  // pra qualquer tipo de evento sem taxa, não só TCC. Na visão agregada
+  // ("todos os eventos") mantém os cards, já que a mistura pode ter evento
+  // pago junto.
+  const temTaxa = !eventoSelecionado || !!eventoSelecionado.valorInscricao;
 
   const presencaConfirmadaCount = useMemo(
     () => inscricoesDoEvento.filter((i) => diasConfirmadosCount(i) > 0).length,
@@ -461,8 +468,13 @@ function RelatoriosContent() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          {/* KPI row */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* KPI row — Pagantes/Receita somem quando o evento não tem taxa
+              (2026-11-25, pedido explícito do usuário, generalizado por
+              valor — não por tipo: "se o evento não for pago, o card de
+              pagantes e receita arrecadada somem"). */}
+          <div
+            className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${temTaxa ? "lg:grid-cols-4" : ""}`}
+          >
             <div className="rounded-2xl border border-fatec-line bg-white p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-sky-100 text-fatec-sky-600">
                 <Users className="h-5 w-5" strokeWidth={1.75} />
@@ -484,53 +496,59 @@ function RelatoriosContent() {
                 {ehSimples ? presencaConfirmadaCount : totalSubmissoes}
               </p>
               <p className="text-sm text-fatec-muted">
-                {ehSimples ? "Presença confirmada" : "Submissões"}
+                {/* TCC não tem "submissão" — é a própria inscrição do TCC
+                    (2026-11-25, pedido explícito do usuário). */}
+                {ehSimples ? "Presença confirmada" : ehTcc ? "TCCs inscritos" : "Submissões"}
                 {totalInscricoes > 0 &&
                   ` · ${Math.round(((ehSimples ? presencaConfirmadaCount : totalSubmissoes) / totalInscricoes) * 100)}% dos inscritos`}
               </p>
             </div>
-            <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                <Wallet className="h-5 w-5" strokeWidth={1.75} />
-              </span>
-              <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
-                {pagantes.length}
-              </p>
-              <p className="text-sm text-fatec-muted">
-                Pagantes
-                {totalInscricoes > 0 &&
-                  ` · ${Math.round((pagantes.length / totalInscricoes) * 100)}% dos inscritos`}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
-              <div className="flex items-center justify-between">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
-                  <DollarSign className="h-5 w-5" strokeWidth={1.75} />
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setReceitaOculta((v) => !v)}
-                  aria-label={receitaOculta ? "Mostrar receita arrecadada" : "Esconder receita arrecadada"}
-                  title={receitaOculta ? "Mostrar valor" : "Esconder valor"}
-                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full border border-fatec-orange-200 bg-white text-fatec-orange-600 transition-colors hover:bg-fatec-orange-100"
-                >
-                  {receitaOculta ? (
-                    <EyeOff className="h-4 w-4" strokeWidth={2} />
-                  ) : (
-                    <Eye className="h-4 w-4" strokeWidth={2} />
-                  )}
-                </button>
-              </div>
-              <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
-                {receitaOculta
-                  ? "R$ ••••••"
-                  : receitaArrecadada.toLocaleString("pt-BR", {
-                      style: "currency",
-                      currency: "BRL",
-                    })}
-              </p>
-              <p className="text-sm text-fatec-muted">Receita arrecadada</p>
-            </div>
+            {temTaxa && (
+              <>
+                <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                    <Wallet className="h-5 w-5" strokeWidth={1.75} />
+                  </span>
+                  <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
+                    {pagantes.length}
+                  </p>
+                  <p className="text-sm text-fatec-muted">
+                    Pagantes
+                    {totalInscricoes > 0 &&
+                      ` · ${Math.round((pagantes.length / totalInscricoes) * 100)}% dos inscritos`}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-fatec-orange-400/40 bg-fatec-orange-50 p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fatec-orange-100 text-fatec-orange-600">
+                      <DollarSign className="h-5 w-5" strokeWidth={1.75} />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setReceitaOculta((v) => !v)}
+                      aria-label={receitaOculta ? "Mostrar receita arrecadada" : "Esconder receita arrecadada"}
+                      title={receitaOculta ? "Mostrar valor" : "Esconder valor"}
+                      className="flex h-8 w-8 flex-none items-center justify-center rounded-full border border-fatec-orange-200 bg-white text-fatec-orange-600 transition-colors hover:bg-fatec-orange-100"
+                    >
+                      {receitaOculta ? (
+                        <EyeOff className="h-4 w-4" strokeWidth={2} />
+                      ) : (
+                        <Eye className="h-4 w-4" strokeWidth={2} />
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-4 text-2xl font-bold tabular-nums text-fatec-navy-900">
+                    {receitaOculta
+                      ? "R$ ••••••"
+                      : receitaArrecadada.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                  </p>
+                  <p className="text-sm text-fatec-muted">Receita arrecadada</p>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Abas do evento completo (2026-10-07, pedido explícito do
@@ -553,7 +571,10 @@ function RelatoriosContent() {
                 { key: "etiquetas", label: "Etiquetas das pastas" },
               ] as { key: "perfil" | "avaliacao" | "cursos" | "etiquetas"; label: string }[]
             )
-              .filter((aba) => !(ehTcc && aba.key === "avaliacao"))
+              // "Avaliação" (nota/ranking por área) e "Etiquetas das pastas"
+              // (impressão de pastas físicas da MAC) não existem pra TCC
+              // (2026-11-24/25, pedido explícito do usuário).
+              .filter((aba) => !(ehTcc && (aba.key === "avaliacao" || aba.key === "etiquetas")))
               .map((aba) => (
               <button
                 key={aba.key}
@@ -592,7 +613,7 @@ function RelatoriosContent() {
             </div>
           )}
 
-          {!ehSimples && abaRelatorioCompleto === "etiquetas" && (
+          {!ehSimples && !ehTcc && abaRelatorioCompleto === "etiquetas" && (
             <div className="mt-6">
               {eventoSelecionado ? (
                 <EtiquetasPastas
@@ -668,6 +689,9 @@ function RelatoriosContent() {
               </div>
             </div>
 
+            {/* TCC não tem modalidade de apresentação nenhuma (2026-11-25,
+                pedido explícito do usuário) — card some inteiro. */}
+            {!ehTcc && (
             <div className="rounded-2xl border border-fatec-line bg-white p-6">
               <h2 className="text-base font-semibold text-fatec-navy-900">
                 Modalidade de apresentação
@@ -702,6 +726,7 @@ function RelatoriosContent() {
                 )}
               </div>
             </div>
+            )}
           </div>
           )}
 

@@ -48,6 +48,7 @@ import {
   salvarOverflowBanca,
   moverBanca,
   useDisponibilidadeDoEvento,
+  type RegraPrioridadeBanca,
 } from "@/lib/data/bancas";
 import {
   useSessoesDoEvento,
@@ -798,6 +799,7 @@ function EnsalamentoBancaView({
         dias,
         maxBancasPorDia,
         numeroSalas: evento.numeroSalasBanca,
+        regras: evento.regrasPrioridadeBanca,
       });
       await Promise.all([substituirBancaDoEvento(bancasNovas), salvarOverflowBanca(overflow)]);
     } finally {
@@ -865,12 +867,100 @@ function EnsalamentoBancaView({
     setEditandoId(null);
   }
 
+  // Regras de prioridade (2026-11-25, pedido explícito do usuário — caso
+  // real de uma aluna grávida que precisava apresentar numa segunda-feira
+  // específica). Ficam salvas no próprio evento (ver RegraPrioridadeBanca
+  // em src/lib/data/bancas.ts), então reaparecem da próxima vez que alguém
+  // abrir o modal "Gerar banca automaticamente" — uma regra por trabalho
+  // (criar uma nova pro mesmo trabalho substitui a anterior).
+  const regras = evento.regrasPrioridadeBanca ?? [];
+  const [mostrarFormRegra, setMostrarFormRegra] = useState(false);
+  const [buscaTrabalhoRegra, setBuscaTrabalhoRegra] = useState("");
+  const [trabalhoRegraId, setTrabalhoRegraId] = useState("");
+  const [prioridadeRegra, setPrioridadeRegra] = useState<RegraPrioridadeBanca["prioridade"]>("alta");
+  const [tipoRestricaoRegra, setTipoRestricaoRegra] = useState<"dia" | "avaliador">("dia");
+  const [diaRestricaoRegra, setDiaRestricaoRegra] = useState("");
+  const [avaliadorRestricaoRegra, setAvaliadorRestricaoRegra] = useState("");
+  const [salvandoRegra, setSalvandoRegra] = useState(false);
+
+  const trabalhoSelecionadoRegra = trabalhos.find((t) => t.id === trabalhoRegraId);
+  const resultadosBuscaRegra = useMemo(() => {
+    const termo = buscaTrabalhoRegra.trim().toLocaleLowerCase("pt-BR");
+    if (!termo || trabalhoSelecionadoRegra) return [];
+    return trabalhos
+      .filter(
+        (t) =>
+          t.alunoNome?.toLocaleLowerCase("pt-BR").includes(termo) ||
+          t.titulo?.toLocaleLowerCase("pt-BR").includes(termo),
+      )
+      .slice(0, 8);
+  }, [trabalhos, buscaTrabalhoRegra, trabalhoSelecionadoRegra]);
+
+  function rotuloDiaRegra(dataIso: string) {
+    return new Date(`${dataIso}T00:00:00`).toLocaleDateString("pt-BR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+    });
+  }
+
+  function abrirFormRegra() {
+    setMostrarFormRegra(true);
+    setBuscaTrabalhoRegra("");
+    setTrabalhoRegraId("");
+    setPrioridadeRegra("alta");
+    setTipoRestricaoRegra("dia");
+    setDiaRestricaoRegra(dias[0] ?? "");
+    setAvaliadorRestricaoRegra("");
+  }
+
+  async function salvarRegra() {
+    const t = trabalhoSelecionadoRegra;
+    if (!t) return;
+    if (tipoRestricaoRegra === "dia" && !diaRestricaoRegra) return;
+    if (tipoRestricaoRegra === "avaliador" && !avaliadorRestricaoRegra) return;
+    const nomeAvaliador = disponibilidades.find((d) => d.uid === avaliadorRestricaoRegra)?.nome ?? "";
+    const novaRegra: RegraPrioridadeBanca = {
+      id: `${Date.now()}`,
+      trabalhoId: t.id,
+      alunoNome: t.alunoNome,
+      titulo: t.titulo,
+      prioridade: prioridadeRegra,
+      restricao:
+        tipoRestricaoRegra === "dia"
+          ? { tipo: "dia", data: diaRestricaoRegra }
+          : { tipo: "avaliador", uid: avaliadorRestricaoRegra, nome: nomeAvaliador },
+    };
+    setSalvandoRegra(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        regrasPrioridadeBanca: [...regras.filter((r) => r.trabalhoId !== t.id), novaRegra],
+      });
+      setMostrarFormRegra(false);
+    } finally {
+      setSalvandoRegra(false);
+    }
+  }
+
+  async function removerRegra(id: string) {
+    await updateDoc(doc(db, "eventos", evento.id), {
+      regrasPrioridadeBanca: regras.filter((r) => r.id !== id),
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl border border-fatec-line bg-white p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-semibold text-fatec-navy-900">Banca de defesa</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-fatec-navy-900">Banca de defesa</h2>
+              {/* Contagem de trabalhos (2026-11-25, pedido explícito do
+                  usuário — "pra não precisar ficar contando"). */}
+              <span className="inline-flex items-center rounded-full bg-fatec-navy-100 px-2.5 py-0.5 text-xs font-semibold text-fatec-navy-900">
+                {trabalhos.length} trabalho{trabalhos.length === 1 ? "" : "s"}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-fatec-muted">
               {disponibilidades.length} avaliador(es)/orientador(es) já
               marcaram disponibilidade · {dias.length} dia(s) na janela do
@@ -925,7 +1015,9 @@ function EnsalamentoBancaView({
                   key={trabalho.id}
                   className="rounded-xl border border-amber-200 bg-amber-50 p-3"
                 >
-                  <p className="font-semibold text-fatec-navy-900">{trabalho.alunoNome}</p>
+                  <p className="font-semibold text-fatec-navy-900">
+                    {[trabalho.alunoNome, ...(trabalho.participantesNomes ?? [])].filter(Boolean).join(", ")}
+                  </p>
                   {trabalho.titulo && (
                     <p className="text-xs text-fatec-muted">{tituloExibicao(trabalho.titulo)}</p>
                   )}
@@ -1036,7 +1128,12 @@ function EnsalamentoBancaView({
         {trabalhos.map((t) => (
           <div key={t.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-fatec-navy-900">{t.alunoNome}</p>
+              <p className="truncate text-sm font-medium text-fatec-navy-900">
+                {/* TCC em dupla (2026-11-25, achado real — "só vejo o nome
+                    da Karla... tem que ter o nome de ambas") — junta o
+                    autor principal com os outros autores já confirmados. */}
+                {[t.alunoNome, ...(t.participantesNomes ?? [])].filter(Boolean).join(", ")}
+              </p>
               <p className="truncate text-xs text-fatec-muted">
                 Orientador(a): {t.nomeOrientador ?? "—"}
               </p>
@@ -1182,6 +1279,209 @@ function EnsalamentoBancaView({
             os ajustes manuais feitos até agora serão perdidos pros
             trabalhos recalculados.
           </p>
+
+          {/* Regras de prioridade (2026-11-25, pedido explícito do usuário —
+              caso real de uma aluna grávida que precisava apresentar numa
+              segunda-feira específica). Preferência forte: a geração tenta
+              só a restrição pedida pra esse trabalho e, se não der, ele cai
+              pro "sem banca" com motivo específico, em vez de ignorar a
+              regra ou atropelar outro trabalho. */}
+          <div className="flex flex-col gap-3 rounded-xl border border-fatec-line bg-fatec-navy-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-fatec-navy-900">Regras de prioridade</p>
+              {!mostrarFormRegra && (
+                <button
+                  type="button"
+                  onClick={abrirFormRegra}
+                  disabled={dias.length === 0}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-fatec-orange-600 hover:text-fatec-orange-700 disabled:cursor-not-allowed disabled:text-fatec-muted"
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  Adicionar regra
+                </button>
+              )}
+            </div>
+
+            {regras.length === 0 && !mostrarFormRegra && (
+              <p className="text-xs text-fatec-muted">
+                Nenhuma regra — a geração segue só a disponibilidade normal.
+              </p>
+            )}
+
+            {regras.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {regras.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <span
+                        className={`mr-1.5 inline-flex rounded-full px-2 py-0.5 font-semibold ${
+                          r.prioridade === "alta"
+                            ? "bg-red-100 text-red-700"
+                            : r.prioridade === "media"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-fatec-navy-100 text-fatec-navy-700"
+                        }`}
+                      >
+                        {r.prioridade === "alta" ? "Alta" : r.prioridade === "media" ? "Média" : "Baixa"}
+                      </span>
+                      <span className="font-medium text-fatec-navy-900">{r.alunoNome}</span>
+                      <span className="text-fatec-muted">
+                        {" — "}
+                        {r.restricao.tipo === "dia" ? rotuloDiaRegra(r.restricao.data) : `com ${r.restricao.nome}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removerRegra(r.id)}
+                      className="shrink-0 text-fatec-muted hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {mostrarFormRegra && (
+              <div className="flex flex-col gap-3 rounded-lg border border-fatec-line bg-white p-3">
+                <div>
+                  <label className="text-xs font-medium text-fatec-navy-900">Trabalho (aluno ou título)</label>
+                  {trabalhoSelecionadoRegra ? (
+                    <div className="mt-1 flex items-center justify-between gap-2 rounded-lg bg-fatec-navy-50 px-3 py-2 text-xs">
+                      <span>
+                        <span className="font-medium text-fatec-navy-900">
+                          {trabalhoSelecionadoRegra.alunoNome}
+                        </span>
+                        {" — "}
+                        {tituloExibicao(trabalhoSelecionadoRegra.titulo)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTrabalhoRegraId("")}
+                        className="shrink-0 font-semibold text-fatec-orange-600 hover:text-fatec-orange-700"
+                      >
+                        Trocar
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={buscaTrabalhoRegra}
+                        onChange={(e) => setBuscaTrabalhoRegra(e.target.value)}
+                        placeholder="Buscar por nome do aluno ou título..."
+                        className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                      />
+                      {resultadosBuscaRegra.length > 0 && (
+                        <ul className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-fatec-line p-1">
+                          {resultadosBuscaRegra.map((t) => (
+                            <li key={t.id}>
+                              <button
+                                type="button"
+                                onClick={() => setTrabalhoRegraId(t.id)}
+                                className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-fatec-navy-50"
+                              >
+                                <span className="font-medium text-fatec-navy-900">{t.alunoNome}</span>
+                                {" — "}
+                                {tituloExibicao(t.titulo)}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Prioridade</label>
+                    <select
+                      value={prioridadeRegra}
+                      onChange={(e) =>
+                        setPrioridadeRegra(e.target.value as RegraPrioridadeBanca["prioridade"])
+                      }
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      <option value="alta">Alta</option>
+                      <option value="media">Média</option>
+                      <option value="baixa">Baixa</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Tipo de restrição</label>
+                    <select
+                      value={tipoRestricaoRegra}
+                      onChange={(e) => setTipoRestricaoRegra(e.target.value as "dia" | "avaliador")}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      <option value="dia">Dia específico</option>
+                      <option value="avaliador">Avaliador específico</option>
+                    </select>
+                  </div>
+                </div>
+
+                {tipoRestricaoRegra === "dia" ? (
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Dia</label>
+                    <select
+                      value={diaRestricaoRegra}
+                      onChange={(e) => setDiaRestricaoRegra(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      {dias.map((d) => (
+                        <option key={d} value={d}>
+                          {rotuloDiaRegra(d)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Avaliador/orientador</label>
+                    <select
+                      value={avaliadorRestricaoRegra}
+                      onChange={(e) => setAvaliadorRestricaoRegra(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      <option value="">Selecione...</option>
+                      {disponibilidades.map((d) => (
+                        <option key={d.uid} value={d.uid}>
+                          {d.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarFormRegra(false)}
+                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={salvarRegra}
+                    disabled={
+                      salvandoRegra ||
+                      !trabalhoSelecionadoRegra ||
+                      (tipoRestricaoRegra === "dia" ? !diaRestricaoRegra : !avaliadorRestricaoRegra)
+                    }
+                    className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                  >
+                    {salvandoRegra ? "Salvando..." : "Salvar regra"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"

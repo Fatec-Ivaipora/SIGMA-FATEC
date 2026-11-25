@@ -385,15 +385,21 @@ export default function AlunoEventosPage() {
   }
 
   // Inscrição de TCC (2026-11-16) — bem mais simples que enviarTrabalho
-  // acima: sem checagem de duplicado (não tem resumo/coautor pra comparar),
-  // sem convite de colega (TCC não tem coautor). Mesmo status inicial
-  // `tcc_inscrito` lido pela aba Inscrição em trabalhos/page.tsx.
+  // acima: sem checagem de duplicado (não tem resumo pra comparar). Outro
+  // autor (2026-11-25, achado real — "tem tcc feito em dupla, tínhamos
+  // esquecido") reaproveita o mesmo convite pendente do MAC
+  // (participantesUids/convitesPendentes, ver responderConvite em
+  // src/lib/data/trabalhos.ts). Mesmo status inicial `tcc_inscrito` lido
+  // pela aba Inscrição em trabalhos/page.tsx.
   async function enviarTCC(dados: DadosSubmissaoTCC) {
     if (!modalEventoId || !user || !perfil) return;
     const ref = await addDoc(collection(db, "trabalhos"), {
       titulo: dados.titulo,
       orientadorUid: dados.orientadorUid,
       nomeOrientador: dados.orientadorNome,
+      participantesUids: dados.participantesUids,
+      participantesNomes: dados.participantesNomes,
+      convitesPendentes: dados.participantesUids,
       eventoId: modalEventoId,
       alunoUid: user.uid,
       alunoNome: perfil.nome,
@@ -402,6 +408,7 @@ export default function AlunoEventosPage() {
       atualizadoEm: serverTimestamp(),
     });
     notificarStatusTrabalho(user, ref.id, "submetido");
+    dados.participantesUids.forEach((colegaUid) => notificarConviteColega(user, ref.id, colegaUid));
     setModalEventoId(null);
   }
 
@@ -494,6 +501,8 @@ export default function AlunoEventosPage() {
           open={!!eventoModal}
           eventoId={eventoModal.id}
           eventoNome={eventoModal.nome}
+          meuUid={user?.uid}
+          autorPrincipal={{ nome: perfil?.nome ?? "", souEu: true }}
           onClose={() => setModalEventoId(null)}
           onSubmit={enviarTCC}
         />
