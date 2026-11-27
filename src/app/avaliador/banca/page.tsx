@@ -485,6 +485,14 @@ function ModalAvaliarBanca({
   );
   const alunoAtivo = alunos.find((a) => a.uid === alunoAtivoUid) ?? alunos[0];
 
+  // Rascunho das notas, UM POR ALUNO (2026-11-27, achado real do usuário —
+  // "se eu marco algumas opções e vou pra aba do outro aluno e volto,
+  // perde o que marquei... pode ser que um tá apresentando, dou nota, e aí
+  // o outro começa"). Fica aqui no modal (não dentro do formulário) —
+  // trocar de aba só troca QUAL rascunho é mostrado, nunca apaga nenhum;
+  // só é limpo de verdade quando a nota daquele aluno é enviada.
+  const [rascunhos, setRascunhos] = useState<Record<string, Record<string, number>>>({});
+
   // Depois de enviar a nota de UM aluno, pula pra próxima aba sem nota
   // ainda (ignorando quem acabou de ser avaliado — o snapshot do Firestore
   // pode não ter chegado ainda nesse exato momento, então não dá pra
@@ -529,13 +537,23 @@ function ModalAvaliarBanca({
           <p className="text-sm text-fatec-muted">Você já lançou a nota de {alunoAtivo.nome}.</p>
         ) : (
           <FormularioNotaBanca
-            key={alunoAtivo.uid}
             trabalho={trabalho}
             uid={uid}
             meuNome={meuNome}
             alunoUid={alunoAtivo.uid}
             alunoNome={alunoAtivo.nome}
-            onEnviado={() => avancarOuFechar(alunoAtivo.uid)}
+            notas={rascunhos[alunoAtivo.uid] ?? {}}
+            onNotasChange={(novasNotas) =>
+              setRascunhos((prev) => ({ ...prev, [alunoAtivo.uid]: novasNotas }))
+            }
+            onEnviado={() => {
+              setRascunhos((prev) => {
+                const copia = { ...prev };
+                delete copia[alunoAtivo.uid];
+                return copia;
+              });
+              avancarOuFechar(alunoAtivo.uid);
+            }}
           />
         )}
       </div>
@@ -549,6 +567,8 @@ function FormularioNotaBanca({
   meuNome,
   alunoUid,
   alunoNome,
+  notas,
+  onNotasChange,
   onEnviado,
 }: {
   trabalho: Trabalho;
@@ -556,9 +576,13 @@ function FormularioNotaBanca({
   meuNome: string;
   alunoUid: string;
   alunoNome: string;
+  // Rascunho controlado pelo pai (ModalAvaliarBanca), não guardado aqui
+  // dentro (2026-11-27, achado real — perdia o que já tinha marcado ao
+  // trocar de aluno na aba e voltar).
+  notas: Record<string, number>;
+  onNotasChange: (notas: Record<string, number>) => void;
   onEnviado: () => void;
 }) {
-  const [notas, setNotas] = useState<Record<string, number>>({});
   const [enviando, setEnviando] = useState(false);
   const completo = CRITERIOS_BANCA_TCC.every((c) => notas[c.key] !== undefined);
   const soma = CRITERIOS_BANCA_TCC.reduce((acc, c) => acc + (notas[c.key] ?? 0), 0);
@@ -600,7 +624,7 @@ function FormularioNotaBanca({
               <button
                 key={n.valor}
                 type="button"
-                onClick={() => setNotas((prev) => ({ ...prev, [c.key]: n.valor }))}
+                onClick={() => onNotasChange({ ...notas, [c.key]: n.valor })}
                 className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg border px-2 text-xs font-semibold transition-colors ${
                   notas[c.key] === n.valor
                     ? "border-fatec-orange-500 bg-fatec-orange-500 text-white"
