@@ -542,6 +542,14 @@ function ModalAvaliarBanca({
             meuNome={meuNome}
             alunoUid={alunoAtivo.uid}
             alunoNome={alunoAtivo.nome}
+            // Marcador "feitos/total" no botão (2026-11-27, pedido
+            // explícito do usuário) — só em dupla; trabalho de autor único
+            // não mostra nada (sempre seria "0/1", sem utilidade).
+            progresso={
+              alunos.length > 1
+                ? { feitos: alunos.filter((a) => jaAvalieiAluno(a.uid)).length, total: alunos.length }
+                : undefined
+            }
             notas={rascunhos[alunoAtivo.uid] ?? {}}
             onNotasChange={(novasNotas) =>
               setRascunhos((prev) => ({ ...prev, [alunoAtivo.uid]: novasNotas }))
@@ -567,6 +575,7 @@ function FormularioNotaBanca({
   meuNome,
   alunoUid,
   alunoNome,
+  progresso,
   notas,
   onNotasChange,
   onEnviado,
@@ -576,6 +585,9 @@ function FormularioNotaBanca({
   meuNome: string;
   alunoUid: string;
   alunoNome: string;
+  // Marcador "feitos/total" no botão de enviar (2026-11-27, pedido
+  // explícito do usuário) — só existe em TCC de dupla.
+  progresso?: { feitos: number; total: number };
   // Rascunho controlado pelo pai (ModalAvaliarBanca), não guardado aqui
   // dentro (2026-11-27, achado real — perdia o que já tinha marcado ao
   // trocar de aluno na aba e voltar).
@@ -647,7 +659,11 @@ function FormularioNotaBanca({
           disabled={!completo || enviando}
           className="rounded-xl bg-fatec-orange-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
         >
-          {enviando ? "Enviando..." : "Enviar nota"}
+          {enviando
+            ? "Enviando..."
+            : progresso
+              ? `Enviar nota (${progresso.feitos}/${progresso.total})`
+              : "Enviar nota"}
         </button>
       </div>
     </div>
