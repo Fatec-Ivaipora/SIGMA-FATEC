@@ -115,6 +115,8 @@ export default function BancaDisponibilidadePage() {
               trabalhos={trabalhos.filter((t) => t.eventoId === evento?.id)}
               user={user}
               meuNome={perfil.nome}
+              horarioInicioBanca={evento?.horarioInicioBanca}
+              duracaoBancaMinutos={evento?.duracaoBancaMinutos}
             />
           )}
         </div>
@@ -262,15 +264,40 @@ function ModalDisponibilidade({
  * Cada card com o formulário da rubrica de 7 critérios (CRITERIOS_BANCA_TCC)
  * pra lançar a própria nota, sem mexer na dos outros 2 membros (ver
  * salvarNotaBanca). */
+// Mesma lógica de /api/ensalamento/pdf-banca (route.ts), duplicada de
+// propósito aqui (2026-11-27, pedido explícito do usuário — tag de sala e
+// horário junto da de orientador/avaliador) — ali é servidor, aqui é
+// client, não dá pra importar uma rota API como função.
+function somarMinutos(horario: string, minutos: number): string {
+  const [h, m] = horario.split(":").map(Number);
+  const total = h * 60 + m + minutos;
+  const hh = Math.floor(total / 60) % 24;
+  const mm = total % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 function MinhasBancasView({
   trabalhos,
   user,
   meuNome,
+  horarioInicioBanca,
+  duracaoBancaMinutos,
 }: {
   trabalhos: Trabalho[];
   user: User | null | undefined;
   meuNome: string;
+  horarioInicioBanca?: string;
+  duracaoBancaMinutos?: number;
 }) {
+  function rotuloHorario(horarioIndex: number): string {
+    if (horarioInicioBanca && duracaoBancaMinutos) {
+      const ini = somarMinutos(horarioInicioBanca, horarioIndex * duracaoBancaMinutos);
+      const fim = somarMinutos(horarioInicioBanca, (horarioIndex + 1) * duracaoBancaMinutos);
+      return `${ini}–${fim}`;
+    }
+    return `Horário ${horarioIndex + 1}`;
+  }
+
   const uid = user?.uid;
   const minhasBancas = trabalhos.filter(
     (t) => t.orientadorUid === uid || t.bancaAvaliadores?.some((a) => a.uid === uid),
@@ -327,6 +354,20 @@ function MinhasBancasView({
                     >
                       {souOrientadorDesta ? "Orientador(a)" : "Avaliador(a)"}
                     </span>
+                    {/* Sala/horário em tags separadas (2026-11-27, pedido
+                        explícito do usuário) — só aparecem quando a banca já
+                        foi gerada com sala/horário definidos (ajuste manual
+                        limpa os dois, ver moverBanca). */}
+                    {t.bancaSala != null && (
+                      <span className="flex-none rounded-full bg-fatec-navy-50 px-2 py-0.5 text-[11px] font-semibold text-fatec-navy-700">
+                        Sala {t.bancaSala}
+                      </span>
+                    )}
+                    {t.bancaHorarioIndex != null && (
+                      <span className="flex-none rounded-full bg-fatec-navy-50 px-2 py-0.5 text-[11px] font-semibold text-fatec-navy-700">
+                        {rotuloHorario(t.bancaHorarioIndex)}
+                      </span>
+                    )}
                   </div>
                   <p className="mt-0.5 text-sm text-fatec-muted">
                     {t.bancaData

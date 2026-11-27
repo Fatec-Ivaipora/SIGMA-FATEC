@@ -94,8 +94,10 @@ export async function GET(request: Request) {
     }
 
     // 1 grupo = 1 sala + 1 dia = 1 página (2026-11-24, pedido explícito do
-    // usuário — "cada folha uma sala e dia"). Ordenado por sala, depois por
-    // dia dentro da sala.
+    // usuário — "cada folha uma sala e dia"). Ordenado por dia, depois por
+    // sala dentro do dia (2026-11-27, pedido explícito do usuário —
+    // "intercalado sala 1 dia 1, sala 2 dia 1, sala 1 dia 2..." — antes
+    // agrupava tudo de uma sala antes de passar pra próxima).
     const porSalaDia = new Map<string, typeof comSala>();
     for (const t of comSala) {
       const chave = `${t.bancaSala}#${t.bancaData}`;
@@ -109,7 +111,7 @@ export async function GET(request: Request) {
         const [salaStr, data] = chave.split("#");
         return { sala: Number(salaStr), data, itens };
       })
-      .sort((a, b) => a.sala - b.sala || a.data.localeCompare(b.data))
+      .sort((a, b) => a.data.localeCompare(b.data) || a.sala - b.sala)
       .map(({ sala, data, itens }) => ({
         salaNome: String(sala),
         diaLabel: formatarDia(data),
