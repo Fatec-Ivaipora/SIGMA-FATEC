@@ -40,6 +40,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
@@ -54,6 +55,7 @@ import { BannerCropModal } from "@/components/BannerCropModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useEventos, type Evento, type AreaTematicaComplexa } from "@/lib/data/eventos";
+import type { PerfilUsuario } from "@/lib/auth";
 import { useTrabalhos } from "@/lib/data/trabalhos";
 import { useInscritosDoEvento } from "@/lib/data/inscricoes";
 import { recalcularAreasTematicas } from "@/lib/areasTematicas";
@@ -1509,10 +1511,63 @@ export default function EventosPage() {
   // encerradoEm (não precisa reconfigurar nada, volta a valer as datas de
   // inscrição/submissão já cadastradas).
   async function alternarEncerrado(evento: Evento) {
+    const encerrando = !evento.encerrado;
     await updateDoc(doc(db, "eventos", evento.id), {
-      encerrado: !evento.encerrado,
+      encerrado: encerrando,
       encerradoEm: evento.encerrado ? deleteField() : serverTimestamp(),
     });
+    // Rebaixa avaliador/moderador pra "professor" neutro quem fica sem
+    // NENHUM evento depois desse encerrar (2026-11-27, pedido explícito do
+    // usuário — achado real: "tem um monte de gente como avaliador, mas
+    // entra lá foi avaliador da mac que já tá encerrado"). Só ao encerrar
+    // (nunca ao reabrir) e nunca toca em orientador — pedido específico do
+    // usuário foi só avaliador/moderador.
+    // Tentativa melhor-esforço (2026-11-27) — o resto do usuarios/page.tsx
+    // já mostra que escrever noutra conta direto do cliente só é permitido
+    // pelas firestore.rules pra admin (nunca organizacao, ver match
+    // /usuarios/{uid}); sem esse catch, uma organizacao encerrando o PRÓPRIO
+    // evento ficaria com erro não tratado, mesmo com o encerrar em si (acima)
+    // já tendo funcionado.
+    if (encerrando) {
+      try {
+        await rebaixarQuemFicouSemEvento(evento.id);
+      } catch {
+        // Silencioso de propósito — organizacao não tem permissão de editar
+        // conta de outra pessoa; o evento já encerrou normalmente.
+      }
+    }
+  }
+
+  async function rebaixarQuemFicouSemEvento(eventoId: string) {
+    const snap = await getDocs(
+      query(collection(db, "usuarios"), where("eventosPermitidos", "array-contains", eventoId)),
+    );
+    if (snap.empty) return;
+    const lote = writeBatch(db);
+    for (const docSnap of snap.docs) {
+      const perfil = docSnap.data() as PerfilUsuario;
+      const atribuicoesRestantes = (perfil.atribuicoesEventos ?? []).filter(
+        (a) => a.eventoId !== eventoId,
+      );
+      const eventosRestantes = atribuicoesRestantes.map((a) => a.eventoId);
+      const atualizacao: Record<string, unknown> = {
+        atribuicoesEventos: atribuicoesRestantes,
+        eventosPermitidos: eventosRestantes,
+      };
+      if (eventosRestantes.length === 0) {
+        // Sem evento nenhum sobrando: tira avaliador/moderador das
+        // capacidades (mantém orientador, se tiver) e, se o papel
+        // PRINCIPAL dela era avaliador/moderador, volta pra "professor".
+        if ((perfil.papeisAvaliacao ?? []).length > 0) {
+          atualizacao.papeisAvaliacao = perfil.papeisAvaliacao!.filter((p) => p === "orientador");
+        }
+        if (perfil.papel === "avaliador" || perfil.papel === "moderador") {
+          atualizacao.papel = "professor";
+        }
+      }
+      lote.update(docSnap.ref, atualizacao);
+    }
+    await lote.commit();
   }
 
   async function criarEvento() {
