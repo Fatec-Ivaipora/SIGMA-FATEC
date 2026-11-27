@@ -48,6 +48,7 @@ import { Modal } from "@/components/Modal";
 import { InscritosEventoModal } from "@/components/InscritosEventoModal";
 import { InscricaoManualModal } from "@/components/InscricaoManualModal";
 import { MonitoresEventoModal } from "@/components/MonitoresEventoModal";
+import { SuplentesEventoModal } from "@/components/SuplentesEventoModal";
 import { AreaComplexaModal } from "@/components/AreaComplexaModal";
 import { BannerCropModal } from "@/components/BannerCropModal";
 import { NAV_ADMIN } from "@/lib/navAdmin";
@@ -330,6 +331,7 @@ function CardEventoAdmin({
   onConfigurarCertificado,
   onAbrirEdubox,
   onAbrirMonitores,
+  onAbrirSuplentes,
   onAbrirBanner,
   onEncerrarEvento,
   onAbrirAta,
@@ -346,6 +348,7 @@ function CardEventoAdmin({
   onConfigurarCertificado: () => void;
   onAbrirEdubox?: () => void;
   onAbrirMonitores: () => void;
+  onAbrirSuplentes: () => void;
   onAbrirBanner: () => void;
   onEncerrarEvento: () => void;
   onAbrirAta: () => void;
@@ -512,7 +515,15 @@ function CardEventoAdmin({
           label={evento.imagemDestaqueUrl ? "Trocar banner" : "Adicionar banner"}
           onClick={onAbrirBanner}
         />
-        <AcaoEvento icone={UserCog} cor="navy" label="Monitores" onClick={onAbrirMonitores} />
+        {/* TCC não tem monitor de operação (2026-11-27, pedido explícito
+            do usuário — "em vez de monitores... podemos ter suplentes,
+            professores que ficam ali esperando caso precise no dia")
+            — troca o botão inteiro, nunca os dois juntos. */}
+        {tcc ? (
+          <AcaoEvento icone={UserCog} cor="navy" label="Suplentes" onClick={onAbrirSuplentes} />
+        ) : (
+          <AcaoEvento icone={UserCog} cor="navy" label="Monitores" onClick={onAbrirMonitores} />
+        )}
         <AcaoEvento icone={Settings} cor="navy" label="Configurações" onClick={onConfigurarEvento} />
         <AcaoEvento
           icone={certificadoConfigurado ? Award : AlertTriangle}
@@ -755,6 +766,7 @@ export default function EventosPage() {
   const [modalInscritosId, setModalInscritosId] = useState<string | null>(null);
   const [modalInscricaoExtraId, setModalInscricaoExtraId] = useState<string | null>(null);
   const [modalMonitoresId, setModalMonitoresId] = useState<string | null>(null);
+  const [modalSuplentesId, setModalSuplentesId] = useState<string | null>(null);
   const [bannerEditEventoId, setBannerEditEventoId] = useState<string | null>(null);
   const [bannerEditParaCortar, setBannerEditParaCortar] = useState<File | null>(null);
   const [salvandoBannerEdit, setSalvandoBannerEdit] = useState(false);
@@ -1665,6 +1677,7 @@ export default function EventosPage() {
                   perfil.papel === "admin" ? () => abrirModalEdubox(evento) : undefined
                 }
                 onAbrirMonitores={() => setModalMonitoresId(evento.id)}
+                onAbrirSuplentes={() => setModalSuplentesId(evento.id)}
                 onAbrirBanner={() => setBannerEditEventoId(evento.id)}
                 onEncerrarEvento={() => alternarEncerrado(evento)}
                 onAbrirAta={() => abrirModalAta(evento.id)}
@@ -2448,6 +2461,15 @@ export default function EventosPage() {
           eventoId={modalMonitoresId}
           eventoNome={eventos.find((e) => e.id === modalMonitoresId)?.nome ?? ""}
           onClose={() => setModalMonitoresId(null)}
+        />
+      )}
+
+      {modalSuplentesId && (
+        <SuplentesEventoModal
+          open={!!modalSuplentesId}
+          eventoId={modalSuplentesId}
+          eventoNome={eventos.find((e) => e.id === modalSuplentesId)?.nome ?? ""}
+          onClose={() => setModalSuplentesId(null)}
         />
       )}
 

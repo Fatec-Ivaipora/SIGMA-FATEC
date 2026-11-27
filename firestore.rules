@@ -388,6 +388,29 @@ service cloud.firestore {
       allow update: if souAdmin();
     }
 
+    // suplentesEvento/{eventoId}::{uid} (2026-11-27, pedido explícito do
+    // usuário) — professor (avaliador/orientador/moderador) de sobreaviso
+    // pra um evento de TCC, caso precise substituir alguém no dia da
+    // banca. Mesmo padrão de permissão de monitoresEvento acima, só que
+    // sem update nenhum (não existe campo tipo certificadoLiberado aqui).
+    match /suplentesEvento/{id} {
+      allow read: if logado() && (
+        resource == null ||
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos()) ||
+        resource.data.uid == request.auth.uid
+      );
+      allow create: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && request.resource.data.eventoId in meusEventos())
+      );
+      allow delete: if logado() && (
+        souAdmin() ||
+        (meuPapel() == "organizacao" && resource.data.eventoId in meusEventos())
+      );
+      allow update: if false;
+    }
+
     // salas/{id} — catálogo único de salas físicas do campus (só nome),
     // compartilhado entre todos os eventos (2026-09-28; antes era preso a um
     // eventoId, tinha que recadastrar a mesma sala em cada evento). Cada
