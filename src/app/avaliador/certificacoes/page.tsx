@@ -1,20 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Award, Clock, Download, Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { navParaPerfil } from "@/lib/navAvaliacao";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-import { useEventos } from "@/lib/data/eventos";
-import { useTrabalhos } from "@/lib/data/trabalhos";
 import { baixarCertificado } from "@/lib/baixarCertificado";
 
 type Papel = "avaliador" | "moderador";
 
 type Grupo = {
   eventoId: string;
+  eventoNome: string;
   papel: Papel;
-  algumAceito: boolean;
   algumLiberado: boolean;
 };
 
@@ -26,9 +24,17 @@ export default function AvaliadorCertificacoesPage() {
   // mesmo estado vazio que já mostraria pra um avaliador sem certificado
   // nenhum ainda — certificado de banca de TCC é outra tela
   // ("Minhas bancas" em /avaliador/banca), não essa aqui.
-  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador"]);
-  const { trabalhos } = useTrabalhos(perfil, user?.uid);
-  const { eventos } = useEventos(perfil);
+  //
+  // "professor" (2026-11-27, pedido explícito do usuário — "precisa corrigir
+  // para os perfis que foram moderadores e avaliadores conseguirem baixar").
+  // Desde f07030b, quem era só avaliador/moderador de um evento encerrado
+  // volta pro cargo neutro "professor" — e continua tendo direito à
+  // declaração daquele evento. Por isso a lista vem do servidor
+  // (GET /api/certificados/minhas-declaracoes, Admin SDK, só o próprio uid)
+  // e não mais de useTrabalhos: as regras do Firestore negam ler trabalhos
+  // por avaliadorUid/moderadorUid a quem não tem mais esse papel, e a tela
+  // ficava vazia.
+  const { user, perfil, carregando } = useRequireAuth(["avaliador", "moderador", "orientador", "professor"]);
 
   const [baixandoChave, setBaixandoChave] = useState<string | null>(null);
   const [erroChave, setErroChave] = useState<{ chave: string; msg: string } | null>(null);
@@ -36,28 +42,41 @@ export default function AvaliadorCertificacoesPage() {
   // Uma declaração por (evento, papel) — não por trabalho: a mesma pessoa
   // avalia/modera vários trabalhos do mesmo evento, mas recebe uma só
   // declaração (2026-08-28). "Aguardando liberação" aparece assim que tem
-  // pelo menos 1 trabalho aceito, mesmo antes da organização liberar.
-  const grupos = useMemo(() => {
-    if (!user) return [];
-    const mapa = new Map<string, Grupo>();
-
-    function registrar(eventoId: string, papel: Papel, aceito: boolean, liberado: boolean) {
-      const chave = `${eventoId}_${papel}`;
-      const atual = mapa.get(chave) ?? { eventoId, papel, algumAceito: false, algumLiberado: false };
-      atual.algumAceito = atual.algumAceito || aceito;
-      atual.algumLiberado = atual.algumLiberado || liberado;
-      mapa.set(chave, atual);
-    }
-
-    for (const t of trabalhos) {
-      const aceito = t.status === "aceito";
-      const liberado = aceito && !!t.certificadoLiberado;
-      if (t.avaliadorUid === user.uid) registrar(t.eventoId, "avaliador", aceito, liberado);
-      if (t.moderadorUid === user.uid) registrar(t.eventoId, "moderador", aceito, liberado);
-    }
-
-    return Array.from(mapa.values()).filter((g) => g.algumAceito);
-  }, [trabalhos, user]);
+  // pelo menos 1 trabalho aceito, mesmo antes da organização liberar —
+  // mesma regra, agora calculada no servidor.
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [carregandoLista, setCarregandoLista] = useState(true);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/certificados/minhas-declaracoes", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const corpo = await res.json().catch(() => ({}));
+        if (cancelado) return;
+        if (!res.ok) {
+          setErroLista(corpo.erro ?? "Não foi possível carregar as declarações.");
+          return;
+        }
+        setGrupos(
+          ((corpo.declaracoes ?? []) as { eventoId: string; eventoNome: string; papel: Papel; liberado: boolean }[]).map(
+            (d) => ({ eventoId: d.eventoId, eventoNome: d.eventoNome, papel: d.papel, algumLiberado: d.liberado }),
+          ),
+        );
+      } catch {
+        if (!cancelado) setErroLista("Não foi possível carregar as declarações.");
+      } finally {
+        if (!cancelado) setCarregandoLista(false);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [user]);
 
   async function baixar(g: Grupo) {
     if (!user) return;
@@ -80,7 +99,7 @@ export default function AvaliadorCertificacoesPage() {
         navItems={navParaPerfil(perfil)}
         activeHref="/avaliador/certificacoes"
         userName={perfil.nome}
-        userRoleLabel="Avaliador"
+        userRoleLabel={perfil.papel === "professor" ? "Professor" : "Avaliador"}
         userInitials={(perfil.nome || "?").slice(0, 2).toUpperCase()}
         showAjuda
       />
@@ -97,7 +116,14 @@ export default function AvaliadorCertificacoesPage() {
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          {grupos.length === 0 ? (
+          {carregandoLista ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-fatec-muted">
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              Carregando declarações...
+            </div>
+          ) : erroLista ? (
+            <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{erroLista}</p>
+          ) : grupos.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-16 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-fatec-navy-50 text-fatec-navy-800">
                 <Award className="h-6 w-6" strokeWidth={1.75} />
@@ -126,7 +152,7 @@ export default function AvaliadorCertificacoesPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium text-fatec-navy-900">
-                          {eventos.find((e) => e.id === g.eventoId)?.nome ?? g.eventoId}
+                          {g.eventoNome}
                         </p>
                         <p className="text-sm text-fatec-muted">
                           {g.papel === "avaliador" ? "Avaliação" : "Apresentação"}

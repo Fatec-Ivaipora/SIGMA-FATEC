@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardCheck, GraduationCap, LayoutGrid } from "lucide-react";
+import { Award, ClipboardCheck, GraduationCap, LayoutGrid } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { temPapel } from "@/lib/auth";
@@ -38,11 +38,26 @@ export default function ProfessorPage() {
       descricao: "TCCs que você orienta.",
     },
   ].filter((a): a is { href: string; icone: typeof ClipboardCheck; titulo: string; descricao: string } => !!a);
+  // Certificações sempre visível (2026-11-27, pedido explícito do usuário —
+  // quem foi avaliador/moderador de um evento já encerrado volta pra
+  // "professor", ver f07030b, e precisa continuar baixando a declaração).
+  // Não conta como "função atribuída": a mensagem do topo continua dizendo
+  // que a conta não tem função quando só existe este atalho.
+  const temFuncao = atalhos.length > 0;
+  atalhos.push({
+    href: "/avaliador/certificacoes",
+    icone: Award,
+    titulo: "Certificações",
+    descricao: "Declarações dos eventos em que você avaliou ou moderou trabalhos.",
+  });
 
   return (
     <main className="flex flex-1 flex-col md:flex-row">
       <Sidebar
-        navItems={[{ label: "Início", href: "/professor", icon: LayoutGrid }]}
+        navItems={[
+          { label: "Início", href: "/professor", icon: LayoutGrid },
+          { label: "Certificações", href: "/avaliador/certificacoes", icon: Award },
+        ]}
         activeHref="/professor"
         userName={perfil.nome}
         userRoleLabel="Professor"
@@ -55,19 +70,20 @@ export default function ProfessorPage() {
             Olá, {perfil.nome.split(" ")[0]}
           </h1>
           <p className="text-sm text-fatec-muted">
-            {atalhos.length > 0
+            {temFuncao
               ? "Escolha onde entrar:"
               : "Sua conta ainda não tem nenhuma função atribuída em nenhum evento."}
           </p>
         </header>
 
         <div className="flex-1 px-6 py-8 md:px-10">
-          {atalhos.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-10 text-center text-sm text-fatec-muted">
+          {!temFuncao && (
+            <p className="mb-4 rounded-2xl border border-dashed border-fatec-line bg-white px-6 py-6 text-center text-sm text-fatec-muted">
               Fale com a organização/coordenação do seu curso pra ser atribuído(a) como
               avaliador(a), orientador(a) ou suplente de algum evento.
             </p>
-          ) : (
+          )}
+          {(
             <div className="grid gap-4 sm:grid-cols-2">
               {atalhos.map((a) => (
                 <a
