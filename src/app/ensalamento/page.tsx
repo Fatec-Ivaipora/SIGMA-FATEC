@@ -52,6 +52,7 @@ import {
   useDisponibilidadeDoEvento,
   type RegraPrioridadeBanca,
   type RegraSalaAvaliador,
+  type RegraDiaAvaliador,
 } from "@/lib/data/bancas";
 import {
   useSessoesDoEvento,
@@ -894,6 +895,7 @@ function EnsalamentoBancaView({
         numeroSalas: evento.numeroSalasBanca,
         regras: evento.regrasPrioridadeBanca,
         regrasSala: evento.regrasSalaPorAvaliador,
+        regrasDia: evento.regrasDiaPorAvaliador,
       });
       await Promise.all([substituirBancaDoEvento(bancasNovas), salvarOverflowBanca(overflow)]);
     } finally {
@@ -1093,6 +1095,54 @@ function EnsalamentoBancaView({
   async function removerRegraSala(id: string) {
     await updateDoc(doc(db, "eventos", evento.id), {
       regrasSalaPorAvaliador: regrasSala.filter((r) => r.id !== id),
+    });
+  }
+
+  // Prioridade de DIA por pessoa (2026-11-27, pedido explícito do usuário —
+  // "nas regras dos avaliadores preciso que tenha a regra dos dias também,
+  // alta prioridade pro avaliador no dia x") — mesmo padrão de regrasSala
+  // acima, só que pro dia (ver limitação honesta em RegraDiaAvaliador,
+  // src/lib/data/bancas.ts: só reordena de verdade quando a pessoa é
+  // orientadora do trabalho).
+  const regrasDia = evento.regrasDiaPorAvaliador ?? [];
+  const [mostrarFormDia, setMostrarFormDia] = useState(false);
+  const [avaliadorRegraDia, setAvaliadorRegraDia] = useState("");
+  const [diaRegraDia, setDiaRegraDia] = useState(dias[0] ?? "");
+  const [salvandoRegraDia, setSalvandoRegraDia] = useState(false);
+
+  function abrirFormDia() {
+    setMostrarFormDia(true);
+    setAvaliadorRegraDia("");
+    setDiaRegraDia(dias[0] ?? "");
+  }
+
+  async function salvarRegraDia() {
+    if (!avaliadorRegraDia || !diaRegraDia) return;
+    const pessoa = disponibilidades.find((d) => d.uid === avaliadorRegraDia);
+    if (!pessoa) return;
+    const novaRegra: RegraDiaAvaliador = {
+      id: `${Date.now()}`,
+      avaliadorUid: pessoa.uid,
+      avaliadorNome: pessoa.nome,
+      dia: diaRegraDia,
+    };
+    setSalvandoRegraDia(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        regrasDiaPorAvaliador: [
+          ...regrasDia.filter((r) => r.avaliadorUid !== pessoa.uid),
+          novaRegra,
+        ],
+      });
+      setMostrarFormDia(false);
+    } finally {
+      setSalvandoRegraDia(false);
+    }
+  }
+
+  async function removerRegraDia(id: string) {
+    await updateDoc(doc(db, "eventos", evento.id), {
+      regrasDiaPorAvaliador: regrasDia.filter((r) => r.id !== id),
     });
   }
 
@@ -1766,6 +1816,111 @@ function EnsalamentoBancaView({
                     className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
                   >
                     {salvandoRegraSala ? "Salvando..." : "Salvar"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Prioridade de dia POR PESSOA (2026-11-27, pedido explícito do
+              usuário — "alta prioridade pro avaliador no dia x") — mesmo
+              padrão da sala acima: só "tenta primeiro esse dia", nunca
+              trava a geração. */}
+          <div className="flex flex-col gap-3 rounded-xl border border-fatec-line bg-fatec-navy-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-fatec-navy-900">Prioridade de dia por avaliador</p>
+              {!mostrarFormDia && (
+                <button
+                  type="button"
+                  onClick={abrirFormDia}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-fatec-orange-600 hover:text-fatec-orange-700"
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  Adicionar
+                </button>
+              )}
+            </div>
+
+            {regrasDia.length === 0 && !mostrarFormDia && (
+              <p className="text-xs text-fatec-muted">
+                Nenhuma pessoa com dia fixo — funciona de verdade quando ela é
+                orientadora do trabalho (o dia só é escolhido depois de saber quem
+                avalia, então como avaliadora é só um bônus, sem garantia).
+              </p>
+            )}
+
+            {regrasDia.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {regrasDia.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs"
+                  >
+                    <span>
+                      <span className="font-medium text-fatec-navy-900">{r.avaliadorNome}</span>
+                      <span className="text-fatec-muted"> — sempre que possível, {rotuloDiaRegra(r.dia)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removerRegraDia(r.id)}
+                      className="shrink-0 text-fatec-muted hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {mostrarFormDia && (
+              <div className="flex flex-col gap-3 rounded-lg border border-fatec-line bg-white p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Avaliador/orientador</label>
+                    <select
+                      value={avaliadorRegraDia}
+                      onChange={(e) => setAvaliadorRegraDia(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      <option value="">Selecione...</option>
+                      {disponibilidades.map((d) => (
+                        <option key={d.uid} value={d.uid}>
+                          {d.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Dia</label>
+                    <select
+                      value={diaRegraDia}
+                      onChange={(e) => setDiaRegraDia(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      {dias.map((d) => (
+                        <option key={d} value={d}>
+                          {rotuloDiaRegra(d)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarFormDia(false)}
+                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={salvarRegraDia}
+                    disabled={salvandoRegraDia || !avaliadorRegraDia || !diaRegraDia}
+                    className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                  >
+                    {salvandoRegraDia ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
               </div>

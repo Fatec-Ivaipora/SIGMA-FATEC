@@ -182,6 +182,28 @@ export type RegraSalaAvaliador = {
   sala: number;
 };
 
+// Prioridade de DIA por pessoa (2026-11-27, pedido explícito do usuário —
+// "nas regras de criação de banca, nas regras dos avaliadores, preciso que
+// tenha a regra dos dias pra eles também, alta prioridade pro avaliador no
+// dia X") — mesmo espírito de RegraSalaAvaliador acima, só que pro dia em
+// vez da sala. Preferência forte: tenta esse dia primeiro, sem bloquear a
+// banca se não der (nunca gera overflow por causa disso).
+//
+// LIMITAÇÃO HONESTA (estrutural, não é bug): o dia é escolhido ANTES de
+// saber quem vai ser avaliador de uma banca — só o orientador é conhecido
+// de antemão. Por isso essa regra só consegue de fato ADIANTAR o dia
+// tentado quando a pessoa é ORIENTADORA do trabalho; quando ela só entra
+// como uma das 2 avaliadoras (escolha que só acontece depois do dia já
+// fixado), a regra não tem como influenciar qual dia é tentado primeiro —
+// mesma limitação, pelo mesmo motivo estrutural, que RegraSalaAvaliador já
+// tem pra sala quando a pessoa nunca é orientadora de nada.
+export type RegraDiaAvaliador = {
+  id: string;
+  avaliadorUid: string;
+  avaliadorNome: string;
+  dia: string; // "AAAA-MM-DD"
+};
+
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
  * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×HORÁRIO×SALA×
  * PESSOA). Pra cada trabalho, acha o primeiro dia (na ordem de `dias`) em
@@ -259,6 +281,7 @@ export function montarBancaAutomatica(params: {
   numeroSalas?: number;
   regras?: RegraPrioridadeBanca[];
   regrasSala?: RegraSalaAvaliador[];
+  regrasDia?: RegraDiaAvaliador[];
 }): { bancasNovas: BancaGerada[]; overflow: OverflowBanca[] } {
   const numeroSalas = Math.max(1, params.numeroSalas ?? 1);
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
@@ -271,6 +294,12 @@ export function montarBancaAutomatica(params: {
   // "garantir" (tenta primeiro essa sala, nunca "evitar sala" — não pedido).
   const salaPorUid = new Map<string, number>();
   for (const r of params.regrasSala ?? []) salaPorUid.set(r.avaliadorUid, r.sala);
+  // Prioridade de DIA por pessoa (2026-11-27) — só reordena a tentativa de
+  // dias quando a pessoa é ORIENTADORA do trabalho (motivo estrutural, ver
+  // comentário de RegraDiaAvaliador); aplicado dentro de `tentarAgendar`,
+  // que já recebe `diasParaTentar` pronta pra cada trabalho.
+  const diaPorUid = new Map<string, string>();
+  for (const r of params.regrasDia ?? []) diaPorUid.set(r.avaliadorUid, r.dia);
   // Chave "dia#horario#uid" -> sala em que essa pessoa está nesse horário
   // (2026-11-27, pedido explícito do usuário — achou um caso real: "a Mari"
   // tinha prioridade de sala 1, mas numa geração ficou na sala 2 num
@@ -360,11 +389,23 @@ export function montarBancaAutomatica(params: {
   // achar — por isso só pode ser chamada 1x por trabalho (por tentativa).
   function tentarAgendar(
     t: TrabalhoParaBanca,
-    diasParaTentar: string[],
+    diasParaTentarOriginal: string[],
     avaliadorObrigatorioUid?: string,
     avaliadorProibidoUid?: string,
     respeitarBufferSala = true,
   ): { ok: true } | { ok: false; motivo: string } {
+    // Prioridade de dia POR PESSOA (2026-11-27) — se o orientador tem um
+    // dia preferido marcado em `diaPorUid`, tenta ESSE dia primeiro (igual
+    // `ordemSalas` já faz pra sala, só que 1 nível acima, no próprio loop
+    // de dia). Só considera o orientador — pra avaliador, o dia já está
+    // fixado antes de saber quem vai ser escolhido, ver limitação honesta
+    // no comentário de RegraDiaAvaliador.
+    const diaPreferido = diaPorUid.get(t.orientadorUid);
+    const diasParaTentar =
+      diaPreferido && diasParaTentarOriginal.includes(diaPreferido)
+        ? [diaPreferido, ...diasParaTentarOriginal.filter((d) => d !== diaPreferido)]
+        : diasParaTentarOriginal;
+
     // Diagnóstico (2026-11-17) — só usado se não achar no final; cada flag
     // reflete um motivo diferente, checado na ordem em que o loop de dias
     // realmente os encontra.

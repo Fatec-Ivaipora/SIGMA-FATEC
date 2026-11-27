@@ -15,7 +15,7 @@ import {
 import { db } from "@/lib/firebase";
 import type { PerfilUsuario } from "@/lib/auth";
 import { useMinhasInscricoes } from "@/lib/data/inscricoes";
-import type { RegraPrioridadeBanca, RegraSalaAvaliador } from "@/lib/data/bancas";
+import type { RegraPrioridadeBanca, RegraSalaAvaliador, RegraDiaAvaliador } from "@/lib/data/bancas";
 
 // Sub-área dentro de uma área temática "complexa" (2026-09-01) — ex.: dentro
 // de "Projetos Integradores", cada curso/grupo de cursos vira uma sub-área
@@ -329,6 +329,10 @@ export type Evento = {
   // src/lib/data/bancas.ts) — separada de regrasPrioridadeBanca porque
   // mira um avaliador/orientador, não um trabalho específico.
   regrasSalaPorAvaliador?: RegraSalaAvaliador[];
+  // Prioridade de dia POR PESSOA (2026-11-27, ver RegraDiaAvaliador em
+  // src/lib/data/bancas.ts) — mesmo espírito de regrasSalaPorAvaliador
+  // acima, só que pro dia.
+  regrasDiaPorAvaliador?: RegraDiaAvaliador[];
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */
