@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   UserPlus,
@@ -231,6 +231,66 @@ export default function UsuariosPage() {
     : refinandoAluno || refinandoCombinavel
       ? usuariosFiltrados.length
       : contagemServidor;
+
+  // Último acesso (2026-11-27, pedido explícito do usuário — "coloque na
+  // frente dos cargos o último acesso do usuário, tanto para avaliador,
+  // moderador, orientador, tudo") — vem do Firebase Auth de cada um (ver
+  // /api/usuarios/ultimo-acesso), não do Firestore; busca em lotes de até
+  // 100 uids, só dos que ainda não foram buscados (o ref evita repetir a
+  // mesma chamada de novo a cada render/filtro, sem precisar listar o mapa
+  // inteiro como dependência do efeito).
+  const [ultimoAcessoPorUid, setUltimoAcessoPorUid] = useState<Record<string, string | null>>({});
+  const uidsJaBuscadosRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!user) return;
+    const uidsFaltando = usuariosFiltrados
+      .map((u) => u.uid)
+      .filter((uid) => !uidsJaBuscadosRef.current.has(uid));
+    if (uidsFaltando.length === 0) return;
+    uidsFaltando.forEach((uid) => uidsJaBuscadosRef.current.add(uid));
+
+    let cancelado = false;
+    (async () => {
+      const idToken = await user.getIdToken();
+      const resultado: Record<string, string | null> = {};
+      for (let i = 0; i < uidsFaltando.length; i += 100) {
+        const lote = uidsFaltando.slice(i, i + 100);
+        try {
+          const res = await fetch("/api/usuarios/ultimo-acesso", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ uids: lote }),
+          });
+          const corpo = (await res.json().catch(() => null)) as
+            | { ultimoAcesso?: Record<string, string | null> }
+            | null;
+          if (res.ok && corpo?.ultimoAcesso) Object.assign(resultado, corpo.ultimoAcesso);
+        } catch {
+          // Silencioso — essas linhas só ficam sem "último acesso", não
+          // trava a tela inteira por causa de uma falha de rede pontual.
+        }
+      }
+      if (!cancelado) setUltimoAcessoPorUid((prev) => ({ ...prev, ...resultado }));
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [usuariosFiltrados, user]);
+
+  function rotuloUltimoAcesso(uid: string): string {
+    if (!(uid in ultimoAcessoPorUid)) return "Último acesso: —";
+    const iso = ultimoAcessoPorUid[uid];
+    if (!iso) return "Nunca acessou";
+    return `Último acesso: ${new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  }
 
   function areasDoEvento(eventoId: string): string[] {
     return eventos.find((e) => e.id === eventoId)?.areasTematicas ?? [];
@@ -635,6 +695,7 @@ export default function UsuariosPage() {
                       <td className="px-6 py-4 text-fatec-muted">{u.email}</td>
                       <td className="px-6 py-4">
                         <PapelBadge papel={u.papel} papeisAvaliacao={u.papeisAvaliacao} />
+                        <p className="mt-1 text-xs text-fatec-muted">{rotuloUltimoAcesso(u.uid)}</p>
                         {u.papel === "aluno" && (
                           <p className="mt-1 text-xs text-fatec-muted">
                             {u.vinculoFatec === false
