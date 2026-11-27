@@ -168,7 +168,12 @@ export type RegraPrioridadeBanca = {
 // outras regras: tenta essa sala primeiro, mas cai pra outra sala livre
 // sem bloquear a banca se a preferida já estiver ocupada nesse horário —
 // nunca gera overflow por causa disso (ver comentário em `salaPorUid`
-// dentro de montarBancaAutomatica).
+// dentro de montarBancaAutomatica). Quando precisa mesmo trocar de sala
+// (2026-11-27, achado real — "a Mari" caiu na sala 2 num horário e sala 1
+// no horário seguinte, sem tempo de trocar), o algoritmo tenta não deixar
+// a pessoa em salas diferentes em horários VIZINHOS (ver
+// `temConflitoDeBufferDeSala`) — mas só isso: não garante intervalo maior
+// que 1 horário, só evita o caso zero-tempo-pra-trocar.
 export type RegraSalaAvaliador = {
   id: string;
   avaliadorUid: string;
@@ -265,6 +270,13 @@ export function montarBancaAutomatica(params: {
   // "garantir" (tenta primeiro essa sala, nunca "evitar sala" — não pedido).
   const salaPorUid = new Map<string, number>();
   for (const r of params.regrasSala ?? []) salaPorUid.set(r.avaliadorUid, r.sala);
+  // Chave "dia#horario#uid" -> sala em que essa pessoa está nesse horário
+  // (2026-11-27, pedido explícito do usuário — achou um caso real: "a Mari"
+  // tinha prioridade de sala 1, mas numa geração ficou na sala 2 num
+  // horário e sala 1 no horário SEGUINTE — sem tempo nenhum de trocar de
+  // sala entre uma banca e outra). Usado só pra quem tem `salaPorUid` —
+  // ver `temConflitoDeBufferDeSala` abaixo.
+  const salaDaPessoaPorSlot = new Map<string, number>();
   // Chave "dia#sala" — quantas bancas essa sala já tem nesse dia (o teto
   // de verdade, POR sala, não somado entre salas).
   const bancasPorSalaDia = new Map<string, number>();
@@ -312,6 +324,25 @@ export function montarBancaAutomatica(params: {
     return diasValidosPorOrientador(a.orientadorUid) - diasValidosPorOrientador(b.orientadorUid);
   });
 
+  // Alguma das `pessoas` (orientador + os 2 escolhidos) tem prioridade de
+  // sala E já está marcada no horário vizinho (±1, mesmo dia) numa sala
+  // DIFERENTE da que está sendo testada agora? (2026-11-27) Só considera
+  // quem tem `salaPorUid` — pra quem não tem prioridade de sala nenhuma,
+  // trocar de sala entre horários sempre foi normal, isso aqui só evita
+  // ZERO tempo de troca especificamente pra quem a gente já pediu pra
+  // manter numa sala fixa.
+  function temConflitoDeBufferDeSala(dia: string, horario: number, sala: number, pessoas: string[]): boolean {
+    for (const uid of pessoas) {
+      if (!salaPorUid.has(uid)) continue;
+      for (const vizinho of [horario - 1, horario + 1]) {
+        if (vizinho < 0) continue;
+        const salaVizinha = salaDaPessoaPorSlot.get(`${dia}#${vizinho}#${uid}`);
+        if (salaVizinha != null && salaVizinha !== sala) return true;
+      }
+    }
+    return false;
+  }
+
   // Uma tentativa de encaixar UM trabalho, testando só os dias de
   // `diasParaTentar` (lista restrita a 1 dia, pra regra de dia específico;
   // já vem sem o dia a evitar, pra regra de evitar dia; ou `params.dias`
@@ -319,14 +350,19 @@ export function montarBancaAutomatica(params: {
   // preenchido, só aceitando slot em que essa pessoa entre como um dos 2
   // avaliadores; se `avaliadorProibidoUid` vier preenchido (2026-11-27),
   // essa pessoa nunca entra na lista de candidatos, mesmo se fosse o único
-  // jeito de fechar a banca. Já grava o resultado nos mapas compartilhados
-  // e em `bancasNovas` se achar — por isso só pode ser chamada 1x por
-  // trabalho.
+  // jeito de fechar a banca. `respeitarBufferSala` (2026-11-27, default
+  // true) recusa um slot que deixaria alguém com prioridade de sala numa
+  // sala diferente da do horário vizinho (sem tempo de troca) — é só
+  // preferência, então quem chama tenta de novo com `false` se a tentativa
+  // com buffer não achar nada (ver `tentarComBufferDeSala` abaixo). Já
+  // grava o resultado nos mapas compartilhados e em `bancasNovas` se
+  // achar — por isso só pode ser chamada 1x por trabalho (por tentativa).
   function tentarAgendar(
     t: TrabalhoParaBanca,
     diasParaTentar: string[],
     avaliadorObrigatorioUid?: string,
     avaliadorProibidoUid?: string,
+    respeitarBufferSala = true,
   ): { ok: true } | { ok: false; motivo: string } {
     // Diagnóstico (2026-11-17) — só usado se não achar no final; cada flag
     // reflete um motivo diferente, checado na ordem em que o loop de dias
@@ -417,10 +453,12 @@ export function montarBancaAutomatica(params: {
           ? [salaPreferida, ...Array.from({ length: numeroSalas }, (_, i) => i + 1).filter((s) => s !== salaPreferida)]
           : Array.from({ length: numeroSalas }, (_, i) => i + 1);
 
+        const pessoasDaBanca = [t.orientadorUid, ...escolhidos];
         const salasUsadas = salasUsadasPorSlot.get(chaveSlot) ?? new Set<number>();
         for (const sala of ordemSalas) {
           if (salasUsadas.has(sala)) continue; // essa sala já tem banca nesse horário
           if (!salaComVagaNoDia(sala)) continue; // essa sala já bateu o teto do dia
+          if (respeitarBufferSala && temConflitoDeBufferDeSala(dia, horario, sala, pessoasDaBanca)) continue;
 
           usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
           for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
@@ -431,6 +469,7 @@ export function montarBancaAutomatica(params: {
           novoOcupados.add(t.orientadorUid);
           for (const uid of escolhidos) novoOcupados.add(uid);
           ocupadosPorSlot.set(chaveSlot, novoOcupados);
+          for (const uid of pessoasDaBanca) salaDaPessoaPorSlot.set(`${dia}#${horario}#${uid}`, sala);
 
           bancasNovas.push({
             trabalhoId: t.id,
@@ -456,6 +495,21 @@ export function montarBancaAutomatica(params: {
     return { ok: false, motivo };
   }
 
+  // Tenta primeiro respeitando o buffer de troca de sala (2026-11-27) e,
+  // se não achar NADA assim, tenta de novo sem essa exigência — é
+  // preferência, igual às outras regras: nunca deixa o trabalho sem banca
+  // só por causa do buffer entre salas.
+  function tentarComBufferDeSala(
+    t: TrabalhoParaBanca,
+    diasParaTentar: string[],
+    avaliadorObrigatorioUid?: string,
+    avaliadorProibidoUid?: string,
+  ): { ok: true } | { ok: false; motivo: string } {
+    const comBuffer = tentarAgendar(t, diasParaTentar, avaliadorObrigatorioUid, avaliadorProibidoUid, true);
+    if (comBuffer.ok) return comBuffer;
+    return tentarAgendar(t, diasParaTentar, avaliadorObrigatorioUid, avaliadorProibidoUid, false);
+  }
+
   for (const t of trabalhosOrdenados) {
     const regra = regraPorTrabalho.get(t.id);
     let resultado: { ok: true } | { ok: false; motivo: string };
@@ -468,7 +522,7 @@ export function montarBancaAutomatica(params: {
           motivo: `O dia priorizado pela regra de prioridade (${diaRegra}) está fora da janela de apresentações do evento.`,
         };
       } else {
-        resultado = tentarAgendar(t, [diaRegra]);
+        resultado = tentarComBufferDeSala(t, [diaRegra]);
         if (!resultado.ok) {
           resultado = {
             ok: false,
@@ -477,7 +531,7 @@ export function montarBancaAutomatica(params: {
         }
       }
     } else if (regra?.restricao.tipo === "avaliador") {
-      resultado = tentarAgendar(t, params.dias, regra.restricao.uid);
+      resultado = tentarComBufferDeSala(t, params.dias, regra.restricao.uid);
       if (!resultado.ok) {
         resultado = {
           ok: false,
@@ -487,7 +541,7 @@ export function montarBancaAutomatica(params: {
     } else if (regra?.restricao.tipo === "evitar_dia") {
       const diaEvitado = regra.restricao.data;
       const diasPermitidos = params.dias.filter((d) => d !== diaEvitado);
-      resultado = tentarAgendar(t, diasPermitidos);
+      resultado = tentarComBufferDeSala(t, diasPermitidos);
       if (!resultado.ok) {
         resultado = {
           ok: false,
@@ -495,7 +549,7 @@ export function montarBancaAutomatica(params: {
         };
       }
     } else if (regra?.restricao.tipo === "evitar_avaliador") {
-      resultado = tentarAgendar(t, params.dias, undefined, regra.restricao.uid);
+      resultado = tentarComBufferDeSala(t, params.dias, undefined, regra.restricao.uid);
       if (!resultado.ok) {
         resultado = {
           ok: false,
@@ -503,7 +557,7 @@ export function montarBancaAutomatica(params: {
         };
       }
     } else {
-      resultado = tentarAgendar(t, params.dias);
+      resultado = tentarComBufferDeSala(t, params.dias);
     }
 
     if (!resultado.ok) overflow.push({ trabalhoId: t.id, motivo: resultado.motivo });
