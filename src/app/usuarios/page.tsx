@@ -929,9 +929,14 @@ export default function UsuariosPage() {
 
             {(PAPEIS_COM_AREA.includes(criarPapel) || criarPapel === "organizacao") && (
               <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-fatec-navy-900">
-                  Evento <span className="text-fatec-orange-600">*</span>
-                </span>
+                {/* Opcional de verdade (2026-11-27, pedido explícito do
+                    usuário — "não consigo cadastrar ele neutro... porque
+                    obrigatoriamente hoje já tenho que colocar ele em um
+                    evento com um cargo"). Já era opcional no código (ver
+                    criarUsuario — atribuicoesEventos vira [] sem evento
+                    escolhido), só a tela que sugeria o contrário: asterisco
+                    de obrigatório + opção em branco travada (disabled). */}
+                <span className="text-sm font-medium text-fatec-navy-900">Evento</span>
                 <select
                   value={criarEvento}
                   onChange={(e) => {
@@ -940,9 +945,7 @@ export default function UsuariosPage() {
                   }}
                   className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
                 >
-                  <option value="" disabled>
-                    Selecione o evento
-                  </option>
+                  <option value="">Nenhum evento ainda</option>
                   {eventosParaNovaAtribuicao.map((ev) => (
                     <option key={ev.id} value={ev.id}>
                       {ev.nome}
@@ -950,7 +953,8 @@ export default function UsuariosPage() {
                   ))}
                 </select>
                 <span className="text-xs text-fatec-muted">
-                  Mais eventos podem ser adicionados depois, editando o usuário.
+                  Opcional — dá pra cadastrar só a pessoa e atribuir evento/cargo depois, editando
+                  o usuário (inclusive marcar como suplente de um evento de TCC).
                 </span>
               </label>
             )}
