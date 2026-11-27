@@ -44,6 +44,14 @@ export function navParaPerfil(perfil: PerfilUsuario) {
   if (temPapel(perfil, "orientador")) {
     itens.push(...NAV_ORIENTADOR.filter((i) => i.label !== "Início"));
   }
+  // Cargo neutro "professor" (2026-11-27, pedido explícito do usuário) —
+  // quem foi avaliador/moderador de um evento já encerrado volta pra
+  // "professor" (f07030b) mas continua com direito à declaração daquele
+  // evento: ganha só "Certificações" no menu (ver /avaliador/certificacoes,
+  // que agora aceita "professor" e lista pelo servidor).
+  if (perfil.papel === "professor" && !souAvaliacao) {
+    itens.push(...NAV_AVALIADOR.filter((i) => i.label === "Certificações"));
+  }
 
   return itens;
 }
