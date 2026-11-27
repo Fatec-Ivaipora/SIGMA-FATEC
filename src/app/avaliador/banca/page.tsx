@@ -365,14 +365,14 @@ function MinhasBancasView({
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Título do trabalho em destaque (2026-11-27, pedido
-                        explícito do usuário — "na tela do avaliador tem
-                        que ser o título", não o nome do aluno) — nome(s)
-                        do(s) autor(es) confirmado(s) vão na linha de baixo
-                        (2026-11-27, achado real — Ana Beatriz aparecia
-                        "sozinha" porque só `alunoNome` era mostrado,
-                        nunca os coautores confirmados da dupla). */}
-                    <p className="font-semibold text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
+                    {/* Nome(s) do(s) autor(es) confirmado(s) em destaque
+                        (2026-11-27, pedido explícito do usuário — o título
+                        em cima "ficou ruim", quebrando ao lado das tags;
+                        nome(s) da dupla em cima, título embaixo numa fonte
+                        menor, ver abaixo). */}
+                    <p className="font-semibold text-fatec-navy-900">
+                      {alunos.map((a) => a.nome).join(", ")}
+                    </p>
                     <span
                       className={`flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         souOrientadorDesta
@@ -393,9 +393,7 @@ function MinhasBancasView({
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-sm text-fatec-muted">
-                    {alunos.map((a) => a.nome).join(", ")}
-                  </p>
+                  <p className="mt-0.5 text-sm text-fatec-muted">{tituloExibicao(t.titulo)}</p>
                   <p className="mt-0.5 text-xs text-fatec-muted">
                     {/* Dia e horário na mesma linha (2026-11-27, pedido
                         explícito do usuário — "segunda-feira, 30 de
