@@ -70,13 +70,16 @@ export async function removerSuplente(eventoId: string, uid: string) {
 
 export type ProfessorParaBusca = { uid: string; nome: string; email: string };
 
-/** Busca entre PROFESSORES (avaliador/orientador/moderador) pra marcar
- * suplente — não precisa já estar atribuído a esse evento (o ponto é
- * ficar de reserva, independente de já fazer parte da banca ou não).
- * Carrega a coleção usuarios inteira (só roda em tela de admin/organização,
- * já autenticada — mesmo padrão de useUsuariosPorPapelCombinavel em
- * src/lib/data/usuarios.ts), filtra por qualquer um dos 3 papéis
- * combináveis (papel primário ou extra em papeisAvaliacao). */
+/** Busca entre PROFESSORES (avaliador/orientador/moderador — ou o cargo
+ * neutro "professor", 2026-11-27: é literalmente a porta de entrada pra
+ * cadastrar alguém SEM nenhum desses três ainda e só depois marcar como
+ * suplente, ver comentário em src/lib/auth.tsx) pra marcar suplente — não
+ * precisa já estar atribuído a esse evento (o ponto é ficar de reserva,
+ * independente de já fazer parte da banca ou não). Carrega a coleção
+ * usuarios inteira (só roda em tela de admin/organização, já autenticada —
+ * mesmo padrão de useUsuariosPorPapelCombinavel em src/lib/data/usuarios.ts),
+ * filtra por qualquer um dos 3 papéis combináveis (papel primário ou extra
+ * em papeisAvaliacao) OU papel === "professor". */
 export function useProfessoresParaBusca() {
   const [professores, setProfessores] = useState<ProfessorParaBusca[]>([]);
 
@@ -84,7 +87,7 @@ export function useProfessoresParaBusca() {
     let cancelado = false;
     getDocs(collection(db, "usuarios")).then((snap) => {
       if (cancelado) return;
-      const papeisProfessor = new Set(["avaliador", "orientador", "moderador"]);
+      const papeisProfessor = new Set(["avaliador", "orientador", "moderador", "professor"]);
       setProfessores(
         snap.docs
           .map(
