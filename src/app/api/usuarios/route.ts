@@ -22,7 +22,7 @@ type AtribuicaoEvento = { eventoId: string; areasTematicas?: string[] };
 type CriarUsuarioBody = {
   nome: string;
   email: string;
-  papel: "aluno" | "avaliador" | "organizacao" | "admin" | "orientador" | "moderador";
+  papel: "aluno" | "avaliador" | "organizacao" | "admin" | "orientador" | "moderador" | "professor";
   atribuicoesEventos?: AtribuicaoEvento[];
   // Papéis combináveis (2026-08-26) — ver PAPEIS_AVALIACAO em src/lib/auth.tsx.
   papeisAvaliacao?: ("avaliador" | "orientador" | "moderador")[];
@@ -90,10 +90,13 @@ export async function POST(request: Request) {
     // E só pros PRÓPRIOS eventos, nunca em nome de outro evento que não é
     // dela (RN-15, mesmo escopo que já vale pro resto do app).
     if (souOrganizacao) {
-      const PAPEIS_QUE_ORGANIZACAO_PODE_CRIAR = ["avaliador", "orientador", "moderador"];
+      // "professor" (2026-11-27) entra aqui também — é só o cargo neutro,
+      // sem capacidade nenhuma sozinho, organização cadastrar isso é
+      // inofensivo igual cadastrar um avaliador sem evento nenhum ainda.
+      const PAPEIS_QUE_ORGANIZACAO_PODE_CRIAR = ["avaliador", "orientador", "moderador", "professor"];
       if (!PAPEIS_QUE_ORGANIZACAO_PODE_CRIAR.includes(body.papel)) {
         return NextResponse.json(
-          { erro: "Organização só pode cadastrar avaliador, orientador ou moderador." },
+          { erro: "Organização só pode cadastrar avaliador, orientador, moderador ou professor." },
           { status: 403 },
         );
       }

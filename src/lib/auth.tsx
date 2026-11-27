@@ -11,7 +11,22 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
-export type Papel = "aluno" | "avaliador" | "organizacao" | "admin" | "orientador" | "moderador";
+export type Papel =
+  | "aluno"
+  | "avaliador"
+  | "organizacao"
+  | "admin"
+  | "orientador"
+  | "moderador"
+  // Cargo neutro (2026-11-27, pedido explícito do usuário — "cadastrar a
+  // pessoa somente e aí ele cai em um cargo simples professor, esse cargo
+  // não remete a nada, ele só está no sistema, neutro"): existe só pra
+  // cadastrar alguém sem ainda vincular a nenhum evento/cargo de avaliação
+  // — nunca concede nenhuma capacidade sozinho. A capacidade de verdade
+  // continua vindo só de papeisAvaliacao (ver temPapel abaixo, que já lida
+  // com isso igual lida com qualquer outro papel primário que não seja um
+  // dos combináveis).
+  | "professor";
 
 // Só esses três se combinam entre si num mesmo usuário (2026-08-26) — ex.:
 // avaliador+orientador, ou orientador+moderador. aluno/organizacao/admin

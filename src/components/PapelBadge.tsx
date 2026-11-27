@@ -1,6 +1,13 @@
 import type { Papel, PapelAvaliacao } from "@/lib/auth";
 
 const PAPEL_META: Record<Papel, { label: string; text: string; bg: string }> = {
+  // Cargo neutro (2026-11-27) — cinza de propósito, sem remeter a nenhuma
+  // capacidade (ver comentário em Papel, src/lib/auth.tsx).
+  professor: {
+    label: "Professor",
+    text: "text-fatec-muted",
+    bg: "bg-fatec-navy-50",
+  },
   aluno: {
     label: "Aluno",
     text: "text-fatec-sky-600",

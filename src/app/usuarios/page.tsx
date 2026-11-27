@@ -41,6 +41,7 @@ import { CURSOS_FATEC } from "@/lib/cursos";
 const FILTROS: { label: string; papel: Papel | "todos" }[] = [
   { label: "Todos", papel: "todos" },
   { label: "Aluno", papel: "aluno" },
+  { label: "Professor", papel: "professor" },
   { label: "Avaliador", papel: "avaliador" },
   { label: "Orientador", papel: "orientador" },
   { label: "Moderador", papel: "moderador" },
@@ -58,6 +59,17 @@ const PAPEIS_COM_AREA: Papel[] = [...PAPEIS_AVALIACAO];
 // funcionando normalmente (filtro "Orientador" na lista, badge, dados); só
 // não aparece mais como opção pra criar nem pra adicionar como papel extra.
 const PAPEIS_AVALIACAO_VISIVEIS = PAPEIS_AVALIACAO.filter((p) => p !== "orientador");
+
+// "Professor" (2026-11-27, pedido explícito do usuário — cargo neutro, ver
+// comentário em Papel/src/lib/auth.tsx) também pode ganhar evento+área mais
+// tarde, igual avaliador/orientador/moderador — só não no CADASTRO (ali o
+// cadastro fica mínimo de propósito: só nome/e-mail, nada mais), só na
+// EDIÇÃO de quem já existe. Função própria em vez de meter "professor"
+// dentro de PAPEIS_COM_AREA — aquela constante também decide o formulário
+// de CRIAR, que deve continuar sem nenhuma seção extra pra "professor".
+function podeGanharEventoDepois(papel: Papel): boolean {
+  return PAPEIS_COM_AREA.includes(papel) || papel === "professor";
+}
 
 export default function UsuariosPage() {
   const { user, perfil, carregando } = useRequireAuth(["admin", "organizacao"]);
@@ -495,7 +507,7 @@ export default function UsuariosPage() {
 
     const novaLista: AtribuicaoEvento[] = [
       ...atuais,
-      PAPEIS_COM_AREA.includes(editando.papel)
+      podeGanharEventoDepois(editando.papel)
         ? { eventoId: novoEvento, areasTematicas: novasAreas }
         : { eventoId: novoEvento },
     ];
@@ -709,7 +721,7 @@ export default function UsuariosPage() {
                       {souAdmin && (
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-1">
-                            {(PAPEIS_COM_AREA.includes(u.papel) || u.papel === "organizacao") && (
+                            {(podeGanharEventoDepois(u.papel) || u.papel === "organizacao") && (
                               <button
                                 type="button"
                                 aria-label={`Editar eventos de ${u.nome}`}
@@ -867,6 +879,7 @@ export default function UsuariosPage() {
                 className="rounded-xl border border-fatec-line bg-white px-4 py-2.5 text-sm text-fatec-ink outline-none transition-colors focus:border-fatec-sky-600"
               >
                 {!souOrganizacao && <option value="aluno">Aluno</option>}
+                <option value="professor">Professor</option>
                 <option value="avaliador">Avaliador</option>
                 <option value="moderador">Moderador</option>
                 {!souOrganizacao && (
@@ -876,10 +889,17 @@ export default function UsuariosPage() {
                   </>
                 )}
               </select>
+              {criarPapel === "professor" && (
+                <span className="text-xs text-fatec-muted">
+                  Cadastra só a pessoa, sem vincular a nenhum evento/cargo ainda — depois, editando
+                  o usuário, dá pra atribuir avaliador, orientador, moderador ou suplente conforme
+                  o evento precisar.
+                </span>
+              )}
               {souOrganizacao && (
                 <span className="text-xs text-fatec-muted">
-                  Organização só pode cadastrar avaliador ou moderador — pros
-                  eventos que você mesmo tem acesso.
+                  Organização só pode cadastrar avaliador, moderador ou professor — pros eventos
+                  que você mesmo tem acesso.
                 </span>
               )}
             </label>
@@ -1136,23 +1156,35 @@ export default function UsuariosPage() {
         title={`Eventos de ${editando?.nome ?? ""}`}
       >
         <p className="-mt-2 mb-5 text-sm text-fatec-muted">
-          {editando && PAPEIS_COM_AREA.includes(editando.papel)
+          {editando && podeGanharEventoDepois(editando.papel)
             ? "Eventos em que esta pessoa avalia trabalhos, e as áreas temáticas designadas em cada um."
             : "Eventos que esta organização enxerga — trabalhos, relatórios e áreas temáticas de outros eventos ficam ocultos para ela."}
         </p>
 
-        {editando && PAPEIS_COM_AREA.includes(editando.papel) && (
+        {editando && podeGanharEventoDepois(editando.papel) && (
           <div className="mb-5 flex flex-col gap-1.5">
             <span className="text-sm font-medium text-fatec-navy-900">Também atua como</span>
             <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
-              {PAPEIS_AVALIACAO_VISIVEIS.filter((p) => p !== editando.papel).map((p) => (
+              {/* "Professor" (cargo neutro) vê TODOS os 3 combináveis, incluindo
+                  orientador — pra ele é literalmente a única porta de entrada
+                  pra virar orientador (2026-11-27: orientador segue escondido
+                  do cadastro/edição de quem já é avaliador/moderador, pedido
+                  de 2026-10-07, mas não fazia sentido esconder de quem ainda
+                  não é nada). */}
+              {(editando.papel === "professor" ? PAPEIS_AVALIACAO : PAPEIS_AVALIACAO_VISIVEIS)
+                .filter((p) => p !== editando.papel)
+                .map((p) => (
                 <label key={p} className="flex items-center gap-2.5 text-sm text-fatec-ink">
                   <input
                     type="checkbox"
                     checked={!!editando.papeisAvaliacao?.includes(p)}
                     onChange={() => {
                       const uid = editando.uid;
-                      const atuais = editando.papeisAvaliacao ?? [editando.papel as PapelAvaliacao];
+                      const atuais =
+                        editando.papeisAvaliacao ??
+                        (PAPEIS_COM_AREA.includes(editando.papel)
+                          ? [editando.papel as PapelAvaliacao]
+                          : []);
                       const ganhando = !atuais.includes(p);
                       const novos = ganhando ? [...atuais, p] : atuais.filter((x) => x !== p);
                       // Otimista: já reflete no modal e na tabela por trás,
@@ -1229,7 +1261,7 @@ export default function UsuariosPage() {
             ))}
           </select>
 
-          {editando && PAPEIS_COM_AREA.includes(editando.papel) && novoEvento && (
+          {editando && podeGanharEventoDepois(editando.papel) && novoEvento && (
             <div className="flex flex-col gap-2 rounded-xl border border-fatec-line bg-white px-4 py-3">
               {areasDoEvento(novoEvento).length === 0 && (
                 <span className="text-sm text-fatec-muted">

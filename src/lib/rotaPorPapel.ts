@@ -20,4 +20,10 @@ export const ROTA_POR_PAPEL: Record<Papel, string> = {
   admin: "/dashboard",
   orientador: "/orientador",
   moderador: "/avaliador",
+  // Cargo neutro (2026-11-27) — pousa num "lobby" próprio, não direto em
+  // /avaliador ou /orientador: essa pessoa pode não ter NENHUMA capacidade
+  // ainda (acabou de ser cadastrada), e /avaliador/* rejeitaria ela sem
+  // papeisAvaliacao, criando loop de redirecionamento de volta pra cá. Ver
+  // src/app/professor/page.tsx.
+  professor: "/professor",
 };
