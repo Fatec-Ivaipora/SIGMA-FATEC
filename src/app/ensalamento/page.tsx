@@ -49,6 +49,7 @@ import {
   moverBanca,
   useDisponibilidadeDoEvento,
   type RegraPrioridadeBanca,
+  type RegraSalaAvaliador,
 } from "@/lib/data/bancas";
 import {
   useSessoesDoEvento,
@@ -800,6 +801,7 @@ function EnsalamentoBancaView({
         maxBancasPorDia,
         numeroSalas: evento.numeroSalasBanca,
         regras: evento.regrasPrioridadeBanca,
+        regrasSala: evento.regrasSalaPorAvaliador,
       });
       await Promise.all([substituirBancaDoEvento(bancasNovas), salvarOverflowBanca(overflow)]);
     } finally {
@@ -952,6 +954,53 @@ function EnsalamentoBancaView({
   async function removerRegra(id: string) {
     await updateDoc(doc(db, "eventos", evento.id), {
       regrasPrioridadeBanca: regras.filter((r) => r.id !== id),
+    });
+  }
+
+  // Prioridade de sala POR PESSOA (2026-11-27, pedido explícito do usuário
+  // — "preciso que seja por avaliador também") — separada da lista de
+  // regras por trabalho acima: mira o avaliador/orientador, vale em toda
+  // banca em que ele(a) entrar. 1 sala por pessoa (criar outra pra mesma
+  // pessoa substitui a anterior).
+  const regrasSala = evento.regrasSalaPorAvaliador ?? [];
+  const [mostrarFormSala, setMostrarFormSala] = useState(false);
+  const [avaliadorRegraSala, setAvaliadorRegraSala] = useState("");
+  const [salaRegraSala, setSalaRegraSala] = useState("1");
+  const [salvandoRegraSala, setSalvandoRegraSala] = useState(false);
+
+  function abrirFormSala() {
+    setMostrarFormSala(true);
+    setAvaliadorRegraSala("");
+    setSalaRegraSala("1");
+  }
+
+  async function salvarRegraSala() {
+    if (!avaliadorRegraSala) return;
+    const pessoa = disponibilidades.find((d) => d.uid === avaliadorRegraSala);
+    if (!pessoa) return;
+    const novaRegra: RegraSalaAvaliador = {
+      id: `${Date.now()}`,
+      avaliadorUid: pessoa.uid,
+      avaliadorNome: pessoa.nome,
+      sala: Number(salaRegraSala),
+    };
+    setSalvandoRegraSala(true);
+    try {
+      await updateDoc(doc(db, "eventos", evento.id), {
+        regrasSalaPorAvaliador: [
+          ...regrasSala.filter((r) => r.avaliadorUid !== pessoa.uid),
+          novaRegra,
+        ],
+      });
+      setMostrarFormSala(false);
+    } finally {
+      setSalvandoRegraSala(false);
+    }
+  }
+
+  async function removerRegraSala(id: string) {
+    await updateDoc(doc(db, "eventos", evento.id), {
+      regrasSalaPorAvaliador: regrasSala.filter((r) => r.id !== id),
     });
   }
 
@@ -1501,6 +1550,113 @@ function EnsalamentoBancaView({
                     className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
                   >
                     {salvandoRegra ? "Salvando..." : "Salvar regra"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Prioridade de sala POR PESSOA (2026-11-27, pedido explícito do
+              usuário — "preciso que seja por avaliador também") — mira o
+              avaliador/orientador, não um trabalho: vale em toda banca em
+              que ele(a) entrar. Só "tenta primeiro essa sala", nunca trava
+              a geração — por isso não tem aviso de "sem banca" aqui. */}
+          <div className="flex flex-col gap-3 rounded-xl border border-fatec-line bg-fatec-navy-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-fatec-navy-900">Prioridade de sala por avaliador</p>
+              {!mostrarFormSala && (
+                <button
+                  type="button"
+                  onClick={abrirFormSala}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-fatec-orange-600 hover:text-fatec-orange-700"
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  Adicionar
+                </button>
+              )}
+            </div>
+
+            {regrasSala.length === 0 && !mostrarFormSala && (
+              <p className="text-xs text-fatec-muted">
+                Nenhuma pessoa com sala fixa — vale pra toda banca em que ela entrar, como
+                orientador(a) ou avaliador(a).
+              </p>
+            )}
+
+            {regrasSala.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {regrasSala.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-fatec-line bg-white px-3 py-2 text-xs"
+                  >
+                    <span>
+                      <span className="font-medium text-fatec-navy-900">{r.avaliadorNome}</span>
+                      <span className="text-fatec-muted"> — sempre que possível, Sala {r.sala}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removerRegraSala(r.id)}
+                      className="shrink-0 text-fatec-muted hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {mostrarFormSala && (
+              <div className="flex flex-col gap-3 rounded-lg border border-fatec-line bg-white p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Avaliador/orientador</label>
+                    <select
+                      value={avaliadorRegraSala}
+                      onChange={(e) => setAvaliadorRegraSala(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      <option value="">Selecione...</option>
+                      {disponibilidades.map((d) => (
+                        <option key={d.uid} value={d.uid}>
+                          {d.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-fatec-navy-900">Sala</label>
+                    <select
+                      value={salaRegraSala}
+                      onChange={(e) => setSalaRegraSala(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
+                    >
+                      {Array.from({ length: Math.max(1, evento.numeroSalasBanca ?? 1) }, (_, i) => i + 1).map(
+                        (n) => (
+                          <option key={n} value={n}>
+                            Sala {n}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarFormSala(false)}
+                    className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 hover:bg-fatec-navy-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={salvarRegraSala}
+                    disabled={salvandoRegraSala || !avaliadorRegraSala}
+                    className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
+                  >
+                    {salvandoRegraSala ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
               </div>

@@ -15,7 +15,7 @@ import {
 import { db } from "@/lib/firebase";
 import type { PerfilUsuario } from "@/lib/auth";
 import { useMinhasInscricoes } from "@/lib/data/inscricoes";
-import type { RegraPrioridadeBanca } from "@/lib/data/bancas";
+import type { RegraPrioridadeBanca, RegraSalaAvaliador } from "@/lib/data/bancas";
 
 // Sub-área dentro de uma área temática "complexa" (2026-09-01) — ex.: dentro
 // de "Projetos Integradores", cada curso/grupo de cursos vira uma sub-área
@@ -325,6 +325,10 @@ export type Evento = {
   // clicar "Gerar banca automaticamente", ficam salvas aqui pra reaparecer
   // da próxima vez que abrir o modal (editáveis/removíveis).
   regrasPrioridadeBanca?: RegraPrioridadeBanca[];
+  // Prioridade de sala POR PESSOA (2026-11-27, ver RegraSalaAvaliador em
+  // src/lib/data/bancas.ts) — separada de regrasPrioridadeBanca porque
+  // mira um avaliador/orientador, não um trabalho específico.
+  regrasSalaPorAvaliador?: RegraSalaAvaliador[];
 };
 
 /** Lê eventos do Firestore, escopado por RN-15: admin vê tudo; organizacao/avaliador só os seus. */

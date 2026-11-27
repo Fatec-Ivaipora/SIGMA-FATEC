@@ -159,6 +159,23 @@ export type RegraPrioridadeBanca = {
     | { tipo: "evitar_avaliador"; uid: string; nome: string };
 };
 
+// Prioridade de sala POR PESSOA, não por trabalho (2026-11-27, pedido
+// explícito do usuário — "preciso que seja por avaliador também", caso
+// real de logística/acessibilidade: uma pessoa específica precisa cair
+// sempre na mesma sala, em TODAS as bancas em que ela participar, sem
+// precisar marcar trabalho por trabalho). Só existe a versão "garantir"
+// (não foi pedida uma versão "evitar sala"). Preferência forte igual às
+// outras regras: tenta essa sala primeiro, mas cai pra outra sala livre
+// sem bloquear a banca se a preferida já estiver ocupada nesse horário —
+// nunca gera overflow por causa disso (ver comentário em `salaPorUid`
+// dentro de montarBancaAutomatica).
+export type RegraSalaAvaliador = {
+  id: string;
+  avaliadorUid: string;
+  avaliadorNome: string;
+  sala: number;
+};
+
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
  * montarGradeAutomatica em sessoes.ts, só que cruzando DIA×HORÁRIO×SALA×
  * PESSOA). Pra cada trabalho, acha o primeiro dia (na ordem de `dias`) em
@@ -235,11 +252,19 @@ export function montarBancaAutomatica(params: {
   maxBancasPorDia?: number;
   numeroSalas?: number;
   regras?: RegraPrioridadeBanca[];
+  regrasSala?: RegraSalaAvaliador[];
 }): { bancasNovas: BancaGerada[]; overflow: OverflowBanca[] } {
   const numeroSalas = Math.max(1, params.numeroSalas ?? 1);
   const diasPorUid = new Map(params.disponibilidades.map((d) => [d.uid, new Set(d.dias)]));
   const nomePorUid = new Map(params.disponibilidades.map((d) => [d.uid, d.nome]));
   const usosPorUid = new Map<string, number>();
+  // Prioridade de sala POR PESSOA (2026-11-27, pedido explícito do usuário
+  // — diferente das regras de RegraPrioridadeBanca, que miram 1 trabalho
+  // só: essa aqui mira a PESSOA, e vale pra toda banca em que ela entrar,
+  // seja como orientador(a) ou como um dos 2 avaliadores escolhidos. Só
+  // "garantir" (tenta primeiro essa sala, nunca "evitar sala" — não pedido).
+  const salaPorUid = new Map<string, number>();
+  for (const r of params.regrasSala ?? []) salaPorUid.set(r.avaliadorUid, r.sala);
   // Chave "dia#sala" — quantas bancas essa sala já tem nesse dia (o teto
   // de verdade, POR sala, não somado entre salas).
   const bancasPorSalaDia = new Map<string, number>();
@@ -375,13 +400,28 @@ export function montarBancaAutomatica(params: {
           ];
         }
         if (candidatos.length < 2) continue;
+        const escolhidos = candidatos.slice(0, 2);
+
+        // Prioridade de sala por avaliador (2026-11-27, pedido explícito do
+        // usuário) — se o orientador (ou um dos 2 escolhidos) tem uma sala
+        // preferida marcada em `salaPorUid`, tenta ESSA sala primeiro, só
+        // caindo pra outra se ela já estiver ocupada/no teto nesse horário.
+        // Sempre "tenta primeiro", nunca bloqueia a banca — por isso não
+        // entra na lógica de overflow: o pior caso é a banca cair numa
+        // sala diferente da preferida, nunca ficar sem banca por causa
+        // disso.
+        const salaPreferida = [t.orientadorUid, ...escolhidos]
+          .map((uid) => salaPorUid.get(uid))
+          .find((s): s is number => s != null && s >= 1 && s <= numeroSalas);
+        const ordemSalas = salaPreferida
+          ? [salaPreferida, ...Array.from({ length: numeroSalas }, (_, i) => i + 1).filter((s) => s !== salaPreferida)]
+          : Array.from({ length: numeroSalas }, (_, i) => i + 1);
 
         const salasUsadas = salasUsadasPorSlot.get(chaveSlot) ?? new Set<number>();
-        for (let sala = 1; sala <= numeroSalas; sala++) {
+        for (const sala of ordemSalas) {
           if (salasUsadas.has(sala)) continue; // essa sala já tem banca nesse horário
           if (!salaComVagaNoDia(sala)) continue; // essa sala já bateu o teto do dia
 
-          const escolhidos = candidatos.slice(0, 2);
           usosPorUid.set(t.orientadorUid, (usosPorUid.get(t.orientadorUid) ?? 0) + 1);
           for (const uid of escolhidos) usosPorUid.set(uid, (usosPorUid.get(uid) ?? 0) + 1);
           bancasPorSalaDia.set(`${dia}#${sala}`, (bancasPorSalaDia.get(`${dia}#${sala}`) ?? 0) + 1);
