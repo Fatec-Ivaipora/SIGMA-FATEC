@@ -52,13 +52,21 @@ export type TrabalhoStatus =
   // Só usados quando evento.tipo === "tcc"; nunca aparecem num trabalho de
   // evento MAC/simples.
   | "tcc_inscrito"
+  // Último valor de `status` que um trabalho de TCC assume (2026-11-27,
+  // pedido explícito do usuário — avaliação virou por ALUNO, não mais por
+  // trabalho inteiro, ver `avaliacoesBanca` acima). "tcc_avaliado"/
+  // "tcc_aprovado"/"tcc_reprovado" abaixo continuam existindo como union,
+  // mas só aparecem dentro de `avaliacoesBanca[].statusFinal` agora —
+  // nunca mais em `status` — porque esse trabalho pode ter os 2 autores
+  // em etapas diferentes (um já aprovado, outro ainda sem nota).
   | "tcc_banca_agendada"
-  // Todo mundo da banca (orientador + 2 avaliadores) já lançou nota, mas o
-  // admin ainda não decidiu aprovar/reprovar (2026-11-24, pedido explícito
-  // do usuário — "não pode ter só o botão aprovar/reprovar direto, tem que
-  // ter um 'enviar para resultado' igual na MAC, selecionando em lote só
-  // quem já tem as 3 notas"). Só entra aqui via ação manual do admin
-  // (enviarParaResultadoTCC em src/lib/data/bancas.ts), nunca automático.
+  // Todo mundo da banca (orientador + 2 avaliadores) já lançou nota pra
+  // ESSE aluno, mas o admin ainda não decidiu aprovar/reprovar ele
+  // (2026-11-24, pedido explícito do usuário — "não pode ter só o botão
+  // aprovar/reprovar direto, tem que ter um 'enviar para resultado' igual
+  // na MAC, selecionando em lote só quem já tem as 3 notas"). Só entra
+  // aqui via ação manual do admin (enviarParaResultadoTCC em
+  // src/lib/data/bancas.ts), nunca automático.
   | "tcc_avaliado"
   | "tcc_aprovado"
   | "tcc_reprovado";
@@ -230,21 +238,33 @@ export type Trabalho = {
   // reload; limpo (deleteField) assim que o trabalho ganha banca, numa
   // geração futura ou ajuste manual.
   motivoSemBanca?: string;
-  // Uma entrada por membro da banca que já avaliou (máx. 3: orientador +
-  // os 2 avaliadores) — cada um preenche a própria nota, ninguém sobrescreve
-  // a nota dos outros 2 (ver salvarNotaBanca). `notas` usa as chaves de
-  // CRITERIOS_BANCA_TCC (src/lib/criteriosAvaliacao.ts).
-  notasBanca?: {
-    uid: string;
-    nome: string;
-    papelNaBanca: "orientador" | "avaliador";
-    notas: Record<string, number>;
-    nota: number;
+  // Avaliação da banca, UMA ENTRADA POR ALUNO da dupla (2026-11-27, pedido
+  // explícito do usuário — "em TCCs em duplas precisa ser avaliado ambos
+  // os alunos": antes só existia 1 nota pro trabalho inteiro, sem
+  // distinguir quem é quem quando tem 2 autores). Trabalho de autor único
+  // tem só 1 entrada (o próprio alunoUid). Dentro de cada entrada, até 3
+  // notas (orientador + os 2 avaliadores — cada um preenche a própria,
+  // ninguém sobrescreve a dos outros 2, ver salvarNotaBanca); `notas` usa
+  // as chaves de CRITERIOS_BANCA_TCC (src/lib/criteriosAvaliacao.ts).
+  // `notaFinal`/`statusFinal` só existem quando as 3 chegaram — e são
+  // INDEPENDENTES entre os alunos da mesma dupla: um pode ser aprovado e o
+  // outro reprovado. `status` do trabalho (acima) continua só pra
+  // agendamento (tcc_inscrito/tcc_banca_agendada), nunca mais vira
+  // tcc_avaliado/aprovado/reprovado — isso agora é só aqui dentro, por
+  // aluno.
+  avaliacoesBanca?: {
+    alunoUid: string;
+    alunoNome: string;
+    notas: {
+      uid: string;
+      nome: string;
+      papelNaBanca: "orientador" | "avaliador";
+      notas: Record<string, number>;
+      nota: number;
+    }[];
+    notaFinal?: number;
+    statusFinal?: "tcc_avaliado" | "tcc_aprovado" | "tcc_reprovado";
   }[];
-  // Média das notas em notasBanca, calculada quando as 3 já chegaram — só
-  // aí o trabalho pode sair de "tcc_banca_agendada" pra
-  // "tcc_aprovado"/"tcc_reprovado".
-  notaFinalBanca?: number;
 };
 
 /** Lê trabalhos do Firestore, escopado por papel: admin vê tudo; organizacao só

@@ -58,7 +58,7 @@ import {
   baixarCertificadoBancaTCC,
 } from "@/lib/baixarCertificado";
 import { CRITERIOS_AVALIACAO, NOTAS_AVALIACAO } from "@/lib/criteriosAvaliacao";
-import { enviarParaResultadoTCC } from "@/lib/data/bancas";
+import { enviarParaResultadoTCC, type AvaliacaoBancaAluno } from "@/lib/data/bancas";
 import { analisarEmpatesPorArea, STATUS_JA_AVALIADO } from "@/lib/analiseEmpate";
 
 type Etapa =
@@ -403,27 +403,50 @@ const ETAPAS_TCC: { key: EtapaTCC; label: string }[] = [
   { key: "resultado", label: "Resultado" },
 ];
 
-// Etapas de TCC (2026-11-16, pedido explícito do usuário) — bem mais curto
-// que o STATUS_POR_ETAPA de MAC acima: Inscrição → Avaliação → Resultado,
-// sem Revisão/Apresentação/Resultado Final (não existe desempate nem
-// revisão de resumo aqui). Ver TrabalhoStatus em src/lib/data/trabalhos.ts.
-const STATUS_POR_ETAPA_TCC: Record<EtapaTCC, TrabalhoStatus[]> = {
-  inscricao: ["tcc_inscrito"],
-  avaliacao: ["tcc_banca_agendada"],
-  // "tcc_avaliado" entra aqui (2026-11-24, pedido explícito do usuário) —
-  // é o lote "já tem as 3 notas, mandado pra Resultado, falta decidir
-  // aprovar/reprovar" — fica junto dos já decididos pra decisão acontecer
-  // na mesma tela que mostra a nota final (StatusBadge diferencia os 3).
-  resultado: ["tcc_avaliado", "tcc_aprovado", "tcc_reprovado"],
+// 1 LINHA por ALUNO inscrito, não por trabalho (2026-11-27, pedido
+// explícito do usuário — "hoje mostra só os 42 trabalhos, tem que mostrar
+// os 48 inscritos": TCC em dupla passou a ser avaliado aluno por aluno
+// (ver avaliacoesBanca em src/lib/data/trabalhos.ts), então a lista
+// também precisa ter 1 linha por pessoa — um trabalho de dupla vira 2
+// linhas (mesmo título/orientador/banca, nota e resultado próprios de
+// cada um). Coautor com convite ainda pendente não vira linha (não
+// confirmou participação).
+type LinhaTCC = {
+  trabalho: Trabalho;
+  alunoUid: string;
+  alunoNome: string;
+  avaliacao?: AvaliacaoBancaAluno;
 };
+
+function linhasDoTrabalho(t: Trabalho): LinhaTCC[] {
+  const pendentes = new Set(t.convitesPendentes ?? []);
+  const participantesConfirmados = (t.participantesUids ?? [])
+    .map((uid, i) => ({ uid, nome: t.participantesNomes?.[i] ?? uid }))
+    .filter((p) => !pendentes.has(p.uid));
+  return [{ uid: t.alunoUid, nome: t.alunoNome }, ...participantesConfirmados].map((a) => ({
+    trabalho: t,
+    alunoUid: a.uid,
+    alunoNome: a.nome,
+    avaliacao: t.avaliacoesBanca?.find((av) => av.alunoUid === a.uid),
+  }));
+}
+
+// Etapa de CADA linha (2026-11-27) — "Inscrição"/"Avaliação" ainda seguem
+// o status do TRABALHO (agendamento de banca é compartilhado pelos 2
+// autores da dupla), mas "Resultado" passa a ser por ALUNO: como cada um
+// pode ter as 3 notas e a decisão em momentos diferentes, os 2 autores do
+// mesmo trabalho podem estar em etapas diferentes ao mesmo tempo.
+function etapaDaLinha(linha: LinhaTCC): EtapaTCC {
+  if (linha.trabalho.status === "tcc_inscrito") return "inscricao";
+  if (linha.avaliacao?.statusFinal) return "resultado";
+  return "avaliacao";
+}
 
 /** Evento TCC (2026-11-16) — igual espírito de InscritosSimplesView acima
  * (early return no lugar da pipeline de MAC), mas com 3 abas próprias em vez
  * de lista única, já que TCC tem etapas (ainda que bem mais simples que
- * MAC). "Avaliação" e "Resultado" ainda ficam vazias até a geração de banca
- * existir (fases seguintes do plano) — essa tela já reflete o modelo de
- * dados final (bancaData/notasBanca/notaFinalBanca), só não tem de onde vir
- * ainda. Self-contido: recebe os trabalhos já filtrados pelo pai. */
+ * MAC). Self-contido: recebe os trabalhos já filtrados pelo pai, e monta
+ * `linhasDoTrabalho` (1 linha por aluno) antes de filtrar por etapa. */
 function TrabalhosTCCView({
   evento,
   trabalhosDoEvento,
@@ -433,7 +456,7 @@ function TrabalhosTCCView({
   evento: Evento;
   trabalhosDoEvento: Trabalho[];
   user: User | null | undefined;
-  onDecidirResultado: (trabalho: Trabalho, aprovado: boolean) => void;
+  onDecidirResultado: (trabalho: Trabalho, alunoUid: string, aprovado: boolean) => void;
 }) {
   const [etapa, setEtapa] = useState<EtapaTCC>("inscricao");
   const [busca, setBusca] = useState("");
@@ -442,16 +465,29 @@ function TrabalhosTCCView({
   // Envio em lote pra Resultado (2026-11-24, pedido explícito do usuário —
   // "igual na MAC, seleciona os trabalhos e envia pra resultado só os que
   // estão com as 3 notas; quem falta nota fica banca agendada, não pode
-  // ser enviado"). Só existe nessa etapa, zera ao trocar de etapa/evento
-  // (igual outros estados dessa tela).
+  // ser enviado"). Chave composta "trabalhoId::alunoUid" (2026-11-27) —
+  // agora o envio é por aluno, não por trabalho. Zera ao trocar de
+  // etapa/evento (igual outros estados dessa tela).
   const [selecionadosTCC, setSelecionadosTCC] = useState<Set<string>>(new Set());
   const [enviandoResultado, setEnviandoResultado] = useState(false);
+
+  const todasAsLinhas = useMemo(
+    () => trabalhosDoEvento.flatMap(linhasDoTrabalho),
+    [trabalhosDoEvento],
+  );
 
   async function handleEnviarParaResultado() {
     if (selecionadosTCC.size === 0) return;
     setEnviandoResultado(true);
     try {
-      await enviarParaResultadoTCC([...selecionadosTCC]);
+      const selecoes = [...selecionadosTCC]
+        .map((chave) => {
+          const [trabalhoId, alunoUid] = chave.split("::");
+          const trabalho = trabalhosDoEvento.find((t) => t.id === trabalhoId);
+          return trabalho ? { trabalho, alunoUid } : null;
+        })
+        .filter((s): s is { trabalho: Trabalho; alunoUid: string } => !!s);
+      await enviarParaResultadoTCC(selecoes);
       setSelecionadosTCC(new Set());
     } finally {
       setEnviandoResultado(false);
@@ -470,22 +506,21 @@ function TrabalhosTCCView({
     }
   }
 
-  const contagem = (e: EtapaTCC) =>
-    trabalhosDoEvento.filter((t) => STATUS_POR_ETAPA_TCC[e].includes(t.status)).length;
+  const contagem = (e: EtapaTCC) => todasAsLinhas.filter((l) => etapaDaLinha(l) === e).length;
 
   const exibidos = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return trabalhosDoEvento
-      .filter((t) => STATUS_POR_ETAPA_TCC[etapa].includes(t.status))
+    return todasAsLinhas
+      .filter((l) => etapaDaLinha(l) === etapa)
       .filter(
-        (t) =>
+        (l) =>
           !termo ||
-          t.titulo.toLowerCase().includes(termo) ||
-          t.alunoNome.toLowerCase().includes(termo) ||
-          (t.nomeOrientador ?? "").toLowerCase().includes(termo),
+          l.trabalho.titulo.toLowerCase().includes(termo) ||
+          l.alunoNome.toLowerCase().includes(termo) ||
+          (l.trabalho.nomeOrientador ?? "").toLowerCase().includes(termo),
       )
-      .sort((a, b) => momentoEnvio(b) - momentoEnvio(a));
-  }, [trabalhosDoEvento, etapa, busca]);
+      .sort((a, b) => momentoEnvio(b.trabalho) - momentoEnvio(a.trabalho));
+  }, [todasAsLinhas, etapa, busca]);
 
   return (
     <div className="flex-1 px-6 py-8 md:px-10">
@@ -552,24 +587,27 @@ function TrabalhosTCCView({
       </div>
 
       <div className="mt-6 flex flex-col divide-y divide-fatec-line overflow-hidden rounded-xl border border-fatec-line bg-white">
-        {exibidos.map((t) => {
-          const notasCompletas = (t.notasBanca?.length ?? 0) === 3;
+        {exibidos.map((linha) => {
+          const { trabalho: t, alunoUid, alunoNome, avaliacao } = linha;
+          const notasCompletas = (avaliacao?.notas.length ?? 0) === 3;
+          const chaveSelecao = `${t.id}::${alunoUid}`;
+          const statusExibido = avaliacao?.statusFinal ?? t.status;
           return (
           <div
-            key={t.id}
+            key={chaveSelecao}
             className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex min-w-0 items-start gap-3">
               {etapa === "avaliacao" && (
                 <input
                   type="checkbox"
-                  checked={selecionadosTCC.has(t.id)}
+                  checked={selecionadosTCC.has(chaveSelecao)}
                   disabled={!notasCompletas}
                   onChange={(e) =>
                     setSelecionadosTCC((prev) => {
                       const novo = new Set(prev);
-                      if (e.target.checked) novo.add(t.id);
-                      else novo.delete(t.id);
+                      if (e.target.checked) novo.add(chaveSelecao);
+                      else novo.delete(chaveSelecao);
                       return novo;
                     })
                   }
@@ -586,7 +624,7 @@ function TrabalhosTCCView({
                 {tituloExibicao(t.titulo)}
               </p>
               <p className="truncate text-xs text-fatec-muted">
-                {t.alunoNome} · orientador(a): {t.nomeOrientador ?? "—"}
+                {alunoNome} · orientador(a): {t.nomeOrientador ?? "—"}
               </p>
               {etapa === "avaliacao" && (
                 <p className="mt-0.5 text-xs text-fatec-muted">
@@ -597,7 +635,7 @@ function TrabalhosTCCView({
                         ? ` · ${t.bancaAvaliadores.map((a) => a.nome).join(", ")}`
                         : ""}
                       {" · "}
-                      {t.notasBanca?.length ?? 0}/3 notas lançadas
+                      {avaliacao?.notas.length ?? 0}/3 notas lançadas
                     </>
                   ) : (
                     "Banca ainda não agendada"
@@ -607,12 +645,12 @@ function TrabalhosTCCView({
               </div>
             </div>
             <div className="flex flex-none flex-wrap items-center gap-2">
-              {etapa === "resultado" && t.notaFinalBanca != null && (
+              {etapa === "resultado" && avaliacao?.notaFinal != null && (
                 <span className="rounded-full bg-fatec-navy-50 px-2.5 py-1 text-xs font-semibold text-fatec-navy-800">
-                  Nota final: {t.notaFinalBanca.toFixed(1)}
+                  Nota final: {avaliacao.notaFinal.toFixed(1)}
                 </span>
               )}
-              {etapa === "resultado" && t.status === "tcc_aprovado" && (
+              {etapa === "resultado" && avaliacao?.statusFinal === "tcc_aprovado" && (
                 <button
                   type="button"
                   onClick={() => handleBaixarCertificado(t.id)}
@@ -623,25 +661,25 @@ function TrabalhosTCCView({
                   {baixandoId === t.id ? "Gerando..." : "Certificado da banca"}
                 </button>
               )}
-              {etapa === "resultado" && t.status === "tcc_avaliado" && (
+              {etapa === "resultado" && avaliacao?.statusFinal === "tcc_avaliado" && (
                 <>
                   <button
                     type="button"
-                    onClick={() => onDecidirResultado(t, true)}
+                    onClick={() => onDecidirResultado(t, alunoUid, true)}
                     className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
                   >
                     Aprovar
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDecidirResultado(t, false)}
+                    onClick={() => onDecidirResultado(t, alunoUid, false)}
                     className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100"
                   >
                     Reprovar
                   </button>
                 </>
               )}
-              <StatusBadge status={t.status} />
+              <StatusBadge status={statusExibido} />
             </div>
           </div>
           );
@@ -1988,15 +2026,22 @@ export default function TrabalhosAdminPage() {
     setSelecionados(new Set());
   }
 
-  // Aprovar/reprovar um TCC (2026-11-16) — admin decide olhando a
-  // notaFinalBanca já calculada (média das 3 notas da banca, ver fase de
+  // Aprovar/reprovar UM ALUNO de um TCC (2026-11-16, por aluno desde
+  // 2026-11-27 — numa dupla, cada um tem seu próprio resultado, um pode
+  // ser aprovado e o outro reprovado) — admin decide olhando a notaFinal
+  // já calculada (média das 3 notas da banca PRA ESSE ALUNO, ver fase de
   // rubrica que preenche isso), sem nota de corte automática por enquanto.
   // Sem e-mail de notificação ainda (2026-11-16) — /api/mail/trabalho-status
   // só conhece os tipos de MAC; TCC ganha um tipo próprio numa fase
   // seguinte, se o usuário pedir.
-  async function decidirResultadoTCC(trabalho: Trabalho, aprovado: boolean) {
+  async function decidirResultadoTCC(trabalho: Trabalho, alunoUid: string, aprovado: boolean) {
+    const avaliacoesBanca = (trabalho.avaliacoesBanca ?? []).map((a) =>
+      a.alunoUid === alunoUid
+        ? { ...a, statusFinal: aprovado ? ("tcc_aprovado" as const) : ("tcc_reprovado" as const) }
+        : a,
+    );
     await updateDoc(doc(db, "trabalhos", trabalho.id), {
-      status: aprovado ? "tcc_aprovado" : "tcc_reprovado",
+      avaliacoesBanca,
       atualizadoEm: serverTimestamp(),
     });
   }

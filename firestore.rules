@@ -228,16 +228,18 @@ service cloud.firestore {
           chegouODiaDoEvento(resource.data.eventoId) &&
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(["status", "notaModerador", "notasCriteriosApresentacao", "compareceuApresentacao", "premiado", "atualizadoEm"])) ||
-        // Banca de TCC (2026-11-16) — orientador ou um dos 2 avaliadores
-        // da banca lança a PRÓPRIA nota (notasBanca é um array com 1
-        // entrada por pessoa — a aplicação cuida de mesclar a entrada nova
-        // sem sobrescrever a dos outros 2, a regra só limita QUAIS campos
-        // podem mudar, não valida o conteúdo do array).
+        // Banca de TCC (2026-11-16, estendido 2026-11-27 pra nota por aluno
+        // da dupla) — orientador ou um dos 2 avaliadores da banca lança a
+        // PRÓPRIA nota (avaliacoesBanca é um array com 1 entrada por ALUNO,
+        // cada uma com até 3 notas — a aplicação cuida de mesclar a entrada
+        // nova sem sobrescrever a dos outros 2 nem a do outro aluno da
+        // dupla, a regra só limita QUAL campo pode mudar, não valida o
+        // conteúdo do array).
         ((souAvaliacao("avaliador") || souAvaliacao("orientador") || souAvaliacao("moderador")) && (
           resource.data.orientadorUid == request.auth.uid ||
           request.auth.uid in resource.data.get("bancaAvaliadoresUids", [])
         ) && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(["notasBanca", "notaFinalBanca", "status", "atualizadoEm"])) ||
+            .hasOnly(["avaliacoesBanca", "atualizadoEm"])) ||
         // Dono do trabalho edita livremente (título, resumo, orientador,
         // colegas, etc.) enquanto "revisao" (avaliador pediu ajuste, sem
         // prazo) OU dentro do prazo de edição do evento — depois disso,

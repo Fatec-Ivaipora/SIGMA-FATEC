@@ -276,6 +276,19 @@ function somarMinutos(horario: string, minutos: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+// Alunos CONFIRMADOS do trabalho — dono + cada coautor que já aceitou o
+// convite (2026-11-27, mesmo critério usado em TrabalhosTCCView,
+// src/app/trabalhos/page.tsx) — cada um precisa da própria nota quando é
+// TCC em dupla ("em TCCs em duplas precisa ser avaliado ambos os
+// alunos", pedido explícito do usuário).
+function alunosConfirmadosDoTrabalho(t: Trabalho): { uid: string; nome: string }[] {
+  const pendentes = new Set(t.convitesPendentes ?? []);
+  const participantesConfirmados = (t.participantesUids ?? [])
+    .map((uid, i) => ({ uid, nome: t.participantesNomes?.[i] ?? uid }))
+    .filter((p) => !pendentes.has(p.uid));
+  return [{ uid: t.alunoUid, nome: t.alunoNome }, ...participantesConfirmados];
+}
+
 function MinhasBancasView({
   trabalhos,
   user,
@@ -330,7 +343,14 @@ function MinhasBancasView({
   return (
     <div className="flex flex-col gap-3">
       {minhasBancas.map((t) => {
-        const jaAvaliei = t.notasBanca?.some((n) => n.uid === uid);
+        const alunos = alunosConfirmadosDoTrabalho(t);
+        const feitos = alunos.filter((a) =>
+          t.avaliacoesBanca?.find((av) => av.alunoUid === a.uid)?.notas.some((n) => n.uid === uid),
+        ).length;
+        const todosAvaliados = alunos.length > 0 && feitos === alunos.length;
+        const todosAprovados = alunos.every(
+          (a) => t.avaliacoesBanca?.find((av) => av.alunoUid === a.uid)?.statusFinal === "tcc_aprovado",
+        );
         // Tag (2026-11-17, pedido explícito do usuário) — a mesma pessoa
         // pode ser orientador(a) num trabalho e avaliador(a) em outro, no
         // mesmo evento; deixa claro em qual papel entra em CADA banca.
@@ -354,34 +374,33 @@ function MinhasBancasView({
                     >
                       {souOrientadorDesta ? "Orientador(a)" : "Avaliador(a)"}
                     </span>
-                    {/* Sala/horário em tags separadas (2026-11-27, pedido
-                        explícito do usuário) — só aparecem quando a banca já
-                        foi gerada com sala/horário definidos (ajuste manual
-                        limpa os dois, ver moverBanca). */}
+                    {/* Tag de sala (2026-11-27, pedido explícito do
+                        usuário) — só aparece quando a banca já foi gerada
+                        com sala definida (ajuste manual limpa, ver
+                        moverBanca). O horário agora fica junto do dia, na
+                        linha de baixo, não mais em tag separada. */}
                     {t.bancaSala != null && (
                       <span className="flex-none rounded-full bg-fatec-navy-50 px-2 py-0.5 text-[11px] font-semibold text-fatec-navy-700">
                         Sala {t.bancaSala}
                       </span>
                     )}
-                    {t.bancaHorarioIndex != null && (
-                      <span className="flex-none rounded-full bg-fatec-navy-50 px-2 py-0.5 text-[11px] font-semibold text-fatec-navy-700">
-                        {rotuloHorario(t.bancaHorarioIndex)}
-                      </span>
-                    )}
                   </div>
                   <p className="mt-0.5 text-sm text-fatec-muted">
+                    {/* Dia e horário na mesma linha (2026-11-27, pedido
+                        explícito do usuário — "segunda-feira, 30 de
+                        novembro - 21:00 - 21:20"). */}
                     {t.bancaData
-                      ? new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR", {
+                      ? `${new Date(`${t.bancaData}T00:00:00`).toLocaleDateString("pt-BR", {
                           weekday: "long",
                           day: "2-digit",
                           month: "long",
-                        })
+                        })}${t.bancaHorarioIndex != null ? ` - ${rotuloHorario(t.bancaHorarioIndex)}` : ""}`
                       : "Banca ainda não agendada"}
                   </p>
                 </div>
               </div>
               <div className="flex flex-none items-center gap-2">
-                {t.status === "tcc_aprovado" && (
+                {todosAprovados && (
                   <button
                     type="button"
                     onClick={() => baixarCertificado(t.id)}
@@ -392,9 +411,9 @@ function MinhasBancasView({
                     {baixandoId === t.id ? "Gerando..." : "Certificado"}
                   </button>
                 )}
-                {!t.bancaData ? null : jaAvaliei ? (
+                {!t.bancaData ? null : todosAvaliados ? (
                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    Nota lançada
+                    {alunos.length > 1 ? "Notas lançadas" : "Nota lançada"}
                   </span>
                 ) : (
                   <button
@@ -402,7 +421,7 @@ function MinhasBancasView({
                     onClick={() => setAvaliandoId(t.id)}
                     className="rounded-lg border border-fatec-line px-3 py-1.5 text-xs font-semibold text-fatec-navy-900 transition-colors hover:bg-fatec-navy-50"
                   >
-                    Dar nota
+                    {alunos.length > 1 ? `Dar nota (${feitos}/${alunos.length})` : "Dar nota"}
                   </button>
                 )}
               </div>
@@ -412,24 +431,104 @@ function MinhasBancasView({
       })}
       {erroBaixar && <p className="text-sm text-rose-600">{erroBaixar}</p>}
 
-      {/* Nota num modal (2026-11-17, pedido explícito do usuário — "a
-          avaliação poderia ser igual do avaliador, abrir um modal, fica
-          mais bonito") — antes expandia dentro do próprio card. */}
       {trabalhoAvaliando && uid && (
-        <Modal
-          open
+        <ModalAvaliarBanca
+          trabalho={trabalhoAvaliando}
+          uid={uid}
+          meuNome={meuNome}
           onClose={() => setAvaliandoId(null)}
-          title={`Avaliar — ${trabalhoAvaliando.alunoNome}`}
-        >
-          <FormularioNotaBanca
-            trabalho={trabalhoAvaliando}
-            uid={uid}
-            meuNome={meuNome}
-            onEnviado={() => setAvaliandoId(null)}
-          />
-        </Modal>
+        />
       )}
     </div>
+  );
+}
+
+/** Nota num modal (2026-11-17, pedido explícito do usuário — "a avaliação
+ * poderia ser igual do avaliador, abrir um modal, fica mais bonito") —
+ * antes expandia dentro do próprio card. Ganhou abas por aluno (2026-11-27,
+ * pedido explícito do usuário — "em TCCs em duplas precisa ser avaliado
+ * ambos os alunos... o modal possa ter uma aba em cima com os nomes, ele
+ * seleciona aba, dá as notas e envia um de cada vez") — trabalho de autor
+ * único nem mostra aba nenhuma (só 1 aluno, direto no formulário). Ao
+ * enviar a nota de um aluno, avança sozinho pra próxima aba sem nota ainda
+ * (da MESMA pessoa que está avaliando); fecha o modal quando não sobra
+ * nenhuma. */
+function ModalAvaliarBanca({
+  trabalho,
+  uid,
+  meuNome,
+  onClose,
+}: {
+  trabalho: Trabalho;
+  uid: string;
+  meuNome: string;
+  onClose: () => void;
+}) {
+  const alunos = alunosConfirmadosDoTrabalho(trabalho);
+  const jaAvalieiAluno = (alunoUid: string) =>
+    trabalho.avaliacoesBanca?.find((a) => a.alunoUid === alunoUid)?.notas.some((n) => n.uid === uid) ??
+    false;
+
+  const [alunoAtivoUid, setAlunoAtivoUid] = useState(
+    () => alunos.find((a) => !jaAvalieiAluno(a.uid))?.uid ?? alunos[0]?.uid ?? "",
+  );
+  const alunoAtivo = alunos.find((a) => a.uid === alunoAtivoUid) ?? alunos[0];
+
+  // Depois de enviar a nota de UM aluno, pula pra próxima aba sem nota
+  // ainda (ignorando quem acabou de ser avaliado — o snapshot do Firestore
+  // pode não ter chegado ainda nesse exato momento, então não dá pra
+  // confiar em `jaAvalieiAluno` pra ele mesmo aqui). Fecha se não sobrar
+  // ninguém.
+  function avancarOuFechar(alunoConcluidoUid: string) {
+    const proximo = alunos.find((a) => a.uid !== alunoConcluidoUid && !jaAvalieiAluno(a.uid));
+    if (proximo) setAlunoAtivoUid(proximo.uid);
+    else onClose();
+  }
+
+  if (!alunoAtivo) return null;
+
+  return (
+    <Modal open onClose={onClose} title={`Avaliar — ${trabalho.alunoNome}`}>
+      <div className="flex flex-col gap-4">
+        {alunos.length > 1 && (
+          <div className="flex flex-wrap gap-2 border-b border-fatec-line pb-4">
+            {alunos.map((a) => {
+              const feito = jaAvalieiAluno(a.uid);
+              const ativo = a.uid === alunoAtivoUid;
+              return (
+                <button
+                  key={a.uid}
+                  type="button"
+                  onClick={() => setAlunoAtivoUid(a.uid)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    ativo
+                      ? "bg-fatec-orange-500 text-white"
+                      : "bg-fatec-navy-50 text-fatec-navy-800 hover:bg-fatec-navy-100"
+                  }`}
+                >
+                  {feito && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                  {a.nome}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {jaAvalieiAluno(alunoAtivo.uid) ? (
+          <p className="text-sm text-fatec-muted">Você já lançou a nota de {alunoAtivo.nome}.</p>
+        ) : (
+          <FormularioNotaBanca
+            key={alunoAtivo.uid}
+            trabalho={trabalho}
+            uid={uid}
+            meuNome={meuNome}
+            alunoUid={alunoAtivo.uid}
+            alunoNome={alunoAtivo.nome}
+            onEnviado={() => avancarOuFechar(alunoAtivo.uid)}
+          />
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -437,11 +536,15 @@ function FormularioNotaBanca({
   trabalho,
   uid,
   meuNome,
+  alunoUid,
+  alunoNome,
   onEnviado,
 }: {
   trabalho: Trabalho;
   uid: string;
   meuNome: string;
+  alunoUid: string;
+  alunoNome: string;
   onEnviado: () => void;
 }) {
   const [notas, setNotas] = useState<Record<string, number>>({});
@@ -462,7 +565,9 @@ function FormularioNotaBanca({
       };
       await salvarNotaBanca({
         trabalhoId: trabalho.id,
-        notasBancaAtuais: trabalho.notasBanca ?? [],
+        avaliacoesAtuais: trabalho.avaliacoesBanca ?? [],
+        alunoUid,
+        alunoNome,
         minhaNota,
       });
       onEnviado();

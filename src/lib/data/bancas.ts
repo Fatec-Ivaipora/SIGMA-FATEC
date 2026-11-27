@@ -16,7 +16,8 @@ import {
 import { db } from "@/lib/firebase";
 import type { Trabalho } from "@/lib/data/trabalhos";
 
-export type NotaBancaTCC = NonNullable<Trabalho["notasBanca"]>[number];
+export type AvaliacaoBancaAluno = NonNullable<Trabalho["avaliacoesBanca"]>[number];
+export type NotaBancaTCC = AvaliacaoBancaAluno["notas"][number];
 
 /** disponibilidadeBanca/{eventoId}_{uid} (2026-11-16, pedido explícito do
  * usuário) — autoatendimento: cada avaliador/orientador/moderador vinculado
@@ -621,15 +622,31 @@ export async function salvarOverflowBanca(overflow: OverflowBanca[]) {
 /** Envio em lote da Avaliação pra Resultado (2026-11-24, pedido explícito
  * do usuário — "não pode ter só o botão aprovar/reprovar direto, tem que
  * ter um 'enviar para resultado' igual na MAC, selecionando em lote só
- * quem já tem as 3 notas"). A tela (TrabalhosTCCView, trabalhos/page.tsx)
- * só deixa selecionar quem já tem `notasBanca.length === 3` — essa função
- * confia nisso e só grava o status, não revalida. */
-export async function enviarParaResultadoTCC(trabalhoIds: string[]) {
-  for (let i = 0; i < trabalhoIds.length; i += OPERACOES_POR_LOTE) {
+ * quem já tem as 3 notas"). POR ALUNO (2026-11-27, ver `avaliacoesBanca`
+ * em src/lib/data/trabalhos.ts) — numa dupla, cada aluno pode ser enviado
+ * pra Resultado em momentos diferentes, independente do outro. A tela
+ * (TrabalhosTCCView, trabalhos/page.tsx) só deixa selecionar quem já tem
+ * `avaliacao.notas.length === 3` — essa função confia nisso e só grava o
+ * `statusFinal`, não revalida. Agrupa por trabalho (2+ alunos selecionados
+ * do MESMO trabalho viram 1 update só, não 2). */
+export async function enviarParaResultadoTCC(
+  selecoes: { trabalho: Trabalho; alunoUid: string }[],
+) {
+  const porTrabalho = new Map<string, { trabalho: Trabalho; alunoUids: Set<string> }>();
+  for (const s of selecoes) {
+    const atual = porTrabalho.get(s.trabalho.id) ?? { trabalho: s.trabalho, alunoUids: new Set<string>() };
+    atual.alunoUids.add(s.alunoUid);
+    porTrabalho.set(s.trabalho.id, atual);
+  }
+  const entradas = [...porTrabalho.values()];
+  for (let i = 0; i < entradas.length; i += OPERACOES_POR_LOTE) {
     const batch = writeBatch(db);
-    for (const id of trabalhoIds.slice(i, i + OPERACOES_POR_LOTE)) {
-      batch.update(doc(db, "trabalhos", id), {
-        status: "tcc_avaliado",
+    for (const { trabalho, alunoUids } of entradas.slice(i, i + OPERACOES_POR_LOTE)) {
+      const avaliacoesBanca = (trabalho.avaliacoesBanca ?? []).map((a) =>
+        alunoUids.has(a.alunoUid) ? { ...a, statusFinal: "tcc_avaliado" as const } : a,
+      );
+      batch.update(doc(db, "trabalhos", trabalho.id), {
+        avaliacoesBanca,
         atualizadoEm: serverTimestamp(),
       });
     }
@@ -662,29 +679,49 @@ export function moverBanca(
   });
 }
 
-/** Lança a nota de UM membro da banca (2026-11-16) — nunca sobrescreve a
- * nota dos outros 2 (substitui só a entrada com o mesmo uid, se reenviar).
- * Calcula notaFinalBanca (média) assim que a 3ª nota chega; antes disso o
- * campo fica ausente. firestore.rules restringe quem chama isso a só mexer
- * em notasBanca/notaFinalBanca/atualizadoEm (ver regra de update em
- * /trabalhos — orientadorUid ou bancaAvaliadoresUids bater com quem está
- * logado). */
+/** Lança a nota de UM membro da banca PRA UM ALUNO específico da dupla
+ * (2026-11-16, estendido 2026-11-27 pra separar por aluno — "em TCCs em
+ * duplas precisa ser avaliado ambos os alunos") — nunca sobrescreve a nota
+ * dos outros 2 membros da banca, nem a de outro aluno da mesma dupla
+ * (substitui só a entrada com o mesmo uid DENTRO da entrada do mesmo
+ * aluno). Calcula a nota final (média) desse aluno assim que a 3ª nota
+ * dele chega; antes disso o campo fica ausente. Cria a entrada do aluno em
+ * `avaliacoesBanca` na primeira nota, se ainda não existir. firestore.rules
+ * restringe quem chama isso a só mexer em avaliacoesBanca/atualizadoEm (ver
+ * regra de update em /trabalhos — orientadorUid ou bancaAvaliadoresUids
+ * bater com quem está logado). */
 export async function salvarNotaBanca(params: {
   trabalhoId: string;
-  notasBancaAtuais: NotaBancaTCC[];
+  avaliacoesAtuais: AvaliacaoBancaAluno[];
+  alunoUid: string;
+  alunoNome: string;
   minhaNota: NotaBancaTCC;
 }) {
-  const notasBanca = [
-    ...params.notasBancaAtuais.filter((n) => n.uid !== params.minhaNota.uid),
+  const indice = params.avaliacoesAtuais.findIndex((a) => a.alunoUid === params.alunoUid);
+  const avaliacaoAtual: AvaliacaoBancaAluno =
+    indice >= 0
+      ? params.avaliacoesAtuais[indice]
+      : { alunoUid: params.alunoUid, alunoNome: params.alunoNome, notas: [] };
+
+  const notas = [
+    ...avaliacaoAtual.notas.filter((n) => n.uid !== params.minhaNota.uid),
     params.minhaNota,
   ];
-  const notaFinalBanca =
-    notasBanca.length === 3
-      ? notasBanca.reduce((acc, n) => acc + n.nota, 0) / 3
-      : undefined;
+  const notaFinal =
+    notas.length === 3 ? notas.reduce((acc, n) => acc + n.nota, 0) / 3 : undefined;
+  const novaAvaliacao: AvaliacaoBancaAluno = {
+    ...avaliacaoAtual,
+    notas,
+    ...(notaFinal != null ? { notaFinal } : {}),
+  };
+
+  const avaliacoesBanca =
+    indice >= 0
+      ? params.avaliacoesAtuais.map((a, i) => (i === indice ? novaAvaliacao : a))
+      : [...params.avaliacoesAtuais, novaAvaliacao];
+
   await updateDoc(doc(db, "trabalhos", params.trabalhoId), {
-    notasBanca,
-    ...(notaFinalBanca != null ? { notaFinalBanca } : {}),
+    avaliacoesBanca,
     atualizadoEm: serverTimestamp(),
   });
 }

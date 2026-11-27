@@ -144,22 +144,49 @@ const estilos = StyleSheet.create({
   },
 });
 
-// Encolhe a linha (padding/gap/fonte) conforme o número de bancas daquele
-// dia+sala, pra caber tudo numa página só (2026-11-24, pedido explícito do
-// usuário — "tem que ser a sala em uma página"; com o espaçamento fixo
-// anterior, 8 bancas já estourava pra uma 2ª página). Calibrado pra caber
-// confortavelmente até ~8-10 bancas no tamanho normal; acima disso encolhe
-// até um piso de 60% (menor que isso fica difícil de ler impresso) — nesse
-// caso extremo ainda pode sobrar 1-2 linhas pra página seguinte, mas isso é
-// raro (a maioria dos dias não passa de ~8 bancas por sala, dado o tempo
-// físico de uma sessão). Números abaixo vêm de medir a altura real de uma
-// linha no tamanho base (padding 13 + ~5 linhas de texto ≈ 92pt) contra a
-// altura disponível numa página A4 depois do cabeçalho/rodapé/faixas da
-// sala (≈ 600pt, com folga).
-function escalaPara(quantidade: number): number {
-  const ALTURA_LINHA_BASE = 92;
-  const ALTURA_DISPONIVEL = 600;
-  const bruta = ALTURA_DISPONIVEL / (ALTURA_LINHA_BASE * Math.max(quantidade, 1));
+// Quantas linhas um texto deve ocupar, dado quantos caracteres cabem por
+// linha (2026-11-27, achado real — PDFs com páginas em branco no meio: o
+// cálculo antigo tratava TODO título como 1 linha só, mas título longo
+// quebra em 2+; isso empurrava o conteúdo de um grupo além da página, e o
+// react-pdf criava uma página extra quase vazia só pra sobrar a última
+// linha que faltou). Estimativa conservadora de propósito (menos
+// caracteres por linha do que realmente cabe) — prefere encolher um
+// pouco mais do que o estritamente necessário a arriscar outra página em
+// branco.
+function linhasEstimadas(texto: string | undefined, caracteresPorLinha: number): number {
+  return Math.max(1, Math.ceil((texto ?? "").length / caracteresPorLinha));
+}
+
+// Largura da coluna de trabalho na escala base (1x): página A4 (595pt) -
+// padding da página (32x2) - padding da linha (12x2) - coluna de horário
+// (80) ≈ 427pt. Caracteres por linha estimados em Helvetica ~9.5pt
+// (tamanho base do título) de propósito abaixo do que realmente cabe
+// (~90), pra sempre prever linhas a mais, nunca a menos.
+const CARACTERES_POR_LINHA_TITULO = 80;
+
+// Encolhe a linha (padding/gap/fonte) conforme a altura REAL estimada de
+// cada banca daquele dia+sala, pra caber tudo numa página só (2026-11-24,
+// pedido explícito do usuário — "tem que ser a sala em uma página"). Soma
+// a altura de cada item (fixa + quantas linhas o título realmente ocupa,
+// não mais uma média por item igual pra todos) contra a altura disponível
+// numa página A4 depois do cabeçalho/rodapé/faixas da sala — depois
+// encolhe até um piso de 60% (menor que isso fica difícil de ler
+// impresso). `ALTURA_BASE_SEM_TITULO` vem de medir o restante de uma
+// linha no tamanho base (padding 26 + gaps 12 + aluno 12.6 + 3 linhas de
+// subinfo 30.6 ≈ 81); `ALTURA_POR_LINHA_TITULO` é a altura de 1 linha do
+// título nesse mesmo tamanho (fonte 9.5 × lineHeight 1.3 ≈ 12.5).
+function escalaPara(itens: ItemBancaParaPdf[]): number {
+  const ALTURA_BASE_SEM_TITULO = 81;
+  const ALTURA_POR_LINHA_TITULO = 12.5;
+  const ALTURA_DISPONIVEL = 580;
+  const alturaTotal = itens.reduce(
+    (acc, item) =>
+      acc +
+      ALTURA_BASE_SEM_TITULO +
+      linhasEstimadas(item.titulo, CARACTERES_POR_LINHA_TITULO) * ALTURA_POR_LINHA_TITULO,
+    0,
+  );
+  const bruta = ALTURA_DISPONIVEL / Math.max(alturaTotal, 1);
   return Math.max(0.6, Math.min(1, bruta));
 }
 
@@ -204,7 +231,7 @@ export function GradeBancaPDF({
         // Escala calculada por grupo (2026-11-24) — uma sala com 4 bancas
         // num dia usa o tamanho normal; uma com 10 no mesmo dia encolhe um
         // pouco, mas as duas cabem na própria página sozinhas.
-        const escala = escalaPara(g.itens.length);
+        const escala = escalaPara(g.itens);
         const estiloLinhaEscalado = { paddingVertical: 13 * escala };
         const estiloBlocoEscalado = { gap: 3 * escala };
         const estiloAlunoEscalado = { fontSize: 10.5 * escala };
