@@ -145,7 +145,18 @@ export type RegraPrioridadeBanca = {
   alunoNome: string;
   titulo: string;
   prioridade: "alta" | "media" | "baixa";
-  restricao: { tipo: "dia"; data: string } | { tipo: "avaliador"; uid: string; nome: string };
+  // "dia"/"avaliador" GARANTEM (tenta incluir); "evitar_dia"/"evitar_avaliador"
+  // (2026-11-27, pedido explícito do usuário — caso real de conflito de
+  // interesse: uma aluna não podia de jeito nenhum ser avaliada por uma
+  // professora específica) EXCLUEM — mesma preferência forte dos outros
+  // dois: tenta evitar, mas se for literalmente impossível (único jeito de
+  // montar a banca passa pela pessoa/dia a evitar) cai pro overflow com
+  // motivo específico, nunca inclui a pessoa/dia escondido.
+  restricao:
+    | { tipo: "dia"; data: string }
+    | { tipo: "avaliador"; uid: string; nome: string }
+    | { tipo: "evitar_dia"; data: string }
+    | { tipo: "evitar_avaliador"; uid: string; nome: string };
 };
 
 /** Função pura determinística (first-fit, sem IA — mesmo espírito de
@@ -208,12 +219,15 @@ export type RegraPrioridadeBanca = {
  *
  * Preferência FORTE, não regra dura (2026-11-25, pedido explícito do
  * usuário — "preferência forte, com aviso se não der"): um trabalho com
- * regra só tenta a restrição pedida (o dia específico, ou ter o avaliador
- * específico na banca) — nunca cai pra uma busca sem restrição nenhuma.
- * Se a restrição não couber (ex.: o avaliador prioritário não está
- * disponível em dia nenhum em comum com o orientador), esse trabalho
- * específico vai pro `overflow` com um motivo próprio, SEM afetar o
- * agendamento de nenhum outro trabalho nem forçar choque de horário. */
+ * regra só tenta a restrição pedida (o dia específico, ter o avaliador
+ * específico na banca, evitar um dia específico, ou evitar um avaliador
+ * específico — 2026-11-27, caso real de conflito de interesse) — nunca cai
+ * pra uma busca sem restrição nenhuma. Se a restrição não couber (ex.: o
+ * avaliador prioritário não está disponível em dia nenhum em comum com o
+ * orientador, ou a banca não fecha sem a pessoa que devia ser evitada),
+ * esse trabalho específico vai pro `overflow` com um motivo próprio, SEM
+ * afetar o agendamento de nenhum outro trabalho nem forçar choque de
+ * horário. */
 export function montarBancaAutomatica(params: {
   trabalhos: TrabalhoParaBanca[];
   disponibilidades: DisponibilidadeBanca[];
@@ -275,15 +289,19 @@ export function montarBancaAutomatica(params: {
 
   // Uma tentativa de encaixar UM trabalho, testando só os dias de
   // `diasParaTentar` (lista restrita a 1 dia, pra regra de dia específico;
-  // ou `params.dias` inteiro, no caso normal/regra de avaliador) e, se
-  // `avaliadorObrigatorioUid` vier preenchido, só aceitando slot em que essa
-  // pessoa entre como um dos 2 avaliadores. Já grava o resultado nos mapas
-  // compartilhados e em `bancasNovas` se achar — por isso só pode ser
-  // chamada 1x por trabalho.
+  // já vem sem o dia a evitar, pra regra de evitar dia; ou `params.dias`
+  // inteiro nos outros casos) e, se `avaliadorObrigatorioUid` vier
+  // preenchido, só aceitando slot em que essa pessoa entre como um dos 2
+  // avaliadores; se `avaliadorProibidoUid` vier preenchido (2026-11-27),
+  // essa pessoa nunca entra na lista de candidatos, mesmo se fosse o único
+  // jeito de fechar a banca. Já grava o resultado nos mapas compartilhados
+  // e em `bancasNovas` se achar — por isso só pode ser chamada 1x por
+  // trabalho.
   function tentarAgendar(
     t: TrabalhoParaBanca,
     diasParaTentar: string[],
     avaliadorObrigatorioUid?: string,
+    avaliadorProibidoUid?: string,
   ): { ok: true } | { ok: false; motivo: string } {
     // Diagnóstico (2026-11-17) — só usado se não achar no final; cada flag
     // reflete um motivo diferente, checado na ordem em que o loop de dias
@@ -310,7 +328,8 @@ export function montarBancaAutomatica(params: {
       // vai resolver; evita rodar o loop de horário à toa (e evita loop
       // sem fim se o dia nunca tiver gente suficiente).
       const poolDoDia = Array.from(diasPorUid.entries()).filter(
-        ([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia),
+        ([uid, diasDisp]) =>
+          uid !== t.orientadorUid && diasDisp.has(dia) && uid !== avaliadorProibidoUid,
       );
       if (avaliadorObrigatorioUid && poolDoDia.some(([uid]) => uid === avaliadorObrigatorioUid)) {
         avaliadorObrigatorioNuncaDisponivel = false;
@@ -334,7 +353,13 @@ export function montarBancaAutomatica(params: {
         if (avaliadorObrigatorioUid && ocupados.has(avaliadorObrigatorioUid)) continue;
 
         const candidatosDisponiveis = Array.from(diasPorUid.entries())
-          .filter(([uid, diasDisp]) => uid !== t.orientadorUid && diasDisp.has(dia) && !ocupados.has(uid))
+          .filter(
+            ([uid, diasDisp]) =>
+              uid !== t.orientadorUid &&
+              diasDisp.has(dia) &&
+              !ocupados.has(uid) &&
+              uid !== avaliadorProibidoUid,
+          )
           .map(([uid]) => uid)
           .sort((a, b) => (usosPorUid.get(a) ?? 0) - (usosPorUid.get(b) ?? 0));
 
@@ -417,6 +442,24 @@ export function montarBancaAutomatica(params: {
         resultado = {
           ok: false,
           motivo: `Não foi possível incluir o avaliador priorizado pela regra de prioridade (${regra.restricao.nome}) em nenhum dia/horário disponível.`,
+        };
+      }
+    } else if (regra?.restricao.tipo === "evitar_dia") {
+      const diaEvitado = regra.restricao.data;
+      const diasPermitidos = params.dias.filter((d) => d !== diaEvitado);
+      resultado = tentarAgendar(t, diasPermitidos);
+      if (!resultado.ok) {
+        resultado = {
+          ok: false,
+          motivo: `Não coube evitando o dia ${diaEvitado} (regra de prioridade): ${resultado.motivo}`,
+        };
+      }
+    } else if (regra?.restricao.tipo === "evitar_avaliador") {
+      resultado = tentarAgendar(t, params.dias, undefined, regra.restricao.uid);
+      if (!resultado.ok) {
+        resultado = {
+          ok: false,
+          motivo: `Não foi possível montar a banca evitando o avaliador priorizado pela regra de prioridade (${regra.restricao.nome}).`,
         };
       }
     } else {

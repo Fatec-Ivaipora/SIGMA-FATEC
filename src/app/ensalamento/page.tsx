@@ -878,7 +878,9 @@ function EnsalamentoBancaView({
   const [buscaTrabalhoRegra, setBuscaTrabalhoRegra] = useState("");
   const [trabalhoRegraId, setTrabalhoRegraId] = useState("");
   const [prioridadeRegra, setPrioridadeRegra] = useState<RegraPrioridadeBanca["prioridade"]>("alta");
-  const [tipoRestricaoRegra, setTipoRestricaoRegra] = useState<"dia" | "avaliador">("dia");
+  const [tipoRestricaoRegra, setTipoRestricaoRegra] = useState<
+    "dia" | "avaliador" | "evitar_dia" | "evitar_avaliador"
+  >("dia");
   const [diaRestricaoRegra, setDiaRestricaoRegra] = useState("");
   const [avaliadorRestricaoRegra, setAvaliadorRestricaoRegra] = useState("");
   const [salvandoRegra, setSalvandoRegra] = useState(false);
@@ -917,8 +919,9 @@ function EnsalamentoBancaView({
   async function salvarRegra() {
     const t = trabalhoSelecionadoRegra;
     if (!t) return;
-    if (tipoRestricaoRegra === "dia" && !diaRestricaoRegra) return;
-    if (tipoRestricaoRegra === "avaliador" && !avaliadorRestricaoRegra) return;
+    const ehTipoDia = tipoRestricaoRegra === "dia" || tipoRestricaoRegra === "evitar_dia";
+    if (ehTipoDia && !diaRestricaoRegra) return;
+    if (!ehTipoDia && !avaliadorRestricaoRegra) return;
     const nomeAvaliador = disponibilidades.find((d) => d.uid === avaliadorRestricaoRegra)?.nome ?? "";
     const novaRegra: RegraPrioridadeBanca = {
       id: `${Date.now()}`,
@@ -929,7 +932,11 @@ function EnsalamentoBancaView({
       restricao:
         tipoRestricaoRegra === "dia"
           ? { tipo: "dia", data: diaRestricaoRegra }
-          : { tipo: "avaliador", uid: avaliadorRestricaoRegra, nome: nomeAvaliador },
+          : tipoRestricaoRegra === "evitar_dia"
+            ? { tipo: "evitar_dia", data: diaRestricaoRegra }
+            : tipoRestricaoRegra === "avaliador"
+              ? { tipo: "avaliador", uid: avaliadorRestricaoRegra, nome: nomeAvaliador }
+              : { tipo: "evitar_avaliador", uid: avaliadorRestricaoRegra, nome: nomeAvaliador },
     };
     setSalvandoRegra(true);
     try {
@@ -1330,7 +1337,13 @@ function EnsalamentoBancaView({
                       <span className="font-medium text-fatec-navy-900">{r.alunoNome}</span>
                       <span className="text-fatec-muted">
                         {" — "}
-                        {r.restricao.tipo === "dia" ? rotuloDiaRegra(r.restricao.data) : `com ${r.restricao.nome}`}
+                        {r.restricao.tipo === "dia"
+                          ? rotuloDiaRegra(r.restricao.data)
+                          : r.restricao.tipo === "evitar_dia"
+                            ? `evitar ${rotuloDiaRegra(r.restricao.data)}`
+                            : r.restricao.tipo === "avaliador"
+                              ? `com ${r.restricao.nome}`
+                              : `evitar ${r.restricao.nome}`}
                       </span>
                     </div>
                     <button
@@ -1415,16 +1428,22 @@ function EnsalamentoBancaView({
                     <label className="text-xs font-medium text-fatec-navy-900">Tipo de restrição</label>
                     <select
                       value={tipoRestricaoRegra}
-                      onChange={(e) => setTipoRestricaoRegra(e.target.value as "dia" | "avaliador")}
+                      onChange={(e) =>
+                        setTipoRestricaoRegra(
+                          e.target.value as "dia" | "avaliador" | "evitar_dia" | "evitar_avaliador",
+                        )
+                      }
                       className="mt-1 w-full rounded-lg border border-fatec-line px-3 py-2 text-xs focus:border-fatec-orange-500 focus:outline-none"
                     >
-                      <option value="dia">Dia específico</option>
-                      <option value="avaliador">Avaliador específico</option>
+                      <option value="dia">Garantir dia específico</option>
+                      <option value="avaliador">Garantir avaliador específico</option>
+                      <option value="evitar_dia">Evitar dia específico</option>
+                      <option value="evitar_avaliador">Evitar avaliador específico</option>
                     </select>
                   </div>
                 </div>
 
-                {tipoRestricaoRegra === "dia" ? (
+                {tipoRestricaoRegra === "dia" || tipoRestricaoRegra === "evitar_dia" ? (
                   <div>
                     <label className="text-xs font-medium text-fatec-navy-900">Dia</label>
                     <select
@@ -1441,7 +1460,11 @@ function EnsalamentoBancaView({
                   </div>
                 ) : (
                   <div>
-                    <label className="text-xs font-medium text-fatec-navy-900">Avaliador/orientador</label>
+                    <label className="text-xs font-medium text-fatec-navy-900">
+                      {tipoRestricaoRegra === "evitar_avaliador"
+                        ? "Avaliador/orientador a evitar"
+                        : "Avaliador/orientador"}
+                    </label>
                     <select
                       value={avaliadorRestricaoRegra}
                       onChange={(e) => setAvaliadorRestricaoRegra(e.target.value)}
@@ -1471,7 +1494,9 @@ function EnsalamentoBancaView({
                     disabled={
                       salvandoRegra ||
                       !trabalhoSelecionadoRegra ||
-                      (tipoRestricaoRegra === "dia" ? !diaRestricaoRegra : !avaliadorRestricaoRegra)
+                      (tipoRestricaoRegra === "dia" || tipoRestricaoRegra === "evitar_dia"
+                        ? !diaRestricaoRegra
+                        : !avaliadorRestricaoRegra)
                     }
                     className="rounded-lg bg-fatec-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-fatec-orange-600 disabled:cursor-not-allowed disabled:bg-fatec-navy-100 disabled:text-fatec-muted"
                   >
