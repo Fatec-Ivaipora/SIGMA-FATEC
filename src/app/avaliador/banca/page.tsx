@@ -18,6 +18,7 @@ import {
   type NotaBancaTCC,
 } from "@/lib/data/bancas";
 import { CRITERIOS_BANCA_TCC, escalaParaPeso } from "@/lib/criteriosAvaliacao";
+import { tituloExibicao } from "@/lib/tituloTrabalho";
 
 /** Banca de TCC (2026-11-16, pedido explícito do usuário) — duas coisas
  * nessa tela: (1) disponibilidade de dias (autoatendimento, sem precedente
@@ -364,7 +365,14 @@ function MinhasBancasView({
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-fatec-navy-900">{t.alunoNome}</p>
+                    {/* Título do trabalho em destaque (2026-11-27, pedido
+                        explícito do usuário — "na tela do avaliador tem
+                        que ser o título", não o nome do aluno) — nome(s)
+                        do(s) autor(es) confirmado(s) vão na linha de baixo
+                        (2026-11-27, achado real — Ana Beatriz aparecia
+                        "sozinha" porque só `alunoNome` era mostrado,
+                        nunca os coautores confirmados da dupla). */}
+                    <p className="font-semibold text-fatec-navy-900">{tituloExibicao(t.titulo)}</p>
                     <span
                       className={`flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         souOrientadorDesta
@@ -386,6 +394,9 @@ function MinhasBancasView({
                     )}
                   </div>
                   <p className="mt-0.5 text-sm text-fatec-muted">
+                    {alunos.map((a) => a.nome).join(", ")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-fatec-muted">
                     {/* Dia e horário na mesma linha (2026-11-27, pedido
                         explícito do usuário — "segunda-feira, 30 de
                         novembro - 21:00 - 21:20"). */}
@@ -488,7 +499,7 @@ function ModalAvaliarBanca({
   if (!alunoAtivo) return null;
 
   return (
-    <Modal open onClose={onClose} title={`Avaliar — ${trabalho.alunoNome}`}>
+    <Modal open onClose={onClose} title={`Avaliar — ${tituloExibicao(trabalho.titulo)}`}>
       <div className="flex flex-col gap-4">
         {alunos.length > 1 && (
           <div className="flex flex-wrap gap-2 border-b border-fatec-line pb-4">
