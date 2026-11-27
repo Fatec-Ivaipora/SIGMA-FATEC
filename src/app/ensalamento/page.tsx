@@ -17,6 +17,7 @@ import {
   Shuffle,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
 import { arrayRemove, arrayUnion, doc, Timestamp, updateDoc } from "firebase/firestore";
 import QRCode from "qrcode";
@@ -39,6 +40,7 @@ import {
   type InscricaoEvento,
 } from "@/lib/data/inscricoes";
 import { useMonitoriasSimplesDoAluno } from "@/lib/data/monitores";
+import { useSuplentesDoEvento } from "@/lib/data/suplentes";
 import { periodosDoEvento, rotuloPeriodo } from "@/lib/periodosPresenca";
 import { baixarGradeEnsalamentoPdf, baixarGradeBancaPdf } from "@/lib/baixarCertificado";
 import {
@@ -682,6 +684,90 @@ function ConfirmacaoPresencaView({
   );
 }
 
+// Minúsculo e sem acento — mesmo critério de busca usado em
+// OrientadorPicker/colega (2026-11-27).
+function semAcento(texto: string): string {
+  return (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+type CandidatoAvaliadorEdicao = { uid: string; nome: string; suplente: boolean };
+
+/** Busca com autocompletar pra escolher avaliador na edição manual da
+ * banca (2026-11-27, pedido explícito do usuário — "no editar poderia ser
+ * um input de pesquisa não um de selecionar, é muita gente") — antes era
+ * um <select> com todo mundo disponível naquele dia, que ficava enorme.
+ * Candidatos incluem suplentes (tag própria na sugestão) junto de quem já
+ * marcou disponibilidade — ver EnsalamentoBancaView. */
+function BuscaAvaliadorEdicao({
+  candidatos,
+  valorUid,
+  nomeSelecionado,
+  onSelecionar,
+  onLimpar,
+  placeholder,
+}: {
+  candidatos: CandidatoAvaliadorEdicao[];
+  valorUid: string;
+  nomeSelecionado: string;
+  onSelecionar: (c: CandidatoAvaliadorEdicao) => void;
+  onLimpar: () => void;
+  placeholder: string;
+}) {
+  const [busca, setBusca] = useState("");
+  const termo = semAcento(busca);
+  const sugestoes = termo ? candidatos.filter((c) => semAcento(c.nome).includes(termo)).slice(0, 8) : [];
+
+  if (valorUid) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-fatec-line bg-fatec-navy-50 px-2 py-1.5 text-xs">
+        <span className="max-w-[9rem] truncate">{nomeSelecionado}</span>
+        <button
+          type="button"
+          aria-label="Trocar"
+          onClick={onLimpar}
+          className="shrink-0 text-fatec-muted hover:text-fatec-navy-900"
+        >
+          <X className="h-3 w-3" strokeWidth={2} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder={placeholder}
+        className="w-32 rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
+      />
+      {sugestoes.length > 0 && (
+        <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-48 w-56 overflow-y-auto rounded-lg border border-fatec-line bg-white shadow-lg">
+          {sugestoes.map((c) => (
+            <button
+              key={c.uid}
+              type="button"
+              onClick={() => {
+                onSelecionar(c);
+                setBusca("");
+              }}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-fatec-navy-50"
+            >
+              <span className="truncate">{c.nome}</span>
+              {c.suplente && (
+                <span className="flex-none rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  Suplente
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Ensalamento de banca de TCC (2026-11-16, pedido explícito do usuário) —
 // bem diferente do ensalamento por sala×horário abaixo: cruza
 // disponibilidade (dia×pessoa, ver src/lib/data/bancas.ts) em vez de
@@ -698,6 +784,12 @@ function EnsalamentoBancaView({
 }) {
   const { user } = useAuth();
   const { disponibilidades } = useDisponibilidadeDoEvento(evento.id);
+  // Suplentes (2026-11-27, pedido explícito do usuário) — professor de
+  // sobreaviso, selecionável na edição manual da banca mesmo sem ter
+  // marcado disponibilidade nesse dia (o ponto dele é justamente cobrir
+  // um buraco de última hora, não ficar preso ao calendário normal de
+  // disponibilidade).
+  const { suplentes } = useSuplentesDoEvento(evento.id);
   const dias = useMemo(
     () => diasDoIntervalo(evento.dataRealizacao ?? "", evento.dataRealizacaoFim ?? ""),
     [evento.dataRealizacao, evento.dataRealizacaoFim],
@@ -1223,7 +1315,10 @@ function EnsalamentoBancaView({
                     // Só gente disponível NESSE dia aparece pra escolher
                     // (2026-11-17, pedido explícito do usuário) — sem
                     // isso dava pra "salvar" um avaliador que nunca marcou
-                    // esse dia como disponível, sem aviso nenhum.
+                    // esse dia como disponível, sem aviso nenhum. Suplente
+                    // (2026-11-27) é exceção de propósito — fica de fora
+                    // do calendário normal de disponibilidade, o ponto
+                    // dele é cobrir um buraco de última hora.
                     const outroEscolhido = i === 0 ? edicaoAvaliador2 : edicaoAvaliador1;
                     const disponiveisNesseDia = disponibilidades.filter(
                       (d) =>
@@ -1231,20 +1326,34 @@ function EnsalamentoBancaView({
                         d.uid !== outroEscolhido &&
                         d.dias.includes(edicaoDia),
                     );
+                    const suplentesCandidatos = suplentes.filter(
+                      (s) =>
+                        s.uid !== t.orientadorUid &&
+                        s.uid !== outroEscolhido &&
+                        !disponiveisNesseDia.some((d) => d.uid === s.uid),
+                    );
+                    const candidatos: CandidatoAvaliadorEdicao[] = [
+                      ...disponiveisNesseDia.map((d) => ({
+                        uid: d.uid,
+                        nome: d.nome,
+                        suplente: suplentes.some((s) => s.uid === d.uid),
+                      })),
+                      ...suplentesCandidatos.map((s) => ({ uid: s.uid, nome: s.nome, suplente: true })),
+                    ];
+                    const nomeSelecionado =
+                      candidatos.find((c) => c.uid === valor)?.nome ??
+                      t.bancaAvaliadores?.find((a) => a.uid === valor)?.nome ??
+                      valor;
                     return (
-                      <select
+                      <BuscaAvaliadorEdicao
                         key={i}
-                        value={valor}
-                        onChange={(e) => setValor(e.target.value)}
-                        className="rounded-lg border border-fatec-line bg-white px-2 py-1.5 text-xs outline-none focus:border-fatec-sky-600"
-                      >
-                        <option value="">Avaliador {i + 1}...</option>
-                        {disponiveisNesseDia.map((d) => (
-                          <option key={d.uid} value={d.uid}>
-                            {d.nome}
-                          </option>
-                        ))}
-                      </select>
+                        candidatos={candidatos}
+                        valorUid={valor}
+                        nomeSelecionado={nomeSelecionado}
+                        onSelecionar={(c) => setValor(c.uid)}
+                        onLimpar={() => setValor("")}
+                        placeholder={`Avaliador ${i + 1}...`}
+                      />
                     );
                   })}
                   <button
@@ -1277,8 +1386,8 @@ function EnsalamentoBancaView({
                 )}
                 {(!edicaoAvaliador1 || !edicaoAvaliador2) && (
                   <p className="text-xs text-fatec-muted">
-                    Só aparece quem marcou disponibilidade nesse dia — mude o dia acima se
-                    faltar opção.
+                    A busca acha quem marcou disponibilidade nesse dia (mude o dia acima se
+                    faltar opção) ou qualquer suplente do evento, independente do dia.
                   </p>
                 )}
               </div>
